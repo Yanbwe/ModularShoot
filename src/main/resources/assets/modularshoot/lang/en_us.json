@@ -10,5 +10,7 @@
   "attribute.name.modularshoot.bullet_size": "Bullet Size",
   "attribute.name.modularshoot.block_penetration": "Block Penetration",
   "modularshoot.offhand_restricted": "Guns cannot be placed in the offhand slot.",
-  "modularshoot.creative_tab": "ModularShoot"
+  "modularshoot.creative_tab": "ModularShoot",
+  "item.modularshoot.plugin": "Plugin",
+  "modularshoot.install_failed": "Plugin installation failed."
 }

@@ -1,0 +1,16 @@
+{
+  "tags": ["c:accessory", "c:barrel"],
+  "priority": 50,
+  "item_icon": "modularshoot:textures/plugins/explosive_rounds.png",
+  "modifiers": [
+    { "attribute": "hit_damage", "operation": "multiply", "value": -0.2 },
+    { "attribute": "fire_rate", "operation": "multiply", "value": -0.1 }
+  ],
+  "traits": {
+    "modularshoot:explosive": true
+  },
+  "name": "§6爆炸弹药",
+  "brief": "附带爆炸效果",
+  "description": "安装后子弹附带爆炸，但伤害和射速略降。可安装到枪管或配件槽",
+  "color": "#FF8800"
+}

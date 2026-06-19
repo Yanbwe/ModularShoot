@@ -12,8 +12,9 @@ import org.yanbwe.modularshoot.ModularShoot;
  * attaches to the mod event bus. This class only declares the {@code DeferredItem} holders;
  * it does not register itself anywhere.</p>
  *
- * <p>Currently registers the single framework gun item {@code modularshoot:gun}. Plugin
- * items will be added in later milestones.</p>
+ * <p>Currently registers the framework gun item {@code modularshoot:gun} and the framework
+ * plugin item {@code modularshoot:plugin}. Both are data-carrying shells whose concrete
+ * type is selected by a Data Component on the stack.</p>
  */
 public final class ModularShootItems {
 
@@ -27,6 +28,20 @@ public final class ModularShootItems {
      */
     public static final DeferredItem<GunItem> GUN_ITEM =
             ModularShoot.ITEMS.register("gun", () -> new GunItem(new Item.Properties()
+                    .stacksTo(1)
+                    .fireResistant()));
+
+    /**
+     * The framework plugin item. All plugins share this one item id; the concrete plugin is
+     * selected by the {@code plugin_data} component (carrying a {@code pluginId} into the
+     * {@code modularshoot:plugins} registry) set on the stack at creation time, so no default
+     * {@code plugin_data} is configured here.
+     *
+     * <p>Base properties: max stack size 1, fire resistant, not enchantable (enforced by
+     * {@link PluginItem}).</p>
+     */
+    public static final DeferredItem<PluginItem> PLUGIN_ITEM =
+            ModularShoot.ITEMS.register("plugin", () -> new PluginItem(new Item.Properties()
                     .stacksTo(1)
                     .fireResistant()));
 

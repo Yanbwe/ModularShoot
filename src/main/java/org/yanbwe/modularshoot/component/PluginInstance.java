@@ -50,4 +50,20 @@ public record PluginInstance(
     public static PluginInstance create(ResourceLocation pluginId, UUID instanceUuid, ResourceLocation installedTypeId) {
         return new PluginInstance(pluginId, instanceUuid, installedTypeId, false);
     }
+
+    /**
+     * Returns a copy of this instance with the {@code locked} flag replaced.
+     *
+     * <p>Used by the lock API ({@code PluginLockService}) to toggle a plugin's
+     * lock state without mutating the original record, preserving the
+     * immutable-data-component contract. All other fields are carried over
+     * unchanged.</p>
+     *
+     * @param newLocked the new lock flag value
+     * @return a new {@link PluginInstance} identical to this one except for
+     *         {@code locked = newLocked}
+     */
+    public PluginInstance withLocked(boolean newLocked) {
+        return new PluginInstance(pluginId, instanceUuid, installedTypeId, newLocked);
+    }
 }

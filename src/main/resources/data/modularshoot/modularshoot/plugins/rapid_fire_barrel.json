@@ -1,0 +1,17 @@
+{
+  "tags": ["c:barrel"],
+  "priority": 150,
+  "item_icon": "modularshoot:textures/plugins/rapid_fire_barrel.png",
+  "modifiers": [
+    { "attribute": "fire_rate", "operation": "multiply", "value": 1.0 },
+    { "attribute": "accuracy_yaw", "operation": "multiply_total", "value": 0.3 }
+  ],
+  "traits": {
+    "modularshoot:rapid_fire": true
+  },
+  "exclusive_group": "group:barrel_type",
+  "name": "§c速射枪管",
+  "brief": "大幅提升射速",
+  "description": "安装后射速翻倍，但散布略有增加",
+  "color": "#FF4444"
+}

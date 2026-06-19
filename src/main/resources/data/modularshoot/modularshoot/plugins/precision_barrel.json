@@ -1,0 +1,17 @@
+{
+  "tags": ["c:barrel"],
+  "priority": 100,
+  "item_icon": "modularshoot:textures/plugins/precision_barrel.png",
+  "modifiers": [
+    { "attribute": "hit_damage", "operation": "add", "value": 5.0 },
+    { "attribute": "accuracy_yaw", "operation": "multiply_total", "value": -0.2 }
+  ],
+  "traits": {
+    "modularshoot:precision_aim": true
+  },
+  "exclusive_group": "group:barrel_type",
+  "name": "§b精密枪管",
+  "brief": "提升伤害与精度",
+  "description": "伤害+5，散布降低，与速射枪管互斥",
+  "color": "#44AAFF"
+}

@@ -1,6 +1,8 @@
 package org.yanbwe.modularshoot.registry;
 
 import org.yanbwe.modularshoot.ModularShoot;
+import org.yanbwe.modularshoot.plugin.PluginDefinition;
+import org.yanbwe.modularshoot.plugin.PluginTypeDefinition;
 import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 
@@ -44,7 +46,7 @@ public final class ModularShootRegistries {
             createRegistryKey("plugins");
 
     /** Registry key for {@code modularshoot:plugin_types} — plugin categories. */
-    public static final ResourceKey<Registry<PluginType>> PLUGIN_TYPES_KEY =
+    public static final ResourceKey<Registry<PluginTypeDefinition>> PLUGIN_TYPES_KEY =
             createRegistryKey("plugin_types");
 
     /** Registry key for {@code modularshoot:traits} — boolean trait definitions. */
@@ -84,7 +86,7 @@ public final class ModularShootRegistries {
     public static void onDataPackRegistry(DataPackRegistryEvent.NewRegistry event) {
         register(event, GUNS_KEY, GunDefinition.CODEC);
         register(event, PLUGINS_KEY, PluginDefinition.CODEC);
-        register(event, PLUGIN_TYPES_KEY, PluginType.CODEC);
+        register(event, PLUGIN_TYPES_KEY, PluginTypeDefinition.CODEC);
         register(event, TRAITS_KEY, Trait.CODEC);
         register(event, STATES_KEY, StateDefinition.CODEC);
         register(event, ATTRIBUTE_META_KEY, AttributeMeta.CODEC);
