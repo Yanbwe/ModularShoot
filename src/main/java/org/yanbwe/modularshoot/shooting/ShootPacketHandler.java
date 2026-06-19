@@ -123,22 +123,13 @@ public final class ShootPacketHandler {
     /**
      * Delegates the accepted shoot request to the shooting engine for
      * look-angle derivation, spread, bullet snapshot creation,
-     * {@code BulletManager} registration and broadcast.
-     *
-     * <p><b>TODO (subtask 17):</b> the shooting engine is not yet
-     * implemented. Until then this method only logs the accepted request at
-     * {@code debug} level so the pipeline can be exercised end-to-end without
-     * spawning bullets.</p>
+     * {@code BulletManager} registration, sound playback and
+     * {@code PostShootEvent} dispatch.
      *
      * @param player  the shooting player
      * @param gunData the gun data of the main-hand gun
      */
     private static void delegateToShootEngine(ServerPlayer player, GunData gunData) {
-        // TODO(subtask 17): invoke ShootEngine.fire(player, gunData) once implemented.
-        ModularShoot.LOGGER.debug(
-                "Shoot request accepted for player {} with gun {} (modifierVersion={})",
-                player.getName().getString(),
-                gunData.gunId(),
-                gunData.modifierVersion());
+        ShootingEngine.fire(player, gunData);
     }
 }
