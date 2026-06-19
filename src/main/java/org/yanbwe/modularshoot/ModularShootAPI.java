@@ -25,6 +25,11 @@ import org.yanbwe.modularshoot.plugin.PluginValidator;
 import org.yanbwe.modularshoot.plugin.UninstallResult;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
+import org.yanbwe.modularshoot.shooting.ShootPredicate;
+import org.yanbwe.modularshoot.shooting.ShootPredicateRegistry;
+import org.yanbwe.modularshoot.trait.TraitCallbacks;
+import org.yanbwe.modularshoot.trait.TraitHookRegistry;
+import org.yanbwe.modularshoot.trait.TraitHookType;
 
 /**
  * Unified facade entry point for the ModularShoot plugin system.
@@ -405,5 +410,68 @@ public final class ModularShootAPI {
         }
         GunData gunData = gun.get(ModularShootDataComponents.GUN_DATA.get());
         return gunData == null ? null : gunData.gunId();
+    }
+
+    /**
+     * Checks whether the given stack is a framework {@code modularshoot:gun}
+     * item.
+     *
+     * <p>Tests the item type only, not the presence of the {@code gun_data}
+     * component. Used by the shooting engine to decide whether to intercept
+     * vanilla left-click attacks.</p>
+     *
+     * @param stack the stack to inspect; must not be {@code null}
+     * @return {@code true} when the stack is a {@code modularshoot:gun} item
+     */
+    public static boolean isGun(ItemStack stack) {
+        Objects.requireNonNull(stack, "stack");
+        return stack.is(ModularShootItems.GUN_ITEM.get());
+    }
+
+    // ---- Shoot predicates ------------------------------------------------
+
+    /**
+     * Registers a custom shoot predicate that is evaluated on every shot
+     * after fire-rate control passes.
+     *
+     * <p>Delegates to {@link ShootPredicateRegistry#register}. The first
+     * predicate that returns a failing result aborts the shot and displays
+     * the failure reason to the player on the action bar. Safe to call during
+     * mod common-setup; the framework registers zero predicates by default
+     * (设计文档 §射击条件判断).</p>
+     *
+     * @param predicate the predicate to register; must not be {@code null}
+     */
+    public static void registerShootPredicate(ShootPredicate predicate) {
+        Objects.requireNonNull(predicate, "predicate");
+        ShootPredicateRegistry.register(predicate);
+    }
+
+    // ---- Trait hooks -----------------------------------------------------
+
+    /**
+     * Registers a runtime hook callback for a trait id and hook type.
+     *
+     * <p>Delegates to {@link TraitHookRegistry#register}. The callback must
+     * implement the interface that corresponds to {@code type} (e.g. an
+     * {@link TraitHookType#ON_TICK} registration must pass a
+     * {@link TraitCallbacks.TraitTickCallback}). Multiple callbacks for the
+     * same trait id and hook type are stored and fired in registration order
+     * (设计文档 §特性钩子注册 API).</p>
+     *
+     * @param traitId  the trait definition id; must not be {@code null}
+     * @param type     the hook type to attach the callback to; must not be
+     *                 {@code null}
+     * @param callback the callback to register; must not be {@code null} and
+     *                 must implement the interface expected for {@code type}
+     * @param <T>      the callback interface type, inferred from
+     *                 {@code callback}
+     */
+    public static <T extends TraitCallbacks.TraitCallback> void registerTraitHook(
+            ResourceLocation traitId, TraitHookType type, T callback) {
+        Objects.requireNonNull(traitId, "traitId");
+        Objects.requireNonNull(type, "type");
+        Objects.requireNonNull(callback, "callback");
+        TraitHookRegistry.register(traitId, type, callback);
     }
 }
