@@ -1,4 +1,14 @@
 {
+  "item.modularshoot.gun": "Gun",
+  "attribute.name.modularshoot.hit_damage": "Hit Damage",
+  "attribute.name.modularshoot.fire_rate": "Fire Rate",
+  "attribute.name.modularshoot.range": "Range",
+  "attribute.name.modularshoot.accuracy_yaw": "Accuracy Yaw",
+  "attribute.name.modularshoot.accuracy_pitch": "Accuracy Pitch",
+  "attribute.name.modularshoot.entity_penetration": "Entity Penetration",
+  "attribute.name.modularshoot.bullet_speed": "Bullet Speed",
+  "attribute.name.modularshoot.bullet_size": "Bullet Size",
+  "attribute.name.modularshoot.block_penetration": "Block Penetration",
   "modularshoot.offhand_restricted": "Guns cannot be placed in the offhand slot.",
   "modularshoot.creative_tab": "ModularShoot"
 }
