@@ -1,0 +1,33 @@
+{
+  "id": "m2-plugin-install-uninstall-05",
+  "seq": "05",
+  "title": "运行时锁定 API（setPluginLocked/isPluginLocked）",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\api-design.md"
+  ],
+  "reference_files": [
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md (lines 547-558: 运行时锁定API)",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\component\\PluginInstance.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\component\\GunData.java"
+  ],
+  "suggested_agent": "CoderAgent",
+  "acceptance_criteria": [
+    "setPluginLocked(ItemStack gun, UUID instanceUuid, boolean locked) 方法实现：按 UUID 定位 PluginInstance 并设置 locked 字段",
+    "isPluginLocked(ItemStack gun, UUID instanceUuid) 方法实现：按 UUID 查询 locked 状态，找不到返回 false",
+    "锁定操作使用不可变模式：创建新的 PluginInstance 列表替换旧列表",
+    "按 UUID 定位而非列表索引（防索引漂移）",
+    "方法为静态或通过服务类提供，参数校验 gun 是否为枪械物品"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/plugin/PluginLockService.java"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

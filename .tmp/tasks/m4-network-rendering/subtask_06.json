@@ -1,0 +1,33 @@
+{
+  "id": "m4-network-rendering-06",
+  "seq": "06",
+  "title": "BulletRenderObject (client render data object, non-Entity)",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/clean-code.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/api-design.md"
+  ],
+  "reference_files": [
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1233-1267 (BulletRenderObject design: fields, non-Entity, API methods, client-only)",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/world/phys/Vec3.java"
+  ],
+  "acceptance_criteria": [
+    "BulletRenderObject class exists as pure client-side data object (NOT an Entity, NOT registered to EntityType)",
+    "Fields: int bulletId, Vec3 position, Vec3 prevPosition, Vec3 direction, ResourceLocation texture (billboard mode), ResourceLocation modelLocation (3d mode), String renderMode ('billboard'/'3d'), float scale",
+    "API methods: getBulletId(), getPosition(), getDirection(), setTexture(ResourceLocation), setScale(float), setRenderMode(String), getPrevPosition(), setPrevPosition(Vec3), setPosition(Vec3), setDirection(Vec3)",
+    "Class is immutable-friendly: position updates create new Vec3 or update prevPosition before setting new position",
+    "No Minecraft entity lifecycle methods (no tick(), no save(), no entity registration)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/client/render/BulletRenderObject.java"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

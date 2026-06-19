@@ -1,0 +1,36 @@
+{
+  "id": "m2-plugin-install-uninstall-08",
+  "seq": "08",
+  "title": "PluginItem 物品类（modularshoot:plugin，最大堆叠1/耐火/不可附魔）",
+  "status": "pending",
+  "depends_on": ["01"],
+  "parallel": true,
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md"
+  ],
+  "reference_files": [
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md (lines 414-427: 插件实例与框架物品ID)",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\component\\PluginData.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\item\\GunItem.java (M1参考: 物品注册模式)",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\1.21.1\\out (MC 1.21.1 源码: Item, Item.Properties, DataComponents)"
+  ],
+  "suggested_agent": "CoderAgent",
+  "acceptance_criteria": [
+    "PluginItem 类继承 net.minecraft.world.item.Item",
+    "物品 ID 注册为 modularshoot:plugin",
+    "最大堆叠数设为 1（stackSizeTo(1) 或 .stacksTo(1)）",
+    "物品耐火（fireResistant()）",
+    "物品不可附魔（设置 enchantability 为 0 或覆盖 isEnchantable 返回 false）",
+    "物品使用 PluginData Data Component 存储 pluginId",
+    "物品注册到 DeferredRegister<Items> 并在 mod 初始化时注册"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/item/PluginItem.java",
+    "src/main/java/org/yanbwe/modularshoot/item/ModularShootItems.java (或现有物品注册类中新增 PLUGIN 条目)"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

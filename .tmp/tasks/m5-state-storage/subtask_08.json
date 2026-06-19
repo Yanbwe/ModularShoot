@@ -1,0 +1,45 @@
+{
+  "id": "m5-state-storage-08",
+  "seq": "08",
+  "title": "Implement PlayerState view API with type-safe get/set + hasState/clearState + error handling",
+  "status": "pending",
+  "depends_on": ["02", "05"],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\api-design.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1773-1830",
+      "reason": "Read/Write API - PlayerState has same signature as GunState, only ownership differs (Player vs ItemStack)"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1822-1829",
+      "reason": "Error handling - zero values + WARN per-state per-minute for unregistered/type mismatch"
+    },
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\state\\PlayerStateData.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\state\\StateRegistry.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\state\\StateWarnLogger.java"
+  ],
+  "acceptance_criteria": [
+    "PlayerState class wraps Player and provides type-safe state access (same API signature as GunState)",
+    "All 14 typed get/set methods implemented: getInt/setInt, getLong/setLong, getDouble/setDouble, getFloat/setFloat, getBoolean/setBoolean, getString/setString, getUuid/setUuid",
+    "hasState(ResourceLocation) returns true if state key exists with non-default value",
+    "clearState(ResourceLocation) removes state key (restores to default value)",
+    "Unregistered state ID: get returns zero value, WARN logged per-state per-minute (reuses StateWarnLogger)",
+    "Type mismatch: returns zero value, WARN logged per-state per-minute",
+    "All set operations write through to PlayerStateData AttachmentType on the Player",
+    "PlayerState.getState(Player) static factory method returns PlayerState instance",
+    "Only states registered with domain=PLAYER are accessible (domain mismatch WARN)",
+    "No exceptions thrown for unregistered/mismatch (graceful degradation only)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/state/PlayerState.java"
+  ]
+}

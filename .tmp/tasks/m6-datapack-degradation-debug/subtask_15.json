@@ -1,0 +1,37 @@
+{
+  "id": "m6-datapack-degradation-debug-15",
+  "seq": "15",
+  "title": "/modularshoot 调试命令框架 + stats/plugins 子命令",
+  "status": "pending",
+  "depends_on": ["07"],
+  "parallel": true,
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/core/workflows/external-context-integration.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md",
+      "lines": "2063-2075",
+      "reason": "调试命令定义：6个子命令、op权限modularshoot.command"
+    },
+    {
+      "path": "C:/Users/GGxia/Desktop/YanbweMod/MCforge/NeoForge-1.21.1",
+      "reason": "NeoForge源码：Command API、ArgumentTypes、RegisterCommandsEvent"
+    }
+  ],
+  "suggested_agent": "CoderAgent",
+  "acceptance_criteria": [
+    "/modularshoot 命令注册到 NeoForge 命令系统",
+    "命令需要 op 权限节点 modularshoot.command",
+    "stats 子命令：查询当前主手枪械的最终计算后属性值（含所有来源叠加结果）",
+    "plugins 子命令：列出当前主手枪械所有已安装插件（ID、安装种类、实例UUID、锁定状态）",
+    "无主手枪械时输出提示信息，不崩溃",
+    "命令框架支持后续子命令扩展"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/command/ModularShootCommand.java",
+    "src/main/java/org/yanbwe/modularshoot/command/StatsSubcommand.java",
+    "src/main/java/org/yanbwe/modularshoot/command/PluginsSubcommand.java"
+  ]
+}

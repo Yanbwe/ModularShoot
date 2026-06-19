@@ -1,0 +1,36 @@
+{
+  "id": "m6-datapack-degradation-debug-12",
+  "seq": "12",
+  "title": "种类定义丢失降级",
+  "status": "pending",
+  "depends_on": ["07", "08"],
+  "parallel": true,
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/clean-code.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md",
+      "lines": "2332-2343",
+      "reason": "种类定义丢失降级：插件物品tooltip/已安装插件installedTypeId失效/修饰符仍生效/未知种类分组/定义恢复后归位"
+    },
+    {
+      "path": "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out",
+      "reason": "MC 1.21.1 源码：ItemStack、tooltip组件"
+    }
+  ],
+  "suggested_agent": "CoderAgent",
+  "acceptance_criteria": [
+    "插件物品 tooltip '可安装至' 行反查 tags 时已丢失种类不在结果中",
+    "插件所有匹配种类均丢失时显示灰色'可安装至: 未知'",
+    "插件物品不崩溃，Shift 展开的 tags 列表仍正常显示",
+    "已安装插件 installedTypeId 失效时插件仍保留在枪械上，不自动拆卸",
+    "失效种类的插件修饰符仍参与 ATTRIBUTE_MODIFIERS 计算",
+    "tooltip 插件栏中失效种类插件归入灰色[未知种类]分组末尾",
+    "定义恢复后插件自动归入正确种类分组，tooltip 恢复正常"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/degradation/PluginTypeDegradationHandler.java"
+  ]
+}

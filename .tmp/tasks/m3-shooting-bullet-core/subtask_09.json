@@ -1,0 +1,44 @@
+{
+  "id": "m3-shooting-bullet-core-09",
+  "seq": "09",
+  "title": "Implement bullet tick loop skeleton + position advancement + range check + unloaded chunk handling",
+  "status": "pending",
+  "depends_on": ["08"],
+  "parallel": false,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\external-context-integration.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "944-962",
+      "reason": "Bullet flight + collision - per tick: position advancement by bullet_speed along direction (no gravity), range check (exceed range -> onExpire), unloaded chunk handling (direct onExpire, no force load)"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "796-802",
+      "reason": "Step 10: Bullet flight and hit (async) - onTick per tick, onExpire on range exceeded, onRemove on any removal"
+    },
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\1.21.1\\out\\src\\mojmaps\\net\\minecraft\\world\\level\\Level.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\1.21.1\\out\\src\\mojmaps\\net\\minecraft\\world\\level\\chunk\\status\\ChunkStatus.java"
+  ],
+  "acceptance_criteria": [
+    "BulletTickHandler created (server-side tick listener on NeoForge.EVENT_BUS via TickEvent.LevelTickEvent or ServerLevel tick)",
+    "tickBullets(Level level) method iterates all active bullets in BulletManager for that dimension",
+    "Per bullet: increment age (bulletRecord.age++), call position advancement (position = position + direction * bullet_speed)",
+    "Position advancement uses bullet_speed from snapshot.getStat(BULLET_SPEED), direction from bulletRecord.getDirection()",
+    "No gravity applied (bullets fly straight)",
+    "Range check: if traveledDistance + stepLength > range (from snapshot), trigger onExpire + remove with RemoveReason.EXPIRED (hook calls may be TODO placeholders for subtask 14)",
+    "Unloaded chunk check: if bullet's current chunk is not loaded (level.hasChunk(chunkX, chunkZ) returns false), trigger onExpire + remove with RemoveReason.UNLOADED_CHUNK",
+    "Chunk bucket migration called when bullet crosses chunk boundary (delegates to BulletManager.updateChunkBucket)",
+    "TODO placeholder comments left for collision detection (subtask 10), penetration (subtask 11), damage (subtask 12), hooks (subtask 14)",
+    "Traveled distance accumulated per tick (traveledDistance += stepLength)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/bullet/BulletTickHandler.java"
+  ]
+}

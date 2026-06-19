@@ -1,0 +1,41 @@
+{
+  "id": "m1-attributes-gun-basics-03",
+  "seq": "03",
+  "title": "Define GunDefinition record + Codec for gun definition data structure",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\api-design.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\external-context-integration.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "245-355",
+      "reason": "System 2: Gun system - gun definition fields (name, texture, shoot_texture, shoot_texture_mode, stats, traits, slots, sounds, bullet_style)"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "2084-2131",
+      "reason": "Gun data pack JSON format - field structure for GunDefinition Codec mapping"
+    }
+  ],
+  "acceptance_criteria": [
+    "GunDefinition record defined with fields: name (Optional<String>), texture (ResourceLocation), shootTexture (Optional<ResourceLocation>), shootTextureMode (enum PER_SHOT/WHILE_FIRING, default PER_SHOT), stats (Map<ResourceLocation, Double>), traits (Map<ResourceLocation, Boolean>), slots (Map<ResourceLocation, Integer>), sounds (Map<String, ResourceLocation>), bulletStyle (Optional<BulletStyle>)",
+    "BulletStyle nested record defined with: model (Map<String, ResourceLocation>), renderMode (enum BILLBOARD/3D)",
+    "Codec<GunDefinition> defined with correct serialization matching the JSON format in design doc",
+    "All optional fields use Codec.optional() with appropriate defaults",
+    "stats map uses ResourceLocation keys (attribute IDs) and Double values",
+    "traits map uses ResourceLocation keys (trait IDs) and Boolean values, defaults to empty map",
+    "slots map uses ResourceLocation keys (plugin type IDs) and Integer values (slot counts), defaults to empty map",
+    "Record is immutable (all fields final)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/registry/gun/GunDefinition.java",
+    "src/main/java/org/yanbwe/modularshoot/registry/gun/BulletStyle.java"
+  ]
+}

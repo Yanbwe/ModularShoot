@@ -1,0 +1,39 @@
+{
+  "id": "m4-network-rendering-01",
+  "seq": "01",
+  "title": "Data packet registration infrastructure (RegisterPayloadHandlersEvent + PayloadRegistrar + CustomPacketPayload)",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/clean-code.md",
+    "C:/Users/GGxia/.config/opencode/context/core/workflows/external-context-integration.md"
+  ],
+  "reference_files": [
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1936-1960 (Network sync overview, packet types, PayloadRegistrar requirement)",
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/src/main/java/org/yanbwe/modularshoot/ModularShoot.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/src/main/java/org/yanbwe/modularshoot/ModularShootClient.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/MCforge/NeoForge-1.21.1/src/main/java/net/neoforged/neoforge/network/event/RegisterPayloadHandlersEvent.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/MCforge/NeoForge-1.21.1/src/main/java/net/neoforged/neoforge/network/registration/PayloadRegistrar.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/network/protocol/common/custom/CustomPacketPayload.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/MCforge/NeoForge-1.21.1/src/main/java/net/neoforged/neoforge/network/PacketDistributor.java"
+  ],
+  "acceptance_criteria": [
+    "ModularShootPackets class exists with RegisterPayloadHandlersEvent listener on mod event bus",
+    "PayloadRegistrar configured with protocol version (matching mod version)",
+    "CustomPacketPayload.Type<T> constants defined for all M4 packets: BulletS2CPacket, BulletHitS2CPacket, GunSyncS2CPacket, ShootC2SPacket, ShootAnimS2CPacket",
+    "Each packet type has a ResourceLocation ID under 'modularshoot' namespace",
+    "Registration uses play() phase (not configuration) for gameplay packets",
+    "Packet handler stubs registered (playToServer / playToClient) with empty handlers to be filled by subsequent tasks",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/network/ModularShootPackets.java (registration hub + Type constants)"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

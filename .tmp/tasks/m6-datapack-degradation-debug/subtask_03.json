@@ -1,0 +1,35 @@
+{
+  "id": "m6-datapack-degradation-debug-03",
+  "seq": "03",
+  "title": "插件种类数据包 JSON 格式完善",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/core/workflows/external-context-integration.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md",
+      "lines": "2186-2203",
+      "reason": "插件种类数据包JSON格式定义：字段说明与示例"
+    },
+    {
+      "path": "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out",
+      "reason": "MC 1.21.1 源码：Codec/Gson/ResourceLocation等数据包解析API"
+    }
+  ],
+  "suggested_agent": "CoderAgent",
+  "acceptance_criteria": [
+    "种类JSON路径 data/<ns>/modularshoot/plugin_types/<id>.json 正确解析",
+    "字段 tags/priority/name/color 全部支持",
+    "tags 为空数组时注册输出 WARN 日志",
+    "priority 缺失时默认为 0",
+    "单条JSON解析为 PluginTypeDefinition 并注册到种类注册表"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/datapack/PluginTypeDatapackLoader.java",
+    "src/main/java/org/yanbwe/modularshoot/datapack/PluginTypeJsonCodec.java"
+  ]
+}

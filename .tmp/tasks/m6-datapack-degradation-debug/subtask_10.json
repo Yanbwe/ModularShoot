@@ -1,0 +1,36 @@
+{
+  "id": "m6-datapack-degradation-debug-10",
+  "seq": "10",
+  "title": "枪械 gunId 失效降级",
+  "status": "pending",
+  "depends_on": ["07", "08"],
+  "parallel": true,
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/clean-code.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md",
+      "lines": "2318-2323",
+      "reason": "枪械gunId失效降级行为：不崩溃/灰色名称/兜底纹理/射击静默失败/tooltip降级/修饰符不挂载"
+    },
+    {
+      "path": "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out",
+      "reason": "MC 1.21.1 源码：ItemStack、tooltip组件、动作栏消息"
+    }
+  ],
+  "suggested_agent": "CoderAgent",
+  "acceptance_criteria": [
+    "gunId 指向不存在的定义时物品不崩溃，正常存在于背包/箱子/掉落物",
+    "物品名称显示为灰色'未知枪械 (gunId路径部分)'",
+    "物品栏图标使用框架内置兜底纹理",
+    "射击时检测定义不存在，取消射击不生成子弹，输出 WARN 日志（每玩家每分钟最多一次）",
+    "tooltip 仅显示[未知枪械]与 gunId，不显示属性栏/特性栏/插件栏",
+    "手持该物品时不挂载任何框架 AttributeModifier"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/degradation/GunDegradationHandler.java",
+    "src/main/java/org/yanbwe/modularshoot/degradation/DegradationTextures.java"
+  ]
+}

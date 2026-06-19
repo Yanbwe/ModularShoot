@@ -1,0 +1,39 @@
+{
+  "id": "m4-network-rendering-09",
+  "seq": "09",
+  "title": "Billboard render mode (camera-facing quad + custom RenderType: depth test, transparency blend, no lighting)",
+  "status": "pending",
+  "depends_on": ["08"],
+  "parallel": false,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/clean-code.md",
+    "C:/Users/GGxia/.config/opencode/context/core/workflows/external-context-integration.md"
+  ],
+  "reference_files": [
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1220-1231 (Render modes table: billboard camera-facing 2D sprite, 3d vanilla JSON model)",
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1240-1242 (Billboard render details: camera-facing quad, custom RenderType, depth test, transparency, no lighting)",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/client/renderer/RenderType.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/client/renderer/RenderStateShard.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/client/renderer/MultiBufferSource.java"
+  ],
+  "acceptance_criteria": [
+    "Custom RenderType created for billboard bullets: enables depth test, transparency blend (translucent), no lighting, no cull",
+    "BillboardRenderer class renders a camera-facing quad (4 vertices) using camera orientation from Camera object",
+    "Quad is always perpendicular to camera look direction (sprite billboard effect)",
+    "Texture sampled from BulletRenderObject.texture ResourceLocation",
+    "Scale from BulletRenderObject.scale applied to quad size",
+    "Position interpolated using prevPosition, position, and partialTick (delegates to interpolation logic from subtask 11)",
+    "Rendered via PoseStack + VertexConsumer from MultiBufferSource",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/client/render/BillboardRenderer.java (camera-facing quad rendering)",
+    "src/main/java/org/yanbwe/modularshoot/client/render/BulletRenderType.java (custom RenderType definition)"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

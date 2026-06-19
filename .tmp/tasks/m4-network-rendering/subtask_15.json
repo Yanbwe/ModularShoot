@@ -1,0 +1,38 @@
+{
+  "id": "m4-network-rendering-15",
+  "seq": "15",
+  "title": "Plugin texture overlay compositing (layer sorting + 2D layer compositing on gun texture)",
+  "status": "pending",
+  "depends_on": ["04"],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/clean-code.md",
+    "C:/Users/GGxia/.config/opencode/context/core/workflows/external-context-integration.md"
+  ],
+  "reference_files": [
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1311-1335 (Plugin texture overlay: texture_overlay field, layer sorting, 2D compositing flow, transparent areas)",
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1344 (Plugin overlay works in both first-person and third-person views)",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/client/renderer/texture/TextureAtlas.java"
+  ],
+  "acceptance_criteria": [
+    "PluginOverlayCompositor: collects all installed plugins with texture_overlay declaration from GunSyncS2CPacket synced data",
+    "Layer sorting: plugins sorted by layer value low-to-high; same layer sorted by install order (first-installed first)",
+    "2D compositing: base gun texture (or shoot_texture if firing) as bottom layer, plugin textures composited on top in sorted order",
+    "Plugin textures must match gun texture dimensions; transparent areas in overlay show lower layer through",
+    "Plugins without texture_overlay declaration do not participate in compositing (their data-layer effects still work normally)",
+    "Final composite texture fed to vanilla item rendering pipeline for 3D processing",
+    "Overlay compositing works in both first-person and third-person views",
+    "Compositing is client-side only (uses synced plugin list from GunSyncS2CPacket)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/client/render/PluginOverlayCompositor.java (layer collection + sorting + 2D compositing)",
+    "src/main/java/org/yanbwe/modularshoot/client/render/CompositeTextureBuilder.java (NativeImage-based 2D layer blending utility)"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

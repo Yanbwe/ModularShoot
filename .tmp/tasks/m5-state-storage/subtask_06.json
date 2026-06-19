@@ -1,0 +1,44 @@
+{
+  "id": "m5-state-storage-06",
+  "seq": "06",
+  "title": "Implement per-bullet state storage in BulletSnapshot.state Map with Codec",
+  "status": "pending",
+  "depends_on": ["01", "03"],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\external-context-integration.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1714-1724",
+      "reason": "Three-tier ownership - per-bullet storage carrier (BulletSnapshot.state), no persistence, bullet lifetime only"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "900-936",
+      "reason": "BulletSnapshot structure - existing stats/traits fields, new state field, getShooter/getGunInstanceUuid for backtracking"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1831-1837",
+      "reason": "Persistence table - per-bullet not persisted, syncs initial values via BulletS2CPacket"
+    },
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\bullet\\BulletSnapshot.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\state\\StateValueCodecs.java"
+  ],
+  "acceptance_criteria": [
+    "BulletSnapshot.state field (Map<ResourceLocation, Object>) added with StateValueCodecs dispatch Codec",
+    "State map Codec correctly serializes/deserializes mixed value types for BulletS2CPacket initial value sync",
+    "State map defaults to empty map when no states written",
+    "BulletSnapshot is mutable at runtime (hooks can modify state during flight via setState)",
+    "State map is not part of initial attribute snapshot freeze (separate from stats/traits)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/bullet/BulletSnapshot.java (updated: add state field + Codec)"
+  ]
+}

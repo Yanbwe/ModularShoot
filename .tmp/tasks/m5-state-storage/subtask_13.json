@@ -1,0 +1,40 @@
+{
+  "id": "m5-state-storage-13",
+  "seq": "13",
+  "title": "Implement ModularShootAPI.getState(ItemStack)/getPlayerState(Player) utility methods",
+  "status": "pending",
+  "depends_on": ["07", "08"],
+  "parallel": false,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\api-design.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "148-149",
+      "reason": "API overview - ModularShootAPI.getState(ItemStack) and getPlayerState(Player) signatures"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1773-1826",
+      "reason": "Read/Write API - getState returns GunState/PlayerState view, usage example"
+    },
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\state\\GunState.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\state\\PlayerState.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\api\\ModularShootAPI.java"
+  ],
+  "acceptance_criteria": [
+    "ModularShootAPI.getState(ItemStack gun) static method returns GunState instance for the gun ItemStack",
+    "ModularShootAPI.getPlayerState(Player player) static method returns PlayerState instance for the player",
+    "getState returns null if ItemStack is not a gun (ModularShootAPI.isGun check)",
+    "Both methods are thread-safe (delegate to GunState/PlayerState static factories)",
+    "Both methods are consistent with existing ModularShootAPI method patterns (static, utility)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/api/ModularShootAPI.java (updated: add getState and getPlayerState methods)"
+  ]
+}

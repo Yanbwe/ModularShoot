@@ -1,0 +1,42 @@
+{
+  "id": "m4-network-rendering-16",
+  "seq": "16",
+  "title": "Third-person shoot animation Mixin (HumanoidModel injection + crossbow pose + timer interpolation + graceful degradation)",
+  "status": "pending",
+  "depends_on": ["13"],
+  "parallel": false,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/clean-code.md",
+    "C:/Users/GGxia/.config/opencode/context/core/workflows/external-context-integration.md"
+  ],
+  "reference_files": [
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1346-1363 (Third-person animation Mixin design: inject HumanoidModel, read shootAnimTimer, crossbow pose, timer interpolation)",
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1361-1363 (Degradation: Mixin load failure -> no animation, shooting logic unaffected)",
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/src/main/resources/modularshoot.mixins.json",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/client/model/HumanoidModel.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/client/model/PlayerModel.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/client/renderer/entity/LivingEntityRenderer.java"
+  ],
+  "acceptance_criteria": [
+    "Mixin class injects into HumanoidModel (or LivingEntityRenderer model animation calculation method) after vanilla animation setup",
+    "Reads shootAnimTimer from PlayerShootStateManager for the rendered player entity",
+    "timer > 0: forces both arms to crossbow charge/fire pose (reuses vanilla crossbow keyframe angle values)",
+    "Pose interpolation: progress = timer / peak value, interpolates arm rotation angles by progress (smooth pull-back animation)",
+    "timer == 0: does not intervene, vanilla animation preserved",
+    "First-person: no arm animation (Mixin only affects third-person model rendering)",
+    "Mixin entry added to modularshoot.mixins.json under 'mixins' array (package: org.yanbwe.modularshoot.mixin)",
+    "Graceful degradation: if Mixin fails to load (conflict with other mod), animation simply doesn't play, shooting logic completely unaffected",
+    "Mixin class is client-only (Dist.CLIENT)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/mixin/client/HumanoidModelMixin.java (or LivingEntityRendererMixin.java - arm pose injection)",
+    "Update to src/main/resources/modularshoot.mixins.json (add mixin entry to 'mixins' array)"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

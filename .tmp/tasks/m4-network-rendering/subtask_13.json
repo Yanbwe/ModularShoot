@@ -1,0 +1,43 @@
+{
+  "id": "m4-network-rendering-13",
+  "seq": "13",
+  "title": "Shoot animation sync packet + isFiring flag (local + other players) + shootAnimTimer (local zero-delay + server sync + tick decay)",
+  "status": "pending",
+  "depends_on": ["01", "05"],
+  "parallel": false,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/clean-code.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/api-design.md",
+    "C:/Users/GGxia/.config/opencode/context/core/workflows/external-context-integration.md"
+  ],
+  "reference_files": [
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1346-1363 (Third-person animation design: shootAnimTimer, isFiring, animation sync packet, tick decay)",
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1354-1357 (isFiring flag maintenance: local client detection, other server 2-tick timeout, while_firing texture rule)",
+    "C:/Users/GGxia/Desktop/YanbweMod/MCforge/NeoForge-1.21.1/src/main/java/net/neoforged/neoforge/network/registration/PayloadRegistrar.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/network/protocol/common/custom/CustomPacketPayload.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/MCforge/NeoForge-1.21.1/src/main/java/net/neoforged/neoforge/network/PacketDistributor.java"
+  ],
+  "acceptance_criteria": [
+    "ShootAnimS2CPacket record implements CustomPacketPayload: fields = player UUID, isFiring (bool), shootAnimTimer (float)",
+    "PlayerShootStateManager: client-side per-player state map (UUID -> {isFiring, shootAnimTimer})",
+    "isFiring local player: client detects left-click held + main hand is gun -> true; release or non-gun -> false; zero-delay (same condition as ShootC2SPacket send)",
+    "isFiring other players: server maintains per-player 'recently shooting' state (ShootC2SPacket received -> true, 2 tick timeout -> false), syncs via ShootAnimS2CPacket to nearby clients",
+    "shootAnimTimer local player: client sets timer to peak (e.g. 5 ticks) immediately on sending ShootC2SPacket (zero-delay animation feedback, no server round-trip)",
+    "shootAnimTimer other players: server sets timer to peak during shoot flow step 8 (sound), syncs via ShootAnimS2CPacket",
+    "shootAnimTimer tick decay: timer -= 1 each tick, reaches 0 -> animation ends",
+    "isFiring is INDEPENDENT from shootAnimTimer (no reuse) - timer peaks briefly and decays, isFiring persists while firing to avoid while_firing flicker",
+    "ShootAnimS2CPacket registered in ModularShootPackets via PayloadRegistrar.playToClient",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/network/ShootAnimS2CPacket.java (packet record + codec + stream codec)",
+    "src/main/java/org/yanbwe/modularshoot/client/PlayerShootStateManager.java (client-side per-player isFiring + shootAnimTimer)",
+    "src/main/java/org/yanbwe/modularshoot/network/ShootAnimSyncService.java (server-side state maintenance + sync broadcast)"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

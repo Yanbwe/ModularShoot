@@ -1,0 +1,52 @@
+{
+  "id": "m5-state-storage-02",
+  "seq": "02",
+  "title": "Implement modularshoot:states registry API (Java registration + data pack JSON loading)",
+  "status": "pending",
+  "depends_on": ["01"],
+  "parallel": false,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\api-design.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\external-context-integration.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1740-1772",
+      "reason": "State registration - Java API + data pack dual registration, hot reload support, registry fields"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "118-124",
+      "reason": "API overview - DataPackRegistry mechanism for modularshoot:states"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "2078-2131",
+      "reason": "Data pack registration - JSON file paths and loading mechanism"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1020-1050",
+      "reason": "modularshoot:ammo_damage_type convention - framework reads this state at shoot time, does not pre-register it"
+    },
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\registry\\ModularShootRegistries.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\MCforge\\NeoForge-1.21.1\\src\\main\\java\\net\\neoforged\\neoforge\\registries\\DataPackRegistryEvent.java"
+  ],
+  "acceptance_criteria": [
+    "StateRegistry class provides Java API: register(ResourceLocation id, StateDefinition definition) writing to modularshoot:states dynamic registry",
+    "Data pack JSON loading works from data/<namespace>/modularshoot/states/<state_id>.json path",
+    "Registry content is hot-reloadable via /reload command",
+    "StateRegistry.get(ResourceLocation id) returns Holder<StateDefinition> or null for unregistered IDs",
+    "StateRegistry.getAll() returns stream of all registered state entries",
+    "M1 StateDefinition stub in ModularShootRegistries.java replaced with full M5 StateDefinition Codec",
+    "Framework pre-registers 0 states (all states registered by upper mods); modularshoot:ammo_damage_type is a convention only, not pre-registered",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/state/StateRegistry.java",
+    "src/main/java/org/yanbwe/modularshoot/registry/ModularShootRegistries.java (updated: replace StateDefinition stub with full Codec)"
+  ]
+}

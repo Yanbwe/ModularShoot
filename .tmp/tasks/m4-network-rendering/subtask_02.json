@@ -1,0 +1,40 @@
+{
+  "id": "m4-network-rendering-02",
+  "seq": "02",
+  "title": "BulletS2CPacket (S to C bullet sync) + server tick broadcast with render-distance culling",
+  "status": "pending",
+  "depends_on": ["01"],
+  "parallel": false,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/clean-code.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/api-design.md",
+    "C:/Users/GGxia/.config/opencode/context/core/workflows/external-context-integration.md"
+  ],
+  "reference_files": [
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L2010-2022 (BulletS2CPacket design: per-tick batch, render-distance culling, first-full-then-delta, client create/update/destroy)",
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1245-1256 (Sync strategy table: trigger, range, content, frequency, short-life guarantee)",
+    "C:/Users/GGxia/Desktop/YanbweMod/MCforge/NeoForge-1.21.1/src/main/java/net/neoforged/neoforge/network/registration/PayloadRegistrar.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/network/protocol/common/custom/CustomPacketPayload.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/MCforge/NeoForge-1.21.1/src/main/java/net/neoforged/neoforge/network/PacketDistributor.java"
+  ],
+  "acceptance_criteria": [
+    "BulletS2CPacket record implements CustomPacketPayload with Codec<BulletS2CPacket> + StreamCodec",
+    "Packet fields: bullet ID list, positions (Vec3), directions (Vec3), velocities, visual style IDs, bullet sizes, shooter entity IDs",
+    "Server-side tick broadcast: BulletManager collects all active bullets each tick, packages into BulletS2CPacket",
+    "Render-distance culling: only bullets within player's render distance are included (per-player packet)",
+    "Packet sent via PacketDistributor to tracking players near bullet positions",
+    "Client handler stub registered (actual render object creation deferred to subtask 07)",
+    "Short-life bullet forced sync: bullets created and removed in same tick still get one full sync packet at tick end",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/network/BulletS2CPacket.java (packet record + codec + stream codec)",
+    "src/main/java/org/yanbwe/modularshoot/network/BulletSyncService.java (server-side tick collection + culling + broadcast)"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

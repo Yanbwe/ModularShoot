@@ -1,0 +1,45 @@
+{
+  "id": "m5-state-storage-05",
+  "seq": "05",
+  "title": "Implement per-player state storage via NeoForge AttachmentType with .sync() configuration",
+  "status": "pending",
+  "depends_on": ["01", "03"],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\external-context-integration.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1714-1722",
+      "reason": "Three-tier ownership - per-player storage carrier (NeoForge AttachmentType, player NBT)"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1831-1839",
+      "reason": "Persistence table - per-player via AttachmentType NBT, sync via .sync() IAttachmentSerializer requirement"
+    },
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\state\\StateValueCodecs.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\MCforge\\NeoForge-1.21.1\\src\\main\\java\\net\\neoforged\\neoforge\\attachment\\AttachmentType.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\MCforge\\NeoForge-1.21.1\\src\\main\\java\\net\\neoforged\\neoforge\\attachment\\IAttachmentSerializer.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\MCforge\\NeoForge-1.21.1\\src\\main\\java\\net\\neoforged\\neoforge\\attachment\\AttachmentSync.java"
+  ],
+  "acceptance_criteria": [
+    "PlayerStateData class/record holds Map<ResourceLocation, Object> for per-player state values",
+    "AttachmentType<PlayerStateData> registered via DeferredRegister with .sync() configured using IAttachmentSerializer",
+    "AttachmentType persists to player NBT (survives relogin)",
+    "AttachmentType syncs to client via .sync() configuration (client receives per-player state updates)",
+    "PlayerStateData Codec uses StateValueCodecs dispatch for mixed value type serialization",
+    "PlayerStateData defaults to empty map when no states written",
+    "PlayerStateData.setState(id, value)/getState(id)/clearState(id) helper methods maintain immutability",
+    "AttachmentType registered on mod event bus in ModularShoot constructor",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/state/PlayerStateData.java",
+    "src/main/java/org/yanbwe/modularshoot/state/ModularShootAttachmentTypes.java"
+  ]
+}

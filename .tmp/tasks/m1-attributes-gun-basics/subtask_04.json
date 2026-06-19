@@ -1,0 +1,44 @@
+{
+  "id": "m1-attributes-gun-basics-04",
+  "seq": "04",
+  "title": "Define GunData + PluginInstance records, Codecs, and register DataComponentType",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\external-context-integration.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "282-314",
+      "reason": "GunData Component and PluginInstance structure - gunId, gunInstanceUuid, installedPlugins, modifierVersion, state fields"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "245-290",
+      "reason": "System 2: Gun instance data - GunData field semantics, persistence requirements"
+    },
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\ModularShoot.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\1.21.1\\out\\src\\mojmaps\\net\\minecraft\\core\\component\\DataComponents.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\MCforge\\NeoForge-1.21.1\\src\\main\\java\\net\\neoforged\\neoforge\\registries\\DeferredRegister.java"
+  ],
+  "acceptance_criteria": [
+    "PluginInstance record defined with fields: pluginId (ResourceLocation), instanceUuid (UUID), installedTypeId (ResourceLocation), locked (boolean, default false)",
+    "GunData record defined with fields: gunId (ResourceLocation), gunInstanceUuid (UUID), installedPlugins (List<PluginInstance>), modifierVersion (int, default 0), state (Map<ResourceLocation, Object> using Codec dispatch)",
+    "Codec<PluginInstance> defined with correct serialization for all 4 fields",
+    "Codec<GunData> defined with correct serialization for all 5 fields, installedPlugins defaults to empty list, state defaults to empty map",
+    "DataComponentType<GunData> registered via DeferredRegister.DataComponents in ModularShoot class",
+    "DATA_COMPONENTS DeferredRegister registered on mod event bus in ModularShoot constructor",
+    "Records are immutable (all fields final)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/component/GunData.java",
+    "src/main/java/org/yanbwe/modularshoot/component/PluginInstance.java",
+    "src/main/java/org/yanbwe/modularshoot/component/ModularShootDataComponents.java"
+  ]
+}

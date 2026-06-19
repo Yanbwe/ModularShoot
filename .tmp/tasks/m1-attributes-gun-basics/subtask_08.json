@@ -1,0 +1,50 @@
+{
+  "id": "m1-attributes-gun-basics-08",
+  "seq": "08",
+  "title": "Implement gun registry API: Java registration + data pack JSON loading to modularshoot:guns",
+  "status": "pending",
+  "depends_on": ["03", "05"],
+  "parallel": false,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\api-design.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\component-planning.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\external-context-integration.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "106-179",
+      "reason": "API overview - registration API table, Java + data pack dual registration, registry paths"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "316-353",
+      "reason": "Gun registration API example - Java API call structure"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "2084-2131",
+      "reason": "Gun data pack JSON format - field structure for data pack loading"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "2289-2304",
+      "reason": "Registration conflict and override rules, loading order"
+    }
+  ],
+  "acceptance_criteria": [
+    "GunRegistry API class provides method to register gun definitions by ResourceLocation ID + GunDefinition",
+    "Java API registration writes to the modularshoot:guns dynamic registry during mod initialization",
+    "Data pack JSON files at data/<namespace>/modularshoot/guns/<id>.json are automatically loaded by the DataPackRegistry mechanism",
+    "API provides lookup method: getGun(ResourceLocation) returns Optional<GunDefinition> from the registry",
+    "API provides method to list all registered gun IDs",
+    "Java API registration takes priority over data pack JSON for same ID (per conflict rules)",
+    "Helper method exists to create a gun ItemStack with a given gunId (sets GunData component)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/registry/gun/GunRegistry.java"
+  ]
+}

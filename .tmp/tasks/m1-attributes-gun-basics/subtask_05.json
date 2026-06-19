@@ -1,0 +1,49 @@
+{
+  "id": "m1-attributes-gun-basics-05",
+  "seq": "05",
+  "title": "Set up 6 DataPackRegistry entries via DataPackRegistryEvent.NewRegistry",
+  "status": "pending",
+  "depends_on": ["02", "03"],
+  "parallel": false,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\component-planning.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\external-context-integration.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "106-179",
+      "reason": "API overview - 5 framework registries + attribute_meta, DataPackRegistry mechanism rationale"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "2078-2131",
+      "reason": "Data pack registration section - registry paths and JSON loading"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "2387-2401",
+      "reason": "M1 milestone scope - DataPackRegistry setup requirements"
+    },
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\ModularShoot.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\MCforge\\NeoForge-1.21.1\\src\\main\\java\\net\\neoforged\\neoforge\\registries\\DataPackRegistryEvent.java"
+  ],
+  "acceptance_criteria": [
+    "6 ResourceKey<Registry<T>> constants defined for: modularshoot:guns, modularshoot:plugins, modularshoot:plugin_types, modularshoot:traits, modularshoot:states, modularshoot:attribute_meta",
+    "Minimal Codec stubs defined for PluginDefinition, PluginType, Trait, StateDefinition (sufficient for registry registration, full structures expanded in M2/M5)",
+    "DataPackRegistryEvent.NewRegistry listener registered on mod event bus",
+    "All 6 registries registered via event.dataPackRegistry() with appropriate Codecs and network Codecs (for client sync)",
+    "guns registry uses Codec<GunDefinition>, attribute_meta registry uses Codec<AttributeMeta>",
+    "Registry data loads from data/<namespace>/modularshoot/<registry_name>/ path",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/registry/ModularShootRegistries.java",
+    "src/main/java/org/yanbwe/modularshoot/registry/PluginDefinition.java",
+    "src/main/java/org/yanbwe/modularshoot/registry/PluginType.java",
+    "src/main/java/org/yanbwe/modularshoot/registry/Trait.java",
+    "src/main/java/org/yanbwe/modularshoot/registry/StateDefinition.java"
+  ]
+}

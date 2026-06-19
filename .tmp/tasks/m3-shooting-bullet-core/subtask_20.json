@@ -1,0 +1,45 @@
+{
+  "id": "m3-shooting-bullet-core-20",
+  "seq": "20",
+  "title": "Integration verification + compile check + M3 milestone validation",
+  "status": "pending",
+  "depends_on": ["11", "13", "14", "15", "16", "17", "18", "19"],
+  "parallel": false,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\feature-breakdown.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "2416-2430",
+      "reason": "M3 milestone scope and verification criteria"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "84-106",
+      "reason": "M3 exit criteria checklist from session context"
+    },
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\build.gradle"
+  ],
+  "acceptance_criteria": [
+    "All M3 subtasks (01-19) completed and verified",
+    "Project compiles successfully via gradle build (./gradlew compileJava or ./gradlew build) with no errors",
+    "No circular dependencies or missing class references between M3 components",
+    "ModularShootAPI has all M3 register methods: registerShootPredicate, registerDamageHandler, registerTraitHook",
+    "BulletManager.get(level) returns per-dimension instance correctly",
+    "BulletManager.fireBullet() creates and registers bullet correctly",
+    "Shooting flow end-to-end: left-click -> ShootC2SPacket -> server handler -> fire rate -> anti-cheat -> ShootPredicate -> PreShootEvent -> snapshot -> spread -> register bullet -> sound -> PostShootEvent",
+    "Bullet lifecycle end-to-end: tick -> advance -> collision -> (entity hit -> damage chain -> hurt -> onHit -> penetration) or (block hit -> onBlockHit -> penetration) or (range/unloaded -> onExpire) -> onRemove",
+    "Trait hooks trigger at correct points (onTick, onHit, onBlockHit, onExpire, onRemove)",
+    "Verification: holding gun + left-click shoots bullet that flies and hits entity causing damage",
+    "Verification: penetration bullet (entity_penetration > 0) hits multiple targets",
+    "Verification: block penetration count correct (block_penetration > 0 passes through walls)",
+    "Verification: BulletManager.fireBullet() independent firing works (no player shooting engine needed)"
+  ],
+  "deliverables": [
+    "Compile verification report (gradle build output)",
+    "Integration test notes documenting end-to-end flow verification"
+  ]
+}

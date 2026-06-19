@@ -1,0 +1,34 @@
+{
+  "id": "m2-plugin-install-uninstall-01",
+  "seq": "01",
+  "title": "PluginData Data Component（pluginId 字段 + Codec + 注册）",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md"
+  ],
+  "reference_files": [
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md (lines 414-427: 插件实例与PluginData)",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\component\\ModularShootDataComponents.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\component\\PluginInstance.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\1.21.1\\out (MC 1.21.1 源码: DataComponentType, Codec)"
+  ],
+  "suggested_agent": "CoderAgent",
+  "acceptance_criteria": [
+    "PluginData record 定义 pluginId 字段（ResourceLocation 类型）",
+    "PluginData 有对应的 Codec（Codec<PluginData>）",
+    "PluginData 在 ModularShootDataComponents 中注册为 DataComponentType",
+    "PluginData Codec 支持序列化/反序列化（可往返 round-trip）",
+    "代码遵循纯函数与不可变性原则（record + Codec）"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/component/PluginData.java",
+    "src/main/java/org/yanbwe/modularshoot/component/ModularShootDataComponents.java (新增 PLUGIN_DATA 注册)"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

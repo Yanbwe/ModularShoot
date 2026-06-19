@@ -1,0 +1,49 @@
+{
+  "id": "m5-state-storage-04",
+  "seq": "04",
+  "title": "Implement per-gun state storage in GunData.state Map with NBT persistence",
+  "status": "pending",
+  "depends_on": ["01", "03"],
+  "parallel": false,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\external-context-integration.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1714-1722",
+      "reason": "Three-tier ownership - per-gun storage carrier (GunData.state Data Component), persistence with NBT"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "282-300",
+      "reason": "GunData Component structure - state field (Map<ResourceLocation, Object>), NBT persistence"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1831-1835",
+      "reason": "Persistence table - per-gun persists with GunData NBT, survives relogin/cross-server/drop"
+    },
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\component\\GunData.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\state\\StateValueCodecs.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\state\\StateValueType.java"
+  ],
+  "acceptance_criteria": [
+    "GunData.state field (Map<ResourceLocation, Object>) uses StateValueCodecs dispatch Codec for serialization",
+    "State map Codec correctly serializes/deserializes mixed value types per key (int, double, boolean, etc.)",
+    "State map defaults to empty map when no states written",
+    "State map persists with item NBT (drop, chest, relogin all preserve state values)",
+    "GunData.setState(ResourceLocation id, Object value) helper method creates new immutable GunData with updated state map",
+    "GunData.getState(ResourceLocation id) helper method returns value or null",
+    "GunData.clearState(ResourceLocation id) helper method creates new immutable GunData with key removed",
+    "All GunData operations maintain immutability (return new records, don't mutate)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/component/GunData.java (updated: state Codec using StateValueCodecs dispatch, helper methods)",
+    "src/main/java/org/yanbwe/modularshoot/state/GunStateStorage.java (state map Codec + helper utilities)"
+  ]
+}

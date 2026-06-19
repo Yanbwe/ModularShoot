@@ -1,0 +1,39 @@
+{
+  "id": "m3-shooting-bullet-core-01",
+  "seq": "01",
+  "title": "Create preset damage type modularshoot:bullet_damage + ModularShootDamageTypes constants",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\external-context-integration.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1009-1038",
+      "reason": "Damage type system - preset modularshoot:bullet_damage, data-driven DamageType, Holder<DamageType> usage"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "155-159",
+      "reason": "API overview - ModularShootDamageTypes constants class with BULLET pointing to modularshoot:bullet_damage"
+    },
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\1.21.1\\out\\src\\mojmaps\\net\\minecraft\\world\\damagesource\\DamageType.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\1.21.1\\out\\src\\mojmaps\\net\\minecraft\\core\\registries\\Registries.java"
+  ],
+  "acceptance_criteria": [
+    "Damage type JSON file created at src/main/resources/data/modularshoot/damage_type/bullet_damage.json",
+    "JSON contains valid DamageType fields (exhaustion=0.0, scaling=never, effects=none, message_id or death_message_type appropriate for bullet death message)",
+    "ModularShootDamageTypes class created with ResourceKey<DamageType> BULLET constant pointing to modularshoot:bullet_damage",
+    "ModularShootDamageTypes provides helper method to resolve Holder<DamageType> from registry access (e.g. holderOrThrow via RegistryAccess)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/resources/data/modularshoot/damage_type/bullet_damage.json",
+    "src/main/java/org/yanbwe/modularshoot/damage/ModularShootDamageTypes.java"
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "id": "m3-shooting-bullet-core-18",
+  "seq": "18",
+  "title": "Implement BulletManager.fireBullet() independent firing (turret/trap, shooter nullable)",
+  "status": "pending",
+  "depends_on": ["08", "07"],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\api-design.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1082-1112",
+      "reason": "Independent firing - BulletManager.fireBullet(level, position, direction, snapshot, shooter), turret/trap usage, shooter can be null, gunId/gunInstanceUuid always null"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1060-1067",
+      "reason": "BulletManager API - fireBullet signature, returns BulletRecord"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "155-155",
+      "reason": "API overview - BulletManager.fireBullet(Level, Vec3, Vec3, BulletSnapshot, UUID)"
+    }
+  ],
+  "acceptance_criteria": [
+    "BulletManager.fireBullet(Level level, Vec3 position, Vec3 direction, BulletSnapshot snapshot, UUID shooter) method implemented",
+    "Creates BulletRecord with: assigned bullet ID (from counter), position, direction, snapshot, shooter (from param, can be null)",
+    "Snapshot field conventions for independent firing: gunId always null, gunInstanceUuid always null, shooter depends on param (null if param null)",
+    "Bullet added to BulletManager active list + chunk bucket",
+    "Returns the created BulletRecord",
+    "Does NOT go through shooting engine (no fire rate, no ShootPredicate, no PreShootEvent/PostShootEvent, no sound)",
+    "Bullet enters normal tick loop (flight, collision, damage, hooks) once registered",
+    "Method under 50 lines",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/bullet/BulletManager.java (modified - add fireBullet method)"
+  ]
+}

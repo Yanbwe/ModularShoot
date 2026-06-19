@@ -1,0 +1,33 @@
+{
+  "id": "m2-plugin-install-uninstall-12",
+  "seq": "12",
+  "title": "布尔特性合并服务（插件特性按优先级排序 → 枪械固有特性覆盖）",
+  "status": "pending",
+  "depends_on": ["07"],
+  "parallel": true,
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md"
+  ],
+  "reference_files": [
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md (lines 654-704: 布尔特性合并规则)",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\gun\\GunDefinition.java (枪械固有特性)",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\component\\PluginInstance.java"
+  ],
+  "suggested_agent": "CoderAgent",
+  "acceptance_criteria": [
+    "computeTraits(ItemStack gun) 方法：返回最终特性 Map<ResourceLocation, Boolean>",
+    "插件特性按优先级从低到高排序，同一优先级按安装顺序从先到后排序",
+    "插件遍历完成后，枪械固有特性覆盖最终结果（枪械声明了某特性时始终覆盖插件）",
+    "枪械未声明的特性由插件间合并结果决定",
+    "方法为纯函数：相同输入（枪械定义 + 已安装插件列表）产生相同输出",
+    "函数 <50 行，排序与合并逻辑分离"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/plugin/TraitMergeService.java"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

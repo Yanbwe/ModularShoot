@@ -1,0 +1,37 @@
+{
+  "id": "m4-network-rendering-10",
+  "seq": "10",
+  "title": "3D render mode (vanilla static JSON model, BlockModel/ModelResource, direction-based rotation)",
+  "status": "pending",
+  "depends_on": ["08"],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/clean-code.md",
+    "C:/Users/GGxia/.config/opencode/context/core/workflows/external-context-integration.md"
+  ],
+  "reference_files": [
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1220-1231 (Render modes table: 3d vanilla static JSON model, no skeleton/animation)",
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1241-1242 (3d render details: BlockModel/ModelResource, vanilla model system, direction rotation)",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/client/renderer/block/model/BlockModel.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/client/resources/model/ModelResource.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/client/renderer/block/BlockRenderDispatcher.java"
+  ],
+  "acceptance_criteria": [
+    "Model3DRenderer class loads vanilla static JSON model via BlockModel/ModelResource from BulletRenderObject.modelLocation",
+    "Model rendered using vanilla model system (no custom model loader, no skeleton, no animation)",
+    "Model rotated based on BulletRenderObject.direction (align model forward axis with direction vector)",
+    "Scale from BulletRenderObject.scale applied to model transform",
+    "Position interpolated using prevPosition, position, and partialTick (delegates to interpolation logic from subtask 11)",
+    "Rendered via PoseStack + VertexConsumer using vanilla item/block model rendering approach",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/client/render/Model3DRenderer.java (vanilla JSON model rendering + direction rotation)"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

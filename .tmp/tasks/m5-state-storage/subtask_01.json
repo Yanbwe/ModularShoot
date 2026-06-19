@@ -1,0 +1,50 @@
+{
+  "id": "m5-state-storage-01",
+  "seq": "01",
+  "title": "Define StateDefinition record + StateDisplay + StateDomain + StateValueType with Codecs",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\api-design.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\external-context-integration.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1726-1772",
+      "reason": "State storage model - value types table, registration fields (domain/value_type/default_value/display), display sub-fields (name/color/format/priority/hide_default)"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1414-1422",
+      "reason": "Tooltip system - state display fields definition (name/color/format/priority/hide_default)"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "118",
+      "reason": "API overview - modularshoot:states registry entry"
+    },
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\registry\\StateDefinition.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\registry\\ModularShootRegistries.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\1.21.1\\out\\src\\mojmaps\\net\\minecraft\\resources\\ResourceLocation.java"
+  ],
+  "acceptance_criteria": [
+    "StateDomain enum defined with values GUN, PLAYER, BULLET and corresponding Codec",
+    "StateValueType enum defined with values INT, LONG, DOUBLE, FLOAT, BOOLEAN, STRING, UUID and corresponding Codec",
+    "StateDisplay record defined with fields: name (String), color (String, hex like #FFAA00), format (String, contains {value} placeholder), priority (int, default 0), hideDefault (boolean, default false) and Codec",
+    "StateDefinition record defined with fields: domain (StateDomain), valueType (StateValueType), defaultValue (Object, type matches valueType), display (StateDisplay) and Codec",
+    "StateDefinition Codec supports network sync (compact Codec for client-side registry sync)",
+    "All records are immutable (all fields final)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/state/StateDomain.java",
+    "src/main/java/org/yanbwe/modularshoot/state/StateValueType.java",
+    "src/main/java/org/yanbwe/modularshoot/state/StateDisplay.java",
+    "src/main/java/org/yanbwe/modularshoot/state/StateDefinition.java (replaces M1 stub)"
+  ]
+}

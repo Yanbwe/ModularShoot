@@ -1,0 +1,49 @@
+{
+  "id": "m3-shooting-bullet-core-07",
+  "seq": "07",
+  "title": "Define BulletSnapshot + BulletRecord data structures",
+  "status": "pending",
+  "depends_on": ["01", "05"],
+  "parallel": false,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\api-design.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "894-942",
+      "reason": "BulletSnapshot - stats Map<ResourceLocation,Double>, traits Map<ResourceLocation,Boolean>, damageType Holder<DamageType>, shooter/gunId/gunInstanceUuid (read-only), state Map, getStat/setStat/getTrait/setTrait/getState/setState methods"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1069-1080",
+      "reason": "BulletRecord - getSnapshot, getShooter, getPosition/setPosition, getDirection/setDirection, getTraveledDistance, getAge, getBulletId"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1107-1112",
+      "reason": "Independent firing snapshot field conventions - shooter depends on param, gunId/gunInstanceUuid always null for fireBullet()"
+    },
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\1.21.1\\out\\src\\mojmaps\\net\\minecraft\\world\\phys\\Vec3.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\1.21.1\\out\\src\\mojmaps\\net\\minecraft\\core\\Holder.java"
+  ],
+  "acceptance_criteria": [
+    "BulletSnapshot class created with: Map<ResourceLocation,Double> stats, Map<ResourceLocation,Boolean> traits, Holder<DamageType> damageType, UUID shooter, ResourceLocation gunId, UUID gunInstanceUuid, Map<ResourceLocation,Object> state",
+    "BulletSnapshot provides getStat/setStat, getTrait/setTrait, getDamageType/setDamageType, getState/setState methods",
+    "BulletSnapshot provides getShooter/getGunId/getGunInstanceUuid getters (read-only, set only at construction)",
+    "BulletSnapshot stats and traits are runtime-mutable (setStat/setTrait callable by trait hooks)",
+    "BulletRecord class created with: BulletSnapshot snapshot, UUID shooter, Vec3 position (mutable), Vec3 direction (mutable), float traveledDistance, int age, int bulletId",
+    "BulletRecord provides getSnapshot, getShooter, getPosition/setPosition, getDirection/setDirection, getTraveledDistance, getAge, getBulletId methods",
+    "BulletRecord position and direction are mutable (setPosition/setDirection for custom trajectories)",
+    "BulletRecord age starts at 0, incremented per tick (incrementAge or similar)",
+    "Both classes follow code-quality standards (small, focused, under 100 lines each)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/bullet/BulletSnapshot.java",
+    "src/main/java/org/yanbwe/modularshoot/bullet/BulletRecord.java"
+  ]
+}

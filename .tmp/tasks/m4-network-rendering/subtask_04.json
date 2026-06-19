@@ -1,0 +1,38 @@
+{
+  "id": "m4-network-rendering-04",
+  "seq": "04",
+  "title": "GunSyncS2CPacket (S to C gun data sync) + 4 trigger scenarios",
+  "status": "pending",
+  "depends_on": ["01"],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/clean-code.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/api-design.md",
+    "C:/Users/GGxia/.config/opencode/context/core/workflows/external-context-integration.md"
+  ],
+  "reference_files": [
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L2038-2059 (GunSyncS2CPacket design: trigger scenarios, content, client uses)",
+    "C:/Users/GGxia/Desktop/YanbweMod/MCforge/NeoForge-1.21.1/src/main/java/net/neoforged/neoforge/network/registration/PayloadRegistrar.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/network/protocol/common/custom/CustomPacketPayload.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/MCforge/NeoForge-1.21.1/src/main/java/net/neoforged/neoforge/network/PacketDistributor.java"
+  ],
+  "acceptance_criteria": [
+    "GunSyncS2CPacket record implements CustomPacketPayload with Codec + StreamCodec",
+    "Packet fields: installedPlugins list (pluginId + instanceUuid + installedTypeId + locked per entry), modifierVersion (int), per-gun state map (state ID -> value)",
+    "4 trigger scenarios implemented: (1) player switches main hand item, (2) plugin install/uninstall, (3) player joins world (full sync), (4) per-gun state modified by hook (next tick sync round)",
+    "Server-side: GunSyncService monitors trigger conditions and sends packet to target player",
+    "Client handler stub: stores synced gun data for plugin overlay rendering and tooltip display (actual rendering in subtasks 14/15)",
+    "Packet registered in ModularShootPackets via PayloadRegistrar.playToClient",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/network/GunSyncS2CPacket.java (packet record + codec + stream codec)",
+    "src/main/java/org/yanbwe/modularshoot/network/GunSyncService.java (server-side trigger monitoring + broadcast)"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

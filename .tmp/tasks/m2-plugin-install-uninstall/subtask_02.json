@@ -1,0 +1,32 @@
+{
+  "id": "m2-plugin-install-uninstall-02",
+  "seq": "02",
+  "title": "PluginTypeDefinition record + Codec（tags/priority/显示信息）",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md"
+  ],
+  "reference_files": [
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md (lines 359-382: 插件种类注册)",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md (lines 2186-2204: 插件种类数据包JSON)",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\1.21.1\\out (MC 1.21.1 源码: Codec, ResourceLocation, RecordCodec)"
+  ],
+  "suggested_agent": "CoderAgent",
+  "acceptance_criteria": [
+    "PluginTypeDefinition record 包含字段：tags（List<ResourceLocation>）、priority（int，默认0）、name（可选 String）、color（可选 String）",
+    "PluginTypeDefinition 有 RecordCodec.createCodec 定义",
+    "Codec 支持数据包 JSON 反序列化（tags/priority/name/color 字段映射正确）",
+    "priority 字段未声明时默认为 0",
+    "tags 为空时 Codec 不报错（空 tags 由注册时 WARN 日志处理，非 Codec 职责）"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/plugin/PluginTypeDefinition.java"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

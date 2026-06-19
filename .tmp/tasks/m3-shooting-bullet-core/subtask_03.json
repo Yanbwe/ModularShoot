@@ -1,0 +1,43 @@
+{
+  "id": "m3-shooting-bullet-core-03",
+  "seq": "03",
+  "title": "Implement ShootPredicate API (interface + ShootPredicateResult + register API)",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\api-design.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1604-1629",
+      "reason": "System 10: ShootPredicate API - interface, ShootPredicateResult.success()/failure(reason), registration, execution order, framework registers 0 by default"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "147-147",
+      "reason": "API overview - ModularShootAPI.registerShootPredicate(ShootPredicate)"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "752-755",
+      "reason": "Step 3: ShootPredicate execution in shooting timing - all registered predicates executed, any failure aborts"
+    }
+  ],
+  "acceptance_criteria": [
+    "ShootPredicate functional interface created with method test(Player player, ItemStack gun) returning ShootPredicateResult",
+    "ShootPredicateResult record/class created with static factory methods success() and failure(String reason)",
+    "ShootPredicateResult exposes isSuccess() boolean and getReason() String (reason null on success)",
+    "ModularShootAPI.registerShootPredicate(ShootPredicate) method added (or stub prepared if ModularShootAPI not yet created)",
+    "Internal registry maintains a list of registered ShootPredicate instances (framework registers 0 by default)",
+    "All code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/shooting/ShootPredicate.java",
+    "src/main/java/org/yanbwe/modularshoot/shooting/ShootPredicateResult.java"
+  ]
+}

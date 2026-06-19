@@ -1,0 +1,36 @@
+{
+  "id": "m4-network-rendering-11",
+  "seq": "11",
+  "title": "Position interpolation smoothing (prevPosition/position/partialTick) + short-life bullet forced full sync",
+  "status": "pending",
+  "depends_on": ["07"],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/clean-code.md"
+  ],
+  "reference_files": [
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1242-1243 (Position interpolation: prevPosition/position by partialTick for smooth high-speed rendering)",
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1253-1254 (Short-life bullet guarantee: creation tick end forced full sync, at least one render frame)",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/world/phys/Vec3.java"
+  ],
+  "acceptance_criteria": [
+    "Interpolation utility method: lerpPosition(Vec3 prev, Vec3 current, float partialTick) returns interpolated Vec3",
+    "BulletRenderManager.updatePosition() stores current position as prevPosition before setting new position (enables interpolation)",
+    "Renderers (billboard/3d) call lerpPosition with prevPosition, position, partialTick for smooth visual",
+    "Server-side BulletSyncService: at end of each tick, any bullet created AND removed in same tick still gets one full BulletS2CPacket with complete data (forced sync)",
+    "Short-life sync: bullet that lives only 1-2 ticks (e.g. shotgun close range) still appears on client for at least one frame",
+    "Client receives create packet before destroy packet for short-life bullets (minimal visual residue, avoids invisible bullets)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/client/render/RenderInterpolation.java (lerp utility)",
+    "Update to BulletRenderManager (prevPosition tracking on update)",
+    "Update to BulletSyncService (forced full sync for short-life bullets at tick end)"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

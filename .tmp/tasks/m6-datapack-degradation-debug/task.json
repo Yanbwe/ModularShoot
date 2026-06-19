@@ -1,0 +1,53 @@
+{
+  "id": "m6-datapack-degradation-debug",
+  "name": "M6: 数据包注册 + 降级处理 + 调试命令",
+  "status": "active",
+  "objective": "完善6种数据包JSON格式，实现注册冲突/重载/5种降级/错误处理/调试命令/扩展点",
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/core/workflows/component-planning.md",
+    "C:/Users/GGxia/.config/opencode/context/core/workflows/feature-breakdown.md",
+    "C:/Users/GGxia/.config/opencode/context/core/workflows/external-context-integration.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/clean-code.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/api-design.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md",
+      "lines": "2063-2384",
+      "reason": "M6完整范围：调试命令、数据包注册、降级处理、错误处理"
+    },
+    {
+      "path": "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md",
+      "lines": "1600-1686",
+      "reason": "弹药系统API：ShootPredicate、ReloadEvent、键位绑定"
+    },
+    {
+      "path": "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/AGENTS.md",
+      "reason": "项目约束：MC 1.21.1 + NeoForge，外部源码路径"
+    },
+    {
+      "path": "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/src/main/java/org/yanbwe/modularshoot/ModularShoot.java",
+      "reason": "模组主类骨架，DeferredRegister注册入口"
+    }
+  ],
+  "exit_criteria": [
+    "6种数据包JSON格式（枪械/插件/种类/属性元数据/特性/状态）完善",
+    "注册冲突与覆盖规则实现",
+    "加载顺序实现",
+    "/reload 重载行为实现",
+    "5种定义丢失降级（枪械/插件/种类/属性/状态）实现",
+    "数据包JSON加载失败错误处理实现",
+    "/modularshoot 调试命令（6个子命令）实现",
+    "ShootPredicate 扩展点完善",
+    "ReloadEvent 事件实现",
+    "GunRightClickEvent 完善",
+    "key.modularshoot.reload 键位绑定实现",
+    "数据包JSON示例创建",
+    "项目编译通过",
+    "验证：数据包注册可用；/reload后定义变更生效；卸载模组后旧物品降级不崩溃；调试命令输出正确"
+  ],
+  "subtask_count": 21,
+  "completed_count": 0,
+  "created_at": "2026-06-19T00:00:00Z"
+}

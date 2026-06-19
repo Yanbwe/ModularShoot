@@ -1,0 +1,40 @@
+{
+  "id": "m4-network-rendering-05",
+  "seq": "05",
+  "title": "ShootC2SPacket client send (left-click detection + per-tick send) + modifierVersion anti-cheat (3-strike rule)",
+  "status": "pending",
+  "depends_on": ["01"],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/clean-code.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/api-design.md",
+    "C:/Users/GGxia/.config/opencode/context/core/workflows/external-context-integration.md"
+  ],
+  "reference_files": [
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1962-2008 (ShootC2SPacket design: client per-tick send, server stateless processing, modifierVersion anti-cheat 3-strike mechanism)",
+    "C:/Users/GGxia/Desktop/YanbweMod/MCforge/NeoForge-1.21.1/src/main/java/net/neoforged/neoforge/network/registration/PayloadRegistrar.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/network/protocol/common/custom/CustomPacketPayload.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/MCforge/NeoForge-1.21.1/src/main/java/net/neoforged/neoforge/network/PacketDistributor.java"
+  ],
+  "acceptance_criteria": [
+    "ShootC2SPacket record implements CustomPacketPayload with Codec + StreamCodec, field: modifierVersion (int from GunData)",
+    "Client-side: ClientTickEvent.End handler detects player holding left-click (attack key) + main hand is gun item, sends ShootC2SPacket every tick; stops sending on release",
+    "Client does NOT calculate fire rate or decide whether to shoot - only sends request signal",
+    "Server-side handler: validates main hand is gun, validates modifierVersion via anti-cheat, performs fire-rate tick check, processes shoot (delegates to M3 shoot flow)",
+    "modifierVersion anti-cheat: per-player inconsistency counter (initial 0) + baseline snapshot; consistent -> reset counter, update baseline; inconsistent -> counter+1; counter < 3 -> tolerate, update baseline; counter >= 3 -> reject + WARN log (player name, packet version, server version) + reset counter + update baseline (no kick)",
+    "Server does not maintain shoot session state - each packet independently validated and processed",
+    "Packet registered in ModularShootPackets via PayloadRegistrar.playToServer",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/network/ShootC2SPacket.java (packet record + codec + stream codec)",
+    "src/main/java/org/yanbwe/modularshoot/client/ClientShootRequestHandler.java (client tick send logic)",
+    "src/main/java/org/yanbwe/modularshoot/network/ShootRequestValidator.java (server-side validation + anti-cheat + fire-rate check)"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

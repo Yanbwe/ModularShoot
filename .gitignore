@@ -38,5 +38,5 @@ run/
 **/src/generated/**/.cache/
 repo/
 !**/src/**/repo/
-
+AGENTS.md
 设计文档.md

@@ -1,0 +1,46 @@
+{
+  "id": "m3-shooting-bullet-core-04",
+  "seq": "04",
+  "title": "Create shooting events (PreShootEvent, PostShootEvent, GunRightClickEvent)",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\api-design.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "851-864",
+      "reason": "Shooting events - PreShootEvent (cancellable, before bullet creation), PostShootEvent (non-cancellable, after bullet registration), NeoForge EVENT_BUS"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "827-849",
+      "reason": "Right-click API - GunRightClickEvent (cancellable, only when no container GUI open), PlayerInteractEvent.RightClickItem/RightClickEmpty"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "857-858",
+      "reason": "Event parameter table - PreShootEvent carries player+gun, PostShootEvent carries player+gun+BulletRecord"
+    },
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\MCforge\\NeoForge-1.21.1\\src\\main\\java\\net\\neoforged\\neoforge\\event\\player\\PlayerInteractEvent.java"
+  ],
+  "acceptance_criteria": [
+    "PreShootEvent class extends NeoForge PlayerEvent, carries Player and ItemStack gun, is cancellable (isCanceled/setCanceled)",
+    "PostShootEvent class extends NeoForge PlayerEvent, carries Player, ItemStack gun, and BulletRecord, is NOT cancellable",
+    "GunRightClickEvent class extends NeoForge PlayerEvent, carries Player and ItemStack gun, is cancellable",
+    "All events designed to be posted on NeoForge.EVENT_BUS (game bus)",
+    "All event classes follow NeoForge event conventions (constructor, getters, cancel fields)",
+    "PostShootEvent has getter for BulletRecord (may reference BulletRecord class from subtask 07 - use forward reference/stub if needed)",
+    "Code compiles without errors (BulletRecord reference may be a stub/forward declaration if 07 not yet complete)"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/shooting/PreShootEvent.java",
+    "src/main/java/org/yanbwe/modularshoot/shooting/PostShootEvent.java",
+    "src/main/java/org/yanbwe/modularshoot/shooting/GunRightClickEvent.java"
+  ]
+}

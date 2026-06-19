@@ -1,0 +1,47 @@
+{
+  "id": "m5-state-storage-09",
+  "seq": "09",
+  "title": "Implement BulletSnapshot state read/write API (getState/setState) + error handling",
+  "status": "pending",
+  "depends_on": ["02", "06"],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\api-design.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1783-1787",
+      "reason": "BulletSnapshot state API - generic getState/setState methods"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1828-1829",
+      "reason": "Error handling - zero value + WARN for unregistered/type mismatch"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1722-1724",
+      "reason": "per-bullet state semantics - working memory, not frozen params, mutable during flight"
+    },
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\bullet\\BulletSnapshot.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\state\\StateRegistry.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\state\\StateWarnLogger.java"
+  ],
+  "acceptance_criteria": [
+    "BulletSnapshot.getState(ResourceLocation stateId) generic method returns typed value (casts based on registry value_type)",
+    "BulletSnapshot.setState(ResourceLocation stateId, Object value) generic method writes to state map",
+    "Unregistered state ID: getState returns null (or zero value for primitives), WARN logged per-state per-minute",
+    "Type mismatch: getState returns null/zero value, WARN logged per-state per-minute",
+    "Only states registered with domain=BULLET are accessible (domain mismatch WARN)",
+    "State map is mutable at runtime (hooks can call setState during onTick/onHit/etc.)",
+    "No exceptions thrown for unregistered/mismatch (graceful degradation only)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/bullet/BulletSnapshot.java (updated: add getState/setState methods with error handling)"
+  ]
+}

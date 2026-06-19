@@ -1,0 +1,41 @@
+{
+  "id": "m2-plugin-install-uninstall-15",
+  "seq": "15",
+  "title": "ModularShootAPI 工具方法门面（isPlugin/getPluginId/getPluginData/getInstalledPlugins/uninstallPlugin 等）",
+  "status": "pending",
+  "depends_on": ["13", "14", "05"],
+  "parallel": true,
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\api-design.md"
+  ],
+  "reference_files": [
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md (lines 429-462: 插件注册API示例)",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md (lines 493-510: 自定义校验器API)",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md (lines 511-558: 拆卸API与锁定API)",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\plugin\\PluginInstallService.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\plugin\\PluginUninstallService.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\plugin\\PluginLockService.java"
+  ],
+  "suggested_agent": "CoderAgent",
+  "acceptance_criteria": [
+    "isPlugin(ItemStack stack) 方法：判断物品是否为 modularshoot:plugin",
+    "getPluginId(ItemStack stack) 方法：从 PluginData 组件读取 pluginId",
+    "getPluginData(ItemStack stack) 方法：返回 PluginData 组件",
+    "getInstalledPlugins(ItemStack gun) 方法：返回枪械已安装插件 List<PluginInstance>",
+    "uninstallPlugin/uninstallRandomPlugin/uninstallPluginsByType/uninstallAllPlugins 委托到 PluginUninstallService",
+    "setPluginLocked/isPluginLocked 委托到 PluginLockService",
+    "registerPluginValidator(PluginValidator) 委托到 PluginValidationService",
+    "getPluginDefinition(ResourceLocation id) / getPluginTypeDefinition(ResourceLocation id) 查询注册表",
+    "API 为静态方法门面类，统一入口供其他模组调用",
+    "所有方法参数校验（null 检查、物品类型检查）"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/ModularShootAPI.java"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

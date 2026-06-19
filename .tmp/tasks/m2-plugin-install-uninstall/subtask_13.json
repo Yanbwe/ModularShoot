@@ -1,0 +1,41 @@
+{
+  "id": "m2-plugin-install-uninstall-13",
+  "seq": "13",
+  "title": "安装逻辑 + 容器 GUI 右键交互处理（校验流程 + UUID生成 + 写入组件 + 扣除物品 + 事件触发）",
+  "status": "pending",
+  "depends_on": ["08", "09", "10", "11", "04"],
+  "parallel": true,
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\external-context-integration.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\api-design.md"
+  ],
+  "reference_files": [
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md (lines 466-510: 安装交互与自定义校验)",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md (lines 489-491: 容器GUI判定与世界右键区分)",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\component\\PluginInstance.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\MCforge\\NeoForge-1.21.1 (NeoForge 源码: PlayerInteractEvent, ContainerMenu, InventoryMenu)"
+  ],
+  "suggested_agent": "CoderAgent",
+  "acceptance_criteria": [
+    "PlayerInteractEvent.RightClickBlock 事件监听器：检测玩家是否打开容器 GUI（player.containerMenu != null 且非默认 InventoryMenu）",
+    "鼠标物品为 modularshoot:plugin 时进入安装校验流程，非插件时放行原版行为",
+    "安装校验流程：1)目标是否为枪械 2)tag交集匹配+空闲插槽 3)互斥组校验 4)自定义校验器",
+    "校验通过后调用自动种类选择算法，生成实例 UUID，将 PluginInstance{pluginId, instanceUuid, installedTypeId} 追加到 installedPlugins",
+    "从玩家鼠标物品堆叠扣除 1 个插件",
+    "安装后调用 AttributeModifierService.recalculateModifiers 刷新 ATTRIBUTE_MODIFIERS",
+    "安装前触发 PrePluginInstallEvent（可取消），安装后触发 PostPluginInstallEvent",
+    "校验失败时通过聊天消息或动作栏提示玩家失败原因",
+    "installedTypeId 固定持久化，不受后续 tag 变化影响",
+    "校验逻辑与交互处理分离（纯函数 + 事件处理器）"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/plugin/PluginInstallService.java (安装校验+执行逻辑)",
+    "src/main/java/org/yanbwe/modularshoot/plugin/PluginInstallEventHandler.java (PlayerInteractEvent 监听器)"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

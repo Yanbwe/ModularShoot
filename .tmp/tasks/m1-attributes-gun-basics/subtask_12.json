@@ -1,0 +1,42 @@
+{
+  "id": "m1-attributes-gun-basics-12",
+  "seq": "12",
+  "title": "Create test gun JSON data pack for M1 verification",
+  "status": "pending",
+  "depends_on": ["08"],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "2084-2131",
+      "reason": "Gun data pack JSON format - field structure for test gun"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "195-209",
+      "reason": "Preset attribute table - valid attribute values for test gun stats"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "2391-2401",
+      "reason": "M1 verification criteria - test gun for /attribute command check"
+    }
+  ],
+  "acceptance_criteria": [
+    "Test gun JSON file created at src/main/resources/data/modularshoot/modularshoot/guns/test_gun.json",
+    "JSON contains valid gun definition with name, texture path, and stats for all 9 preset attributes",
+    "Stats values are reasonable test values (e.g., hit_damage=10.0, fire_rate=2.0, range=80.0, accuracy_yaw=5.0, accuracy_pitch=5.0, entity_penetration=0, bullet_speed=30.0, bullet_size=0.5, block_penetration=0)",
+    "traits field present as empty object {}",
+    "slots field present (can be empty object {} for M1 test)",
+    "sounds field present with a shoot sound ID",
+    "JSON syntax is valid and matches GunDefinition Codec format",
+    "Gun loads successfully at runtime (appears in creative tab, /attribute command shows values when held)"
+  ],
+  "deliverables": [
+    "src/main/resources/data/modularshoot/modularshoot/guns/test_gun.json"
+  ]
+}

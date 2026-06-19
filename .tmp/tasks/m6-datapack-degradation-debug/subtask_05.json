@@ -1,0 +1,35 @@
+{
+  "id": "m6-datapack-degradation-debug-05",
+  "seq": "05",
+  "title": "自定义特性数据包 JSON 格式完善",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/core/workflows/external-context-integration.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md",
+      "lines": "2232-2255",
+      "reason": "自定义特性数据包JSON格式定义：字段说明与示例"
+    },
+    {
+      "path": "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out",
+      "reason": "MC 1.21.1 源码：Codec/Gson等数据包解析API"
+    }
+  ],
+  "suggested_agent": "CoderAgent",
+  "acceptance_criteria": [
+    "特性JSON路径 data/<ns>/modularshoot/traits/<id>.json 正确解析",
+    "字段 default_value/description/name/color/brief/force_show/priority 全部支持",
+    "default_value 为布尔值",
+    "可选字段缺失时使用默认值",
+    "单条JSON解析为 TraitDefinition 并注册到特性注册表"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/datapack/TraitDatapackLoader.java",
+    "src/main/java/org/yanbwe/modularshoot/datapack/TraitJsonCodec.java"
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "id": "m5-state-storage-14",
+  "seq": "14",
+  "title": "Implement tooltip state bar integration (priority sorting, hide_default filtering, per-player mix)",
+  "status": "pending",
+  "depends_on": ["07", "08", "13"],
+  "parallel": false,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\api-design.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1886-1908",
+      "reason": "Tooltip integration - state bar display rules, priority sorting, hide_default filtering, per-player state mixed display, format example"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1414-1422",
+      "reason": "Tooltip system - state display fields (name/color/format/priority/hide_default)"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1444-1448",
+      "reason": "Default tooltip layout - state bar position and display rules (hide_default false or non-default values)"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1473",
+      "reason": "Shift tooltip layout - state bar same as default"
+    },
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\state\\GunState.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\state\\PlayerState.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\state\\StateRegistry.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\client\\tooltip\\TooltipBuilder.java"
+  ],
+  "acceptance_criteria": [
+    "Tooltip state bar appears between traits bar and plugins bar (matching design doc layout)",
+    "State bar only appears when at least one state is displayable (no empty state bar header)",
+    "States sorted by display.priority descending, ties broken by state ID lexicographic ascending",
+    "hide_default=true states hidden when value equals default value",
+    "State name displayed with display.color, value displayed in gray using display.format template ({value} placeholder replaced)",
+    "Per-gun states read from GunState of the tooltip item",
+    "Per-player states read from PlayerState of the player viewing the tooltip (mixed with per-gun, unified priority sort)",
+    "Per-player states only shown when player is holding a gun (not for non-gun items)",
+    "State bar display is same across all modifier key levels (default/Shift/Ctrl/Alt - no separate expansion)",
+    "Unregistered states (no StateDefinition in registry) are skipped silently (no display, no error)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/client/tooltip/StateTooltipBuilder.java",
+    "src/main/java/org/yanbwe/modularshoot/client/tooltip/TooltipBuilder.java (updated: integrate state bar into existing tooltip assembly)"
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "id": "m5-state-storage-12",
+  "seq": "12",
+  "title": "Implement resolveGunFromSnapshot utility method (gunInstanceUuid -> shooter -> inventory search)",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\api-design.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1877-1884",
+      "reason": "resolveGunFromSnapshot algorithm - 3-step backtracking (gunInstanceUuid -> shooter -> inventory search), null cases, known limitations"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "150",
+      "reason": "API overview - ModularShootAPI.resolveGunFromSnapshot(BulletSnapshot) signature"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "928-936",
+      "reason": "BulletSnapshot - getShooter(), getGunInstanceUuid() methods for backtracking"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "282-300",
+      "reason": "GunData - gunInstanceUuid field for matching"
+    },
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\bullet\\BulletSnapshot.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\component\\GunData.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\src\\main\\java\\org\\yanbwe\\modularshoot\\api\\ModularShootAPI.java"
+  ],
+  "acceptance_criteria": [
+    "ModularShootAPI.resolveGunFromSnapshot(BulletSnapshot) returns ItemStack or null",
+    "Step 1: reads snapshot.getGunInstanceUuid(), returns null if null (independent fire like turret/trap)",
+    "Step 2: reads snapshot.getShooter() (player UUID), returns null if null or player offline/not found",
+    "Step 3: iterates player inventory searching for gun item with GunData.gunInstanceUuid matching snapshot UUID, returns ItemStack if found",
+    "Returns null if gun not in player inventory (dropped, stored in chest, cross-dimension)",
+    "Method is static and thread-safe (pure read operation, no side effects)",
+    "Method handles all edge cases gracefully (null checks at each step, no exceptions)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/api/ModularShootAPI.java (updated: add resolveGunFromSnapshot method)",
+    "src/main/java/org/yanbwe/modularshoot/util/GunResolver.java (extracted backtracking logic, pure functions)"
+  ]
+}

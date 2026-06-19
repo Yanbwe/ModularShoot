@@ -1,0 +1,38 @@
+{
+  "id": "m1-attributes-gun-basics-11",
+  "seq": "11",
+  "title": "Implement offhand restriction: detect gun in offhand slot and force drop",
+  "status": "pending",
+  "depends_on": ["07"],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\external-context-integration.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "617",
+      "reason": "Offhand restriction rule - gun in offhand is forced to drop, player notified"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "44-47",
+      "reason": "Core principles - gun cannot be placed in offhand slot"
+    }
+  ],
+  "acceptance_criteria": [
+    "Event listener detects when a gun item (modularshoot:gun) is placed in the offhand slot",
+    "When detected, the gun item is removed from offhand and dropped as an item entity at the player's position",
+    "Player is notified via chat message or action bar text explaining the gun was dropped (offhand not allowed)",
+    "Detection covers all methods of placing item in offhand (F key swap, container GUI shift-click, etc.)",
+    "Logic runs on server side (no client-side dependency)",
+    "Non-gun items in offhand are not affected",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/event/OffhandRestrictionHandler.java"
+  ]
+}

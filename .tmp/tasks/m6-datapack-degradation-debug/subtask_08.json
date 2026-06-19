@@ -1,0 +1,37 @@
+{
+  "id": "m6-datapack-degradation-debug-08",
+  "seq": "08",
+  "title": "数据包 JSON 加载失败错误处理",
+  "status": "pending",
+  "depends_on": ["01", "02", "03", "04", "05", "06"],
+  "parallel": true,
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/core/workflows/external-context-integration.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md",
+      "lines": "2362-2383",
+      "reason": "数据包JSON加载失败错误处理：单条解析失败、引用失效、资源缺失、汇总日志"
+    },
+    {
+      "path": "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out",
+      "reason": "MC 1.21.1 源码：Logger、SLF4J日志级别"
+    }
+  ],
+  "suggested_agent": "CoderAgent",
+  "acceptance_criteria": [
+    "单条JSON解析失败时跳过该条，不写入注册表",
+    "解析失败输出 ERROR 日志，包含文件路径、错误原因、行号（如可定位）",
+    "单条失败不影响其他条目加载和整体模组启动",
+    "引用失效（如 tags 无法匹配种类）输出 WARN 日志",
+    "资源缺失（纹理路径不存在）注册成功，运行时兜底+WARN",
+    "加载完成后输出汇总日志（如'共加载 42 个枪械定义，3 个失败'）",
+    "每条 JSON 独立 try-catch 隔离"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/datapack/DatapackErrorHandler.java",
+    "src/main/java/org/yanbwe/modularshoot/datapack/DatapackLoadSummary.java"
+  ]
+}

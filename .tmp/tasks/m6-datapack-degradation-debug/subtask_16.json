@@ -1,0 +1,38 @@
+{
+  "id": "m6-datapack-degradation-debug-16",
+  "seq": "16",
+  "title": "/modularshoot 调试命令 gun/plugin/bullets/debug 子命令",
+  "status": "pending",
+  "depends_on": ["15"],
+  "parallel": false,
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/core/workflows/external-context-integration.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md",
+      "lines": "2063-2075",
+      "reason": "调试命令定义：gun/plugin/bullets/debug子命令参数说明"
+    },
+    {
+      "path": "C:/Users/GGxia/Desktop/YanbweMod/MCforge/NeoForge-1.21.1",
+      "reason": "NeoForge源码：Command API、ItemStack给予、动作栏消息"
+    }
+  ],
+  "suggested_agent": "CoderAgent",
+  "acceptance_criteria": [
+    "gun <命名空间:枪械ID> 子命令：给予自身一个指定枪械物品",
+    "plugin <命名空间:插件ID> [数量] 子命令：给予自身一个或多个指定插件物品",
+    "bullets 子命令：查询当前世界的活跃子弹数量与简要状态",
+    "debug on/off 子命令：切换调试模式，开启时动作栏持续显示当前主手枪械关键属性值",
+    "枪械/插件 ID 不存在时输出错误提示，不崩溃",
+    "数量参数可选，默认为 1"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/command/GunSubcommand.java",
+    "src/main/java/org/yanbwe/modularshoot/command/PluginSubcommand.java",
+    "src/main/java/org/yanbwe/modularshoot/command/BulletsSubcommand.java",
+    "src/main/java/org/yanbwe/modularshoot/command/DebugSubcommand.java"
+  ]
+}

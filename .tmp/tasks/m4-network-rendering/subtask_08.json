@@ -1,0 +1,36 @@
+{
+  "id": "m4-network-rendering-08",
+  "seq": "08",
+  "title": "RenderLevelStageEvent rendering dispatcher (AFTER_PARTICLES/AFTER_WEATHER stage hook)",
+  "status": "pending",
+  "depends_on": ["07"],
+  "parallel": false,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/clean-code.md",
+    "C:/Users/GGxia/.config/opencode/context/core/workflows/external-context-integration.md"
+  ],
+  "reference_files": [
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1239-1243 (Render flow: RenderLevelStageEvent AFTER_PARTICLES/AFTER_WEATHER, iterate, dispatch by mode)",
+    "C:/Users/GGxia/Desktop/YanbweMod/MCforge/NeoForge-1.21.1/src/main/java/net/neoforged/neoforge/client/event/RenderLevelStageEvent.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/client/renderer/LevelRenderer.java"
+  ],
+  "acceptance_criteria": [
+    "RenderLevelStageEvent listener registered on client mod event bus (Dist.CLIENT)",
+    "Hooks into AFTER_PARTICLES or AFTER_WEATHER stage (chosen for correct draw order)",
+    "Iterates all BulletRenderObjects from BulletRenderManager",
+    "Dispatches to appropriate renderer based on renderMode: 'billboard' -> billboard renderer (subtask 09), '3d' -> 3d model renderer (subtask 10)",
+    "Passes partialTick to renderers for position interpolation",
+    "Uses camera position from event context for correct world-space rendering",
+    "Event handler is client-only (no server-side execution)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/client/render/BulletRenderDispatcher.java (RenderLevelStageEvent listener + render dispatch)"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

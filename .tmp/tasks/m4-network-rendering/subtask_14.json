@@ -1,0 +1,39 @@
+{
+  "id": "m4-network-rendering-14",
+  "seq": "14",
+  "title": "Shoot texture switching (per_shot mode + while_firing mode) in gun item renderer",
+  "status": "pending",
+  "depends_on": ["13"],
+  "parallel": false,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:/Users/GGxia/.config/opencode/context/core/standards/code-quality.md",
+    "C:/Users/GGxia/.config/opencode/context/development/principles/clean-code.md",
+    "C:/Users/GGxia/.config/opencode/context/core/workflows/external-context-integration.md"
+  ],
+  "reference_files": [
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1289-1309 (Gun texture system: texture, shoot_texture, shoot_texture_mode per_shot/while_firing, vanilla pipeline auto-3D)",
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1343-1344 (Render perspective: first person no arm animation, texture switch only; third person vanilla crossbow)",
+    "C:/Users/GGxia/Desktop/YanbweMod/ModularShoot/设计文档.md#L1354-1357 (while_firing texture rule: isFiring true -> shoot_texture, false -> base texture)",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/client/renderer/BlockEntityWithoutLevelRenderer.java",
+    "C:/Users/GGxia/Desktop/YanbweMod/1.21.1/out/src/mojmaps/net/minecraft/client/renderer/entity/ItemRenderer.java"
+  ],
+  "acceptance_criteria": [
+    "Gun item renderer integrates with vanilla item rendering pipeline (auto 3D texture processing, no custom model loader)",
+    "per_shot mode: on shoot trigger, render texture switches to shoot_texture for one frame, then switches back to base texture (high fire rate = rapid flicker, by design)",
+    "while_firing mode: uses isFiring flag from PlayerShootStateManager - isFiring==true -> shoot_texture, isFiring==false -> base texture (no flicker at low fire rate)",
+    "No shoot_texture defined -> always uses base texture, shoot_texture_mode has no effect",
+    "shoot_texture_mode defaults to 'per_shot' when not specified",
+    "Texture switching works in both first-person and third-person views",
+    "First-person: no arm animation, texture switch is the only visual feedback",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/client/render/GunItemRenderer.java (custom item renderer with texture switching logic)",
+    "src/main/java/org/yanbwe/modularshoot/client/render/ShootTextureResolver.java (texture selection logic: per_shot vs while_firing + isFiring check)"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}

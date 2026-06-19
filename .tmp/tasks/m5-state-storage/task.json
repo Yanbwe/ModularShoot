@@ -1,0 +1,54 @@
+{
+  "id": "m5-state-storage",
+  "name": "M5 - State Storage System",
+  "status": "active",
+  "objective": "Implement modularshoot:states registry, per-gun/per-player/per-bullet three-tier state storage, GunState/PlayerState view APIs, per-gun sync with throttling, per-player AttachmentType sync, per-bullet state in BulletSnapshot, tooltip state bar, and resolveGunFromSnapshot utility",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\component-planning.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\feature-breakdown.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\external-context-integration.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\api-design.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1690-1933",
+      "reason": "System 11: State Storage System - complete specification for three-tier storage, registry, view APIs, sync, tooltip integration"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "2447-2459",
+      "reason": "M5 milestone scope and verification criteria"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "106-179",
+      "reason": "API overview - modularshoot:states registry, ModularShootAPI utility methods, DataPackRegistry mechanism"
+    },
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\AGENTS.md"
+  ],
+  "exit_criteria": [
+    "StateDefinition record + Codec completed with domain/value_type/default_value/display fields",
+    "modularshoot:states registry API (Java + data pack JSON) implemented, filling M1 stub",
+    "7 value types (int/long/double/float/boolean/string/uuid) supported with Codec dispatch",
+    "per-gun state storage (GunData.state Map) with NBT persistence implemented",
+    "per-player state storage (NeoForge AttachmentType with .sync()) implemented",
+    "per-bullet state storage (BulletSnapshot.state) implemented",
+    "GunState view API with type-safe get/set for all 7 types + hasState/clearState implemented",
+    "PlayerState view API with same signature as GunState implemented",
+    "BulletSnapshot state read/write API (getState/setState) implemented",
+    "per-gun state sync via GunSyncS2CPacket with 2-tick throttling strategy implemented",
+    "per-player AttachmentType sync configured with IAttachmentSerializer",
+    "Unregistered/type mismatch handling returns zero value + WARN (per-state per-minute rate limited)",
+    "resolveGunFromSnapshot utility method implemented (gunInstanceUuid -> shooter -> inventory search)",
+    "tooltip state bar integration with display.priority sorting, hide_default filtering, per-player mix",
+    "ModularShootAPI.getState(ItemStack)/getPlayerState(Player) utility methods implemented",
+    "Project compiles successfully (gradle build / compileJava no errors)",
+    "Verification: kill count state increments on lethal hit and syncs to client tooltip; per-player state persists across weapon switches"
+  ],
+  "subtask_count": 14,
+  "completed_count": 0,
+  "created_at": "2026-06-19T00:00:00Z"
+}

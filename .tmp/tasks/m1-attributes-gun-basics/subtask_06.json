@@ -1,0 +1,49 @@
+{
+  "id": "m1-attributes-gun-basics-06",
+  "seq": "06",
+  "title": "Create 9 preset attribute metadata JSON files in mod resources",
+  "status": "pending",
+  "depends_on": ["01", "05"],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "195-231",
+      "reason": "Preset attribute table - 9 attributes with IDs, descriptions, value ranges, default values"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "2205-2230",
+      "reason": "Attribute metadata JSON format - field definitions and path convention"
+    }
+  ],
+  "acceptance_criteria": [
+    "9 JSON files created at src/main/resources/data/modularshoot/modularshoot/attribute_meta/<id>.json",
+    "hit_damage.json: binds=modularshoot:hit_damage, default_value=1.0",
+    "fire_rate.json: binds=modularshoot:fire_rate, default_value=1.0",
+    "range.json: binds=modularshoot:range, default_value=50.0",
+    "accuracy_yaw.json: binds=modularshoot:accuracy_yaw, default_value=10.0",
+    "accuracy_pitch.json: binds=modularshoot:accuracy_pitch, default_value=10.0",
+    "entity_penetration.json: binds=modularshoot:entity_penetration, default_value=0",
+    "bullet_speed.json: binds=modularshoot:bullet_speed, default_value=20.0",
+    "bullet_size.json: binds=modularshoot:bullet_size, default_value=0.5",
+    "block_penetration.json: binds=modularshoot:block_penetration, default_value=0",
+    "Each JSON file has valid syntax with binds, default_value, and optional display fields (color, priority, force_show)",
+    "All binds fields point to self (same ID as the attribute)"
+  ],
+  "deliverables": [
+    "src/main/resources/data/modularshoot/modularshoot/attribute_meta/hit_damage.json",
+    "src/main/resources/data/modularshoot/modularshoot/attribute_meta/fire_rate.json",
+    "src/main/resources/data/modularshoot/modularshoot/attribute_meta/range.json",
+    "src/main/resources/data/modularshoot/modularshoot/attribute_meta/accuracy_yaw.json",
+    "src/main/resources/data/modularshoot/modularshoot/attribute_meta/accuracy_pitch.json",
+    "src/main/resources/data/modularshoot/modularshoot/attribute_meta/entity_penetration.json",
+    "src/main/resources/data/modularshoot/modularshoot/attribute_meta/bullet_speed.json",
+    "src/main/resources/data/modularshoot/modularshoot/attribute_meta/bullet_size.json",
+    "src/main/resources/data/modularshoot/modularshoot/attribute_meta/block_penetration.json"
+  ]
+}

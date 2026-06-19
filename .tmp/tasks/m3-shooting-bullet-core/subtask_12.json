@@ -1,0 +1,43 @@
+{
+  "id": "m3-shooting-bullet-core-12",
+  "seq": "12",
+  "title": "Implement damage application (clear invuln frames + normal hurt + DamageSource construction)",
+  "status": "pending",
+  "depends_on": ["10", "01"],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\workflows\\external-context-integration.md"
+  ],
+  "reference_files": [
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "982-1007",
+      "reason": "Damage application - clear invuln frames (setInvulnerableTicks(0)), normal hurt() flow, DamageSource construction (shooter non-null as attacker, null no attacker), shield block default not blocked"
+    },
+    {
+      "path": "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md",
+      "lines": "1000-1005",
+      "reason": "DamageSource attacker construction rules - shooter non-null + online -> attacker, null -> no attacker, offline -> treated as null"
+    },
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\1.21.1\\out\\src\\mojmaps\\net\\minecraft\\world\\damagesource\\DamageSource.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\1.21.1\\out\\src\\mojmaps\\net\\minecraft\\world\\entity\\LivingEntity.java",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\1.21.1\\out\\src\\mojmaps\\net\\minecraft\\world\\entity\\Entity.java"
+  ],
+  "acceptance_criteria": [
+    "DamageApplier class created with applyDamage(BulletRecord bullet, Entity target, double finalDamage) method",
+    "Before hurt: target.setInvulnerableTicks(0) (clear invuln frames to allow penetration)",
+    "DamageSource constructed using snapshot.getDamageType() Holder<DamageType>",
+    "DamageSource attacker: if snapshot.getShooter() non-null and resolvable as online Entity -> use as attacker/causingEntity; if null or offline -> no attacker",
+    "Normal target.hurt(damageSource, finalDamage) called (full vanilla hurt flow: armor, resistance, events preserved)",
+    "Does NOT call actuallyHurt() directly (preserves armor reduction, NeoForge damage events, death messages)",
+    "Shield block: framework DamageSource does not set shield-blocking fields, so vanilla shield block does not apply to bullets by default",
+    "Method under 50 lines (split DamageSource construction into separate helper method)",
+    "Code compiles without errors"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/damage/DamageApplier.java"
+  ]
+}

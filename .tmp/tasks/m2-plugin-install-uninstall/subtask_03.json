@@ -1,0 +1,35 @@
+{
+  "id": "m2-plugin-install-uninstall-03",
+  "seq": "03",
+  "title": "PluginDefinition record + Codec（tags/priority/图标/修饰符/特性/互斥组/子弹样式/纹理叠加/显示信息）",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": [
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\core\\standards\\code-quality.md",
+    "C:\\Users\\GGxia\\.config\\opencode\\context\\development\\principles\\clean-code.md"
+  ],
+  "reference_files": [
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md (lines 384-462: 插件定义与属性修饰符格式)",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\ModularShoot\\设计文档.md (lines 2133-2184: 插件数据包JSON字段说明)",
+    "C:\\Users\\GGxia\\Desktop\\YanbweMod\\1.21.1\\out (MC 1.21.1 源码: Codec, ResourceLocation, RecordCodec)"
+  ],
+  "suggested_agent": "CoderAgent",
+  "acceptance_criteria": [
+    "PluginDefinition record 包含字段：tags（List<ResourceLocation>）、priority（int，默认0）、itemIcon（ResourceLocation）、modifiers（List<PluginModifier>）、traits（Map<ResourceLocation,Boolean>，可选）、exclusiveGroup（可选 String）、bulletStyle（可选）、textureOverlay（可选）、name/brief/description（可选 String）、color（可选 String）",
+    "PluginModifier 子 record 包含：attribute（String）、operation（枚举 ADD/MULTIPLY/MULTIPLY_TOTAL）、value（double）",
+    "TextureOverlay 子 record 包含：texture（ResourceLocation）、layer（int）",
+    "PluginDefinition 有 RecordCodec.createCodec 定义，所有可选字段使用 .orElse() 默认值",
+    "Codec 支持数据包 JSON 反序列化（字段名映射：item_icon/item_icon/modifiers/traits/exclusive_group/bullet_style/texture_overlay）",
+    "priority 未声明时默认为 0，traits 未声明时默认空 Map"
+  ],
+  "deliverables": [
+    "src/main/java/org/yanbwe/modularshoot/plugin/PluginDefinition.java",
+    "src/main/java/org/yanbwe/modularshoot/plugin/PluginModifier.java",
+    "src/main/java/org/yanbwe/modularshoot/plugin/TextureOverlay.java"
+  ],
+  "agent_id": null,
+  "started_at": null,
+  "completed_at": null,
+  "completion_summary": null
+}
