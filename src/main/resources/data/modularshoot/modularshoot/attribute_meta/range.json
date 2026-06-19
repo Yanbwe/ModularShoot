@@ -1,0 +1,7 @@
+{
+  "binds": "modularshoot:range",
+  "default_value": 50.0,
+  "color": "#44AAFF",
+  "priority": 0,
+  "force_show": false
+}

@@ -2,6 +2,7 @@ package org.yanbwe.modularshoot;
 
 import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
+import org.yanbwe.modularshoot.creative.ModularShootCreativeTabs;
 import org.yanbwe.modularshoot.item.ModularShootItems;
 
 import org.slf4j.Logger;
@@ -29,6 +30,7 @@ public class ModularShoot {
         BLOCKS.register(modEventBus);
         ModularShootItems.init();
         ITEMS.register(modEventBus);
+        ModularShootCreativeTabs.init();
         CREATIVE_MODE_TABS.register(modEventBus);
     }
 }

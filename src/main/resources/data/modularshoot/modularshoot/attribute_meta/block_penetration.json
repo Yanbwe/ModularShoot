@@ -1,0 +1,7 @@
+{
+  "binds": "modularshoot:block_penetration",
+  "default_value": 0,
+  "color": "#AA44FF",
+  "priority": 0,
+  "force_show": false
+}

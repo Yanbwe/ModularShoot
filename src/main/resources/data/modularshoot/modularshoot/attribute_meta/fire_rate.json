@@ -1,0 +1,7 @@
+{
+  "binds": "modularshoot:fire_rate",
+  "default_value": 1.0,
+  "color": "#FF8800",
+  "priority": 0,
+  "force_show": false
+}

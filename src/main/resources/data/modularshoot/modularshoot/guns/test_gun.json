@@ -1,0 +1,20 @@
+{
+  "name": "§a测试枪械",
+  "texture": "modularshoot:textures/gun/test_gun.png",
+  "stats": {
+    "modularshoot:hit_damage": 10.0,
+    "modularshoot:fire_rate": 2.0,
+    "modularshoot:range": 80.0,
+    "modularshoot:accuracy_yaw": 5.0,
+    "modularshoot:accuracy_pitch": 5.0,
+    "modularshoot:entity_penetration": 0,
+    "modularshoot:bullet_speed": 30.0,
+    "modularshoot:bullet_size": 0.5,
+    "modularshoot:block_penetration": 0
+  },
+  "traits": {},
+  "slots": {},
+  "sounds": {
+    "shoot": "modularshoot:gun.test_gun.shoot"
+  }
+}

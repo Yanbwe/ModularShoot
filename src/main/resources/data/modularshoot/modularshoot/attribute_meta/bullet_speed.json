@@ -1,0 +1,7 @@
+{
+  "binds": "modularshoot:bullet_speed",
+  "default_value": 20.0,
+  "color": "#FF44FF",
+  "priority": 0,
+  "force_show": false
+}

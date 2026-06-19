@@ -31,7 +31,7 @@ import net.neoforged.neoforge.registries.DataPackRegistryEvent;
  * <p>Data JSONs are loaded from
  * {@code data/<datapack_namespace>/modularshoot/<registry_path>/}.</p>
  */
-@EventBusSubscriber(modid = ModularShoot.MODID, bus = EventBusSubscriber.Bus.MOD)
+@EventBusSubscriber(modid = ModularShoot.MODID)
 public final class ModularShootRegistries {
     private ModularShootRegistries() {}
 

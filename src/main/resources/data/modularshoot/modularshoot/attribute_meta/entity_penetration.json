@@ -1,0 +1,7 @@
+{
+  "binds": "modularshoot:entity_penetration",
+  "default_value": 0,
+  "color": "#FFFF44",
+  "priority": 0,
+  "force_show": false
+}

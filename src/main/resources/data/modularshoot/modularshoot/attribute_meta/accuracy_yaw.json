@@ -1,0 +1,7 @@
+{
+  "binds": "modularshoot:accuracy_yaw",
+  "default_value": 10.0,
+  "color": "#44FF44",
+  "priority": 0,
+  "force_show": false
+}

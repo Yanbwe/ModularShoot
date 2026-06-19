@@ -1,0 +1,7 @@
+{
+  "binds": "modularshoot:bullet_size",
+  "default_value": 0.5,
+  "color": "#44FFFF",
+  "priority": 0,
+  "force_show": false
+}
