@@ -1,5 +1,8 @@
 package org.yanbwe.modularshoot;
 
+import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
+import org.yanbwe.modularshoot.component.ModularShootDataComponents;
+
 import org.slf4j.Logger;
 
 import com.mojang.logging.LogUtils;
@@ -20,6 +23,8 @@ public class ModularShoot {
     public static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
 
     public ModularShoot(IEventBus modEventBus, ModContainer modContainer) {
+        ModularShootAttributes.ATTRIBUTES.register(modEventBus);
+        ModularShootDataComponents.DATA_COMPONENTS.register(modEventBus);
         BLOCKS.register(modEventBus);
         ITEMS.register(modEventBus);
         CREATIVE_MODE_TABS.register(modEventBus);
