@@ -1,6 +1,7 @@
 package org.yanbwe.modularshoot.network;
 
 import org.yanbwe.modularshoot.ModularShoot;
+import org.yanbwe.modularshoot.shooting.ShootPacketHandler;
 
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -69,23 +70,19 @@ public final class ModularShootPayloads {
     /**
      * Builds the handler for {@link ShootC2SPacket}.
      *
-     * <p><b>Stub:</b> the full server-side shoot pipeline (gun validation,
-     * modifier-version anti-cheat, fire-rate control, look-angle derivation,
-     * bullet snapshot creation, {@code BulletManager} registration, and
-     * {@code BulletS2CPacket} broadcast) is implemented in the shooting-engine
-     * subtasks. Until then this handler only confirms the packet reaches the
-     * server and resolves the sending player.</p>
+     * <p>Delegates to {@link ShootPacketHandler#handleShootRequest} which runs
+     * the full server-side pipeline: gun validation, modifier-version
+     * anti-cheat, fire-rate control, and (once implemented) the shooting
+     * engine that derives the look angle, applies spread, creates the bullet
+     * snapshot, registers the bullet with the {@code BulletManager} and
+     * broadcasts the result.</p>
      *
      * @return the payload handler
      */
     private static IPayloadHandler<ShootC2SPacket> handleShootC2S() {
         return (payload, context) -> {
             ServerPlayer player = (ServerPlayer) context.player();
-            // TODO(subtask 16/17): delegate to ShootEngine.handleShootRequest(player, payload.modifierVersion())
-            ModularShoot.LOGGER.debug(
-                    "Received ShootC2SPacket from {} with modifierVersion={}",
-                    player.getName().getString(),
-                    payload.modifierVersion());
+            ShootPacketHandler.handleShootRequest(player, payload.modifierVersion());
         };
     }
 }
