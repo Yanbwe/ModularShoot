@@ -13,7 +13,10 @@
     "modularshoot:block_penetration": 0
   },
   "traits": {},
-  "slots": {},
+  "slots": {
+    "modularshoot:barrel": 2,
+    "modularshoot:accessory": 1
+  },
   "sounds": {
     "shoot": "modularshoot:gun.test_gun.shoot"
   }

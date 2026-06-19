@@ -17,6 +17,7 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.item.ModularShootItems;
+import org.yanbwe.modularshoot.plugin.PluginRegistry;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 
 /**
@@ -94,11 +95,13 @@ public final class ModularShootCreativeTabs {
 
     /**
      * Populates the {@code modularshoot} tab with one {@link ItemStack} per
-     * registered gun variant.
+     * registered gun and plugin variant.
      *
-     * <p>Each stack is created via {@link GunRegistry#createGunStack} and
+     * <p>Each gun stack is created via {@link GunRegistry#createGunStack} and
      * carries a preset {@code gun_data} component, so the picked item is a
-     * fully identified gun rather than a blank gun item. The registry access
+     * fully identified gun rather than a blank gun item. Plugin stacks are
+     * created via {@link PluginRegistry#createPluginStack} with their
+     * {@code plugin_data} component pre-set. The registry access
      * is obtained from the event's display parameters
      * ({@link CreativeModeTab.ItemDisplayParameters#holders()}), which is a
      * {@link RegistryAccess} at runtime. On the main menu the dynamic gun
@@ -124,6 +127,11 @@ public final class ModularShootCreativeTabs {
         for (ResourceLocation gunId : gunIds) {
             ItemStack gunStack = GunRegistry.createGunStack(gunId);
             event.accept(gunStack);
+        }
+        Set<ResourceLocation> pluginIds = PluginRegistry.getAllPluginIds(registryAccess);
+        for (ResourceLocation pluginId : pluginIds) {
+            ItemStack pluginStack = PluginRegistry.createPluginStack(pluginId);
+            event.accept(pluginStack);
         }
     }
 }
