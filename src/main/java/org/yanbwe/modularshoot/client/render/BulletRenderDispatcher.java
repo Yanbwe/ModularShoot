@@ -37,7 +37,10 @@ import org.yanbwe.modularshoot.ModularShoot;
  *   <li>Dispatches to the appropriate renderer based on
  *       {@link BulletRenderObject#getRenderMode()}:
  *       <ul>
- *         <li>{@code billboard} → BillboardRenderer (子任务 09, TODO)</li>
+ *         <li>{@code billboard} → {@link BillboardRenderer} — builds a
+ *             camera-facing quad, binds a custom RenderType (depth test,
+ *             alpha blend, no lighting), samples the texture
+ *             (设计文档 §渲染流程, line 1240)</li>
  *         <li>{@code 3d} → Model3DRenderer (子任务 10, TODO)</li>
  *       </ul>
  *   </li>
@@ -142,13 +145,13 @@ public final class BulletRenderDispatcher {
      * the mode-specific renderer, then restores the stack. The push/pop pair
      * guarantees each bullet's transform is isolated.</p>
      *
-     * <p><b>TODO (子任务 09):</b> implement BillboardRenderer call for the
-     * {@code billboard} branch — build a camera-facing quad, bind a custom
-     * RenderType (depth test, alpha blend, no lighting), sample the texture
+     * <p>The {@code billboard} branch delegates to {@link BillboardRenderer},
+     * which builds a camera-facing quad, binds a custom RenderType (depth
+     * test, alpha blend, no lighting), and samples the texture
      * (设计文档 §渲染流程, line 1240).</p>
      * <p><b>TODO (子任务 10):</b> implement Model3DRenderer call for the
-     * {@code 3d} branch — load a vanilla static JSON model and rotate by
-     * {@link BulletRenderObject#getDirection()} before drawing
+     * {@code 3d} branch — load a vanilla static JSON model and rotate it
+     * by {@link BulletRenderObject#getDirection()} before drawing
      * (设计文档 §渲染流程, line 1241).</p>
      *
      * @param renderObject    the bullet to render
@@ -176,7 +179,7 @@ public final class BulletRenderDispatcher {
         poseStack.translate(offsetX, offsetY, offsetZ);
 
         if (BulletRenderObject.RENDER_MODE_BILLBOARD.equals(renderMode)) {
-            // TODO 子任务 09: BillboardRenderer.render(renderObject, poseStack, bufferSource, partialTick, cameraPos);
+            BillboardRenderer.render(renderObject, poseStack, bufferSource, partialTick, cameraPos);
         } else if (BulletRenderObject.RENDER_MODE_3D.equals(renderMode)) {
             // TODO 子任务 10: Model3DRenderer.render(renderObject, poseStack, bufferSource, partialTick, cameraPos);
         }
