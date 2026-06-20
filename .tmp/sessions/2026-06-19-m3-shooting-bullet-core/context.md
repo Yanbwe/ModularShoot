@@ -2,7 +2,7 @@
 
 Session ID: 2026-06-19-m3-shooting-bullet-core
 Created: 2026-06-19T00:00:00Z
-Status: in_progress
+Status: completed
 Depends on: M1（属性系统）、M2（插件系统，因射击读取含插件修饰符的最终属性）
 
 ## Current Request

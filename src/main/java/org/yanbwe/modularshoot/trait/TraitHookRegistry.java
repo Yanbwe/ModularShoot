@@ -6,6 +6,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.resources.ResourceLocation;
 
@@ -175,6 +176,23 @@ public final class TraitHookRegistry {
         Objects.requireNonNull(callbackType, "callbackType");
         validateCallbackTypeQuery(type, callbackType);
         return (List<T>) getHooks(traitId, type);
+    }
+
+    /**
+     * Returns the set of trait ids that have registered at least one hook
+     * callback.
+     *
+     * <p>The returned set is an unmodifiable copy of the registry's trait-id
+     * key set. The bullet engine iterates this set to dispatch runtime hooks
+     * so that only traits with actual callbacks are queried, avoiding
+     * lookups for every registered trait definition (设计文档
+     * §特性运行时钩子).</p>
+     *
+     * @return an unmodifiable set of trait ids with at least one registered
+     *         hook; empty when no hooks have been registered
+     */
+    public static Set<ResourceLocation> getRegisteredTraitIds() {
+        return Set.copyOf(HOOKS.keySet());
     }
 
     /**

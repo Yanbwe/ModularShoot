@@ -25,6 +25,8 @@ import org.yanbwe.modularshoot.plugin.PluginValidator;
 import org.yanbwe.modularshoot.plugin.UninstallResult;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
+import org.yanbwe.modularshoot.damage.DamageHandler;
+import org.yanbwe.modularshoot.damage.DamageHandlerRegistry;
 import org.yanbwe.modularshoot.shooting.ShootPredicate;
 import org.yanbwe.modularshoot.shooting.ShootPredicateRegistry;
 import org.yanbwe.modularshoot.trait.TraitCallbacks;
@@ -473,5 +475,24 @@ public final class ModularShootAPI {
         Objects.requireNonNull(type, "type");
         Objects.requireNonNull(callback, "callback");
         TraitHookRegistry.register(traitId, type, callback);
+    }
+
+    // ---- Damage handlers -------------------------------------------------
+
+    /**
+     * Registers a global damage post-processor that runs before bullet
+     * damage is applied to a hit entity.
+     *
+     * <p>Delegates to {@link DamageHandlerRegistry#register}. Registered
+     * handlers execute in registration order; each handler's return value
+     * feeds the next handler's input, and the final value is the damage
+     * passed to {@code hurt()}. Safe to call during mod common-setup
+     * (设计文档 §伤害后处理).</p>
+     *
+     * @param handler the damage handler to register; must not be {@code null}
+     */
+    public static void registerDamageHandler(DamageHandler handler) {
+        Objects.requireNonNull(handler, "handler");
+        DamageHandlerRegistry.register(handler);
     }
 }

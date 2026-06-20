@@ -187,20 +187,29 @@ public final class BulletManager {
     }
 
     /**
-     * Removes a bullet from this manager by id. Only the data structures are
-     * updated here; trait {@code ON_REMOVE} hooks are fired in a later subtask.
+     * Removes a bullet from this manager by id. The trait
+     * {@code ON_REMOVE} hook is fired before the bullet is fully evicted so
+     * that callbacks observe a valid record with its snapshot intact
+     * (设计文档 §onRemove — 在移除前触发).
+     *
+     * <p>The bullet is first atomically detached from the id index (which
+     * guarantees the hook fires exactly once even under concurrent
+     * removal), then the {@code ON_REMOVE} callbacks run, and finally the
+     * chunk-bucket entry is cleaned up. The {@code ON_EXPIRE} hook — when
+     * applicable — is fired by the caller before invoking this method
+     * (设计文档 §onExpire 与 onRemove 的触发关系).</p>
      *
      * @param bulletId id of the bullet to remove
-     * @param reason   why the bullet is being removed (passed to the
-     *                 {@code ON_REMOVE} hook once integrated)
+     * @param reason   why the bullet is being removed; passed to the
+     *                 {@code ON_REMOVE} hook
      */
     public void removeBullet(int bulletId, RemoveReason reason) {
         BulletRecord bullet = bulletsById.remove(bulletId);
         if (bullet == null) {
             return;
         }
+        BulletHookInvoker.fireOnRemove(bullet, reason);
         removeFromChunkBucket(bullet);
-        // TODO(subtask-14): fire ON_REMOVE trait hook with `reason` here.
     }
 
     /**
