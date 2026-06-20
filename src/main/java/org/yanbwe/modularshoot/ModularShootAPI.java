@@ -8,7 +8,9 @@ import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
+import org.yanbwe.modularshoot.bullet.BulletSnapshot;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginData;
@@ -29,9 +31,12 @@ import org.yanbwe.modularshoot.damage.DamageHandler;
 import org.yanbwe.modularshoot.damage.DamageHandlerRegistry;
 import org.yanbwe.modularshoot.shooting.ShootPredicate;
 import org.yanbwe.modularshoot.shooting.ShootPredicateRegistry;
+import org.yanbwe.modularshoot.state.GunState;
+import org.yanbwe.modularshoot.state.PlayerState;
 import org.yanbwe.modularshoot.trait.TraitCallbacks;
 import org.yanbwe.modularshoot.trait.TraitHookRegistry;
 import org.yanbwe.modularshoot.trait.TraitHookType;
+import org.yanbwe.modularshoot.util.GunResolver;
 
 /**
  * Unified facade entry point for the ModularShoot plugin system.
@@ -428,6 +433,98 @@ public final class ModularShootAPI {
     public static boolean isGun(ItemStack stack) {
         Objects.requireNonNull(stack, "stack");
         return stack.is(ModularShootItems.GUN_ITEM.get());
+    }
+
+    /**
+     * Resolves the gun ItemStack that fired the given bullet snapshot.
+     *
+     * <p>Delegates to {@link GunResolver#resolveGunFromSnapshot}. This is a
+     * pure read-only query used by trait runtime hooks (e.g. {@code onHit})
+     * that need to write per-gun state back to the firing gun. The backtrack
+     * walks three links: snapshot &rarr; shooter uuid &rarr; player &rarr;
+     * inventory stack, null-checking each step so the method never throws
+     * (设计文档 §resolveGunFromSnapshot).</p>
+     *
+     * <p>Algorithm:</p>
+     * <ol>
+     *   <li>Read {@link BulletSnapshot#getGunInstanceUuid()}; if {@code null}
+     *       (independent firing such as turrets/traps) return {@code null}.</li>
+     *   <li>Read {@link BulletSnapshot#getShooter()} (player uuid); if
+     *       {@code null} return {@code null}.</li>
+     *   <li>Look up the player in {@code level}; if {@code level} is null or
+     *       the player is offline/not found return {@code null}.</li>
+     *   <li>Scan the player's main inventory and offhand for a
+     *       {@code modularshoot:gun} stack whose
+     *       {@link GunData#gunInstanceUuid()} equals the snapshot's uuid;
+     *       return the first match, or {@code null} when not found.</li>
+     * </ol>
+     *
+     * <p>Known limitation: if the player has dropped, stored or cross-dimension
+     * moved the gun before the bullet hits, this method returns {@code null}
+     * and per-gun state cannot be written. Switching main hand while the gun
+     * remains in the inventory is covered by the uuid lookup. Upper-layer mods
+     * that must retain counts in this scenario should record a per-player
+     * "pending kills" fallback and write it back when the player next holds the
+     * gun (设计文档 §已知局限).</p>
+     *
+     * @param snapshot the bullet snapshot to backtrack from; must not be
+     *                 {@code null}
+     * @param level    the level to resolve the player in, or {@code null}
+     * @return the firing gun ItemStack, or {@code null} when the gun cannot be
+     *         located
+     */
+    @Nullable
+    public static ItemStack resolveGunFromSnapshot(BulletSnapshot snapshot, @Nullable Level level) {
+        Objects.requireNonNull(snapshot, "snapshot");
+        return GunResolver.resolveGunFromSnapshot(snapshot, level);
+    }
+
+    // ---- State views ----------------------------------------------------
+
+    /**
+     * Returns a {@link GunState} view for the given gun item stack.
+     *
+     * <p>Delegates to {@link GunState#of}. Returns {@code null} when the stack
+     * is not a gun (checked via {@link #isGun}). The returned view is a
+     * lightweight wrapper over the stack and the supplied
+     * {@link RegistryAccess}; it is not cached and may be created freely on
+     * every read/write site (设计文档 §读写 API).</p>
+     *
+     * @param gun            the gun item stack; must not be {@code null}
+     * @param registryAccess the runtime registry view (from a loaded world,
+     *                       e.g. {@code level.registryAccess()}); must not be
+     *                       {@code null}
+     * @return a {@link GunState} instance, or {@code null} when the stack is
+     *         not a gun
+     */
+    @Nullable
+    public static GunState getState(ItemStack gun, RegistryAccess registryAccess) {
+        Objects.requireNonNull(gun, "gun");
+        Objects.requireNonNull(registryAccess, "registryAccess");
+        if (!isGun(gun)) {
+            return null;
+        }
+        return GunState.of(gun, registryAccess);
+    }
+
+    /**
+     * Returns a {@link PlayerState} view for the given player.
+     *
+     * <p>Delegates to {@link PlayerState#of}. The returned view is a
+     * lightweight wrapper over the player and the supplied
+     * {@link RegistryAccess}; it is not cached and may be created freely on
+     * every read/write site (设计文档 §读写 API).</p>
+     *
+     * @param player         the player; must not be {@code null}
+     * @param registryAccess the runtime registry view (from a loaded world,
+     *                       e.g. {@code level.registryAccess()}); must not be
+     *                       {@code null}
+     * @return a {@link PlayerState} instance
+     */
+    public static PlayerState getPlayerState(Player player, RegistryAccess registryAccess) {
+        Objects.requireNonNull(player, "player");
+        Objects.requireNonNull(registryAccess, "registryAccess");
+        return PlayerState.of(player, registryAccess);
     }
 
     // ---- Shoot predicates ------------------------------------------------

@@ -3,10 +3,14 @@ package org.yanbwe.modularshoot.component;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
+import org.yanbwe.modularshoot.state.GunStateStorage;
 
 /**
  * Immutable data component stored on a {@code modularshoot:gun} item stack.
@@ -31,9 +35,12 @@ import net.minecraft.resources.ResourceLocation;
  *                        install/uninstall/lock change. Sent with shoot packets
  *                        so the server can reject stale-modifier exploits
  * @param state           per-gun state payload (kill stacks, heat, etc.) stored as a
- *                        compound tag. The typed dispatch (int/double/boolean/etc.) is
- *                        finalised by the state storage system (M5); M1 uses a raw
- *                        compound tag so the field serialises correctly out of the box
+ *                        compound tag for Codec-friendly serialisation. A typed
+ *                        {@code Map<ResourceLocation, Object>} view is exposed via
+ *                        {@link #stateMap(RegistryAccess)} and the single-key
+ *                        accessors {@link #getStateValue}/{@link #withStateValue}/
+ *                        {@link #clearStateValue}; the dispatch codecs live in
+ *                        {@link org.yanbwe.modularshoot.state.StateValueCodecs}
  */
 public record GunData(
         ResourceLocation gunId,
@@ -61,5 +68,78 @@ public record GunData(
      */
     public static GunData create(ResourceLocation gunId, UUID gunInstanceUuid) {
         return new GunData(gunId, gunInstanceUuid, List.of(), 0, new CompoundTag());
+    }
+
+    /**
+     * Returns a typed map view of the per-gun state payload.
+     *
+     * <p>The underlying {@link CompoundTag} is decoded via
+     * {@link GunStateStorage#toMap} using the
+     * {@code modularshoot:states} registry to dispatch value types.
+     * Entries whose state id is not registered are silently skipped.</p>
+     *
+     * @param registryAccess the runtime registry view (from a loaded world)
+     * @return a mutable map of state id to decoded value
+     */
+    public Map<ResourceLocation, Object> stateMap(RegistryAccess registryAccess) {
+        return GunStateStorage.toMap(state, registryAccess);
+    }
+
+    /**
+     * Returns a new {@link GunData} with the state replaced by the encoded
+     * form of the given typed map.
+     *
+     * @param map            the state id to value mapping
+     * @param registryAccess the runtime registry view
+     * @return a new immutable {@link GunData} with the updated state
+     */
+    public GunData withStateMap(Map<ResourceLocation, Object> map, RegistryAccess registryAccess) {
+        return new GunData(gunId, gunInstanceUuid, installedPlugins, modifierVersion,
+                GunStateStorage.fromMap(map, registryAccess));
+    }
+
+    /**
+     * Reads a single state value from the per-gun state payload.
+     *
+     * @param stateId        the state id to read
+     * @param registryAccess the runtime registry view
+     * @return the decoded value, the registry default value when the id is
+     *         registered but absent, or {@code null} when the id is not
+     *         registered
+     */
+    @Nullable
+    public Object getStateValue(ResourceLocation stateId, RegistryAccess registryAccess) {
+        return GunStateStorage.getStateValue(state, stateId, registryAccess);
+    }
+
+    /**
+     * Returns a new {@link GunData} with a single state value updated.
+     *
+     * @param stateId        the state id to write
+     * @param value          the value to write; {@code null} is only valid
+     *                       for UUID-typed states
+     * @param registryAccess the runtime registry view
+     * @return a new immutable {@link GunData} with the entry updated
+     * @throws IllegalArgumentException when the value's runtime type does
+     *         not match the registered declared type
+     */
+    public GunData withStateValue(
+            ResourceLocation stateId, @Nullable Object value, RegistryAccess registryAccess) {
+        return new GunData(gunId, gunInstanceUuid, installedPlugins, modifierVersion,
+                GunStateStorage.setStateValue(state, stateId, value, registryAccess));
+    }
+
+    /**
+     * Returns a new {@link GunData} with a single state key removed.
+     *
+     * <p>No registry access is required because removal does not need to
+     * know the value type.</p>
+     *
+     * @param stateId the state id to remove
+     * @return a new immutable {@link GunData} with the entry removed
+     */
+    public GunData clearStateValue(ResourceLocation stateId) {
+        return new GunData(gunId, gunInstanceUuid, installedPlugins, modifierVersion,
+                GunStateStorage.clearStateValue(state, stateId));
     }
 }

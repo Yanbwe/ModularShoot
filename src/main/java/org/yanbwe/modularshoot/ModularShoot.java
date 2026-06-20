@@ -4,6 +4,7 @@ import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.creative.ModularShootCreativeTabs;
 import org.yanbwe.modularshoot.item.ModularShootItems;
+import org.yanbwe.modularshoot.state.ModularShootAttachmentTypes;
 
 import org.slf4j.Logger;
 
@@ -27,6 +28,7 @@ public class ModularShoot {
     public ModularShoot(IEventBus modEventBus, ModContainer modContainer) {
         ModularShootAttributes.ATTRIBUTES.register(modEventBus);
         ModularShootDataComponents.DATA_COMPONENTS.register(modEventBus);
+        ModularShootAttachmentTypes.ATTACHMENT_TYPES.register(modEventBus);
         BLOCKS.register(modEventBus);
         ModularShootItems.init();
         ITEMS.register(modEventBus);

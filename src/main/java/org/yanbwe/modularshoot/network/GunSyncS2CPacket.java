@@ -38,7 +38,10 @@ import org.yanbwe.modularshoot.ModularShoot;
  *                        mirrors a {@link org.yanbwe.modularshoot.component.PluginInstance}
  * @param modifierVersion the anti-cheat modifier version counter of the gun
  * @param state           the per-gun state compound tag (state id &rarr; value);
- *                        only contains keys already written onto this gun
+ *                        only contains keys already written onto this gun;
+ *                        the client handler writes this directly into
+ *                        {@link org.yanbwe.modularshoot.component.GunData#state}
+ *                        on the local main-hand stack
  */
 public record GunSyncS2CPacket(
         List<PluginSyncEntry> plugins,

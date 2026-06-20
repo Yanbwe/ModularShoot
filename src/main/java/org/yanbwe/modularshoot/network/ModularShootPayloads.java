@@ -1,6 +1,7 @@
 package org.yanbwe.modularshoot.network;
 
 import org.yanbwe.modularshoot.ModularShoot;
+import org.yanbwe.modularshoot.client.ClientGunSyncHandler;
 import org.yanbwe.modularshoot.client.PlayerShootStateManager;
 import org.yanbwe.modularshoot.client.render.BulletRenderManager;
 import org.yanbwe.modularshoot.shooting.ShootPacketHandler;
@@ -178,14 +179,19 @@ public final class ModularShootPayloads {
     /**
      * Builds the handler for {@link GunSyncS2CPacket}.
      *
-     * <p><b>STUB:</b> No-op until the client-side gun-data sync logic is
-     * implemented in a later M4 subtask.</p>
+     * <p>Delegates to {@link ClientGunSyncHandler#handlePacket} on the main
+     * client thread via {@link IPayloadContext#enqueueWork}. The handler
+     * rebuilds the local player's main-hand
+     * {@link org.yanbwe.modularshoot.component.GunData} from the packet's
+     * plugin list, {@code modifierVersion} and per-gun {@code state} map,
+     * keeping the client's gun model, plugin visual overlays, and HUD state
+     * text aligned with the authoritative server state.</p>
      *
      * @return the payload handler
      */
     private static IPayloadHandler<GunSyncS2CPacket> handleGunSyncS2C() {
         return (payload, context) -> {
-            // Stub: client-side gun-data sync handling to be implemented later.
+            context.enqueueWork(() -> ClientGunSyncHandler.handlePacket(payload));
         };
     }
 

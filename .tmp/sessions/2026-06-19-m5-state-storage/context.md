@@ -2,7 +2,7 @@
 
 Session ID: 2026-06-19-m5-state-storage
 Created: 2026-06-19T00:00:00Z
-Status: in_progress
+Status: completed
 Depends on: M1（GunData.state 字段）、M3（BulletSnapshot.state）、M4（GunSyncS2CPacket 同步 state）
 
 ## Current Request
@@ -69,6 +69,30 @@ M5 功能单元（供 TaskManager 细化）：
 - per-bullet state 不持久化，仅子弹生命周期内
 - 读取未注册/类型不匹配返回零值 + WARN（不抛异常）
 - 代码风格：模块化、函数式、小函数（<50行）（见 code-quality.md）
+
+## Architecture Decisions (Approved 2026-06-20)
+
+### Decision 1: GunData.state type upgrade
+- Current (M1): `CompoundTag state` (placeholder)
+- M5 target: `Map<ResourceLocation, Object>` with StateValueCodecs dispatch Codec
+- Impact: GunSyncS2CPacket.state field also upgraded from CompoundTag to typed map (subtask_10)
+- Rationale: Matches design doc lines 282-300; enables type-safe state storage
+
+### Decision 2: Tooltip system baseline
+- Finding: Project has NO tooltip implementation code (System 9 not implemented in M1-M4)
+- subtask_14 references `client/tooltip/TooltipBuilder.java` as existing file — does NOT exist
+- M5 verification requires "kill count syncs to client tooltip" — state bar must display
+- Decision: subtask_14 builds minimal tooltip infrastructure:
+  - TooltipBuilder skeleton (via ItemTooltipEvent injection on GunItem)
+  - StateTooltipBuilder for state bar (fully functional)
+  - Other bars (attributes/traits/plugins) left as empty skeletons for future milestones
+- Rationale: Satisfies M5 verification without exceeding scope
+
+### NeoForge AttachmentType API (1.21.1 confirmed)
+- `AttachmentType.builder(Supplier<T>)` → `.serialize(Codec<T>)` → `.sync(StreamCodec)` → `.build()`
+- Registration via DeferredRegister into NeoForgeRegistries.ATTACHMENT_TYPES
+- `.sync(StreamCodec)` = full sync to all clients receiving the holder
+- IAttachmentSerializer<S extends Tag, T>: read(holder, tag, provider) + write(attachment, provider)
 
 ## Exit Criteria
 
