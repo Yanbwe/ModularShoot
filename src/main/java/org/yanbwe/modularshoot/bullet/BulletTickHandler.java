@@ -3,6 +3,7 @@ package org.yanbwe.modularshoot.bullet;
 import java.util.Collection;
 import net.minecraft.core.SectionPos;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
@@ -14,6 +15,8 @@ import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 import org.yanbwe.modularshoot.damage.DamageApplier;
 import org.yanbwe.modularshoot.damage.DamageHandlerRegistry;
+import org.yanbwe.modularshoot.network.BulletHitBroadcastService;
+import org.yanbwe.modularshoot.network.BulletHitS2CPacket;
 import org.yanbwe.modularshoot.trait.RemoveReason;
 
 /**
@@ -136,13 +139,15 @@ public final class BulletTickHandler {
      * Runs collision detection on the bullet's step and dispatches the result
      * to the penetration/damage pipeline (设计文档 §步骤十).
      *
-     * <p>When the nearest hit is an entity, the damage post-processor chain
-     * computes the final damage, {@link DamageApplier#applyDamage} applies it
-     * via the vanilla {@code hurt()} flow, the {@code onHit} trait hook fires
-     * for side effects, and then {@link PenetrationHandler#handleEntityHit}
+     * <p>When the nearest hit is an entity, a {@link BulletHitS2CPacket} is
+     * broadcast to nearby clients, the damage post-processor chain computes
+     * the final damage, {@link DamageApplier#applyDamage} applies it via the
+     * vanilla {@code hurt()} flow, the {@code onHit} trait hook fires for
+     * side effects, and then {@link PenetrationHandler#handleEntityHit}
      * decides whether the bullet penetrates or is removed. When the nearest
-     * hit is a block, {@link PenetrationHandler#handleBlockHit} fires the
-     * {@code onBlockHit} hook and decides penetration vs removal.</p>
+     * hit is a block, the hit is broadcast and
+     * {@link PenetrationHandler#handleBlockHit} fires the {@code onBlockHit}
+     * hook and decides penetration vs removal.</p>
      *
      * @param level   the server level
      * @param manager the dimension's bullet manager
@@ -153,23 +158,33 @@ public final class BulletTickHandler {
         Vec3 curPos = bullet.getPosition();
         CollisionResult collision = CollisionDetector.detectCollision(level, bullet, prevPos, curPos);
         switch (collision.hitType()) {
-            case ENTITY -> handleEntityCollision(manager, bullet, collision.hitEntity());
-            case BLOCK -> handleBlockCollision(manager, bullet, collision.blockPos(), collision.blockFace());
+            case ENTITY -> {
+                Vec3 hitPos = computeHitPos(bullet, prevPos, collision.distance());
+                handleEntityCollision((ServerLevel) level, manager, bullet, collision.hitEntity(), hitPos);
+            }
+            case BLOCK -> {
+                Vec3 hitPos = computeHitPos(bullet, prevPos, collision.distance());
+                handleBlockCollision((ServerLevel) level, manager, bullet, collision.blockPos(), collision.blockFace(), hitPos);
+            }
             case NONE -> { /* no hit this tick — bullet continues flying */ }
         }
     }
 
     /**
-     * Processes an entity collision: runs the damage post-processor chain,
-     * applies the finalised damage, fires the {@code onHit} hook, then
-     * delegates to {@link PenetrationHandler} for penetration bookkeeping
+     * Processes an entity collision: broadcasts the hit to nearby clients,
+     * runs the damage post-processor chain, applies the finalised damage,
+     * fires the {@code onHit} hook, then delegates to
+     * {@link PenetrationHandler} for penetration bookkeeping
      * (设计文档 §步骤十 — 命中实体).
      *
+     * @param level   the server level (used for hit-broadcast distribution)
      * @param manager the dimension's bullet manager
      * @param bullet  the bullet that hit the entity
      * @param target  the entity that was hit; never {@code null}
+     * @param hitPos  the exact world-space hit position for client effects
      */
-    private static void handleEntityCollision(BulletManager manager, BulletRecord bullet, Entity target) {
+    private static void handleEntityCollision(ServerLevel level, BulletManager manager, BulletRecord bullet, Entity target, Vec3 hitPos) {
+        BulletHitBroadcastService.broadcastHit(level, bullet.getBulletId(), hitPos, BulletHitS2CPacket.HitType.ENTITY, target.getId());
         double baseDamage = bullet.getSnapshot().getStat(HIT_DAMAGE_ID);
         double finalDamage = DamageHandlerRegistry.processChain(bullet, target, baseDamage);
         DamageApplier.applyDamage(bullet, target, finalDamage);
@@ -178,18 +193,41 @@ public final class BulletTickHandler {
     }
 
     /**
-     * Processes a block collision: delegates to {@link PenetrationHandler}
-     * which fires the {@code onBlockHit} hook and decides penetration vs
-     * removal (设计文档 §步骤十 — 命中方块).
+     * Processes a block collision: broadcasts the hit to nearby clients, then
+     * delegates to {@link PenetrationHandler} which fires the
+     * {@code onBlockHit} hook and decides penetration vs removal
+     * (设计文档 §步骤十 — 命中方块).
      *
+     * @param level   the server level (used for hit-broadcast distribution)
      * @param manager the dimension's bullet manager
      * @param bullet  the bullet that hit the block
      * @param pos     the hit block position; never {@code null}
      * @param face    the hit block face; never {@code null}
+     * @param hitPos  the exact world-space hit position for client effects
      */
-    private static void handleBlockCollision(BulletManager manager, BulletRecord bullet,
-                                             net.minecraft.core.BlockPos pos, net.minecraft.core.Direction face) {
+    private static void handleBlockCollision(ServerLevel level, BulletManager manager, BulletRecord bullet,
+                                             net.minecraft.core.BlockPos pos, net.minecraft.core.Direction face, Vec3 hitPos) {
+        BulletHitBroadcastService.broadcastHit(level, bullet.getBulletId(), hitPos, BulletHitS2CPacket.HitType.BLOCK, BulletHitS2CPacket.NO_ENTITY);
         PenetrationHandler.handleBlockHit(bullet, pos, face, manager);
+    }
+
+    /**
+     * Computes the exact world-space hit point from the bullet's previous
+     * position and the collision distance along its (normalized) direction.
+     *
+     * <p>Since {@link BulletRecord#getDirection()} is guaranteed normalized
+     * at construction, multiplying by {@code distance} yields a displacement
+     * of exactly {@code distance} blocks along the flight ray — landing on
+     * the precise impact point rather than the tick's end position.</p>
+     *
+     * @param bullet   the bullet that hit
+     * @param prevPos  the bullet's position before this tick's advance
+     * @param distance distance from {@code prevPos} to the hit point
+     * @return the exact hit position
+     */
+    private static Vec3 computeHitPos(BulletRecord bullet, Vec3 prevPos, double distance) {
+        Vec3 direction = bullet.getDirection();
+        return prevPos.add(direction.multiply(distance, distance, distance));
     }
 
     /**

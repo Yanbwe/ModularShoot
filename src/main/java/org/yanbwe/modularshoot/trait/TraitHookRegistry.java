@@ -85,6 +85,7 @@ public final class TraitHookRegistry {
         mapping.put(TraitHookType.ON_BLOCK_HIT, TraitCallbacks.TraitBlockHitCallback.class);
         mapping.put(TraitHookType.ON_EXPIRE, TraitCallbacks.TraitExpireCallback.class);
         mapping.put(TraitHookType.ON_REMOVE, TraitCallbacks.TraitRemoveCallback.class);
+        mapping.put(TraitHookType.ON_VISUAL_TICK, TraitCallbacks.TraitVisualTickCallback.class);
         EXPECTED_TYPES = Map.copyOf(mapping);
     }
 

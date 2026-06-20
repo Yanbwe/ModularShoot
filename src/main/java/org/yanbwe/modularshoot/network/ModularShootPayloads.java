@@ -1,6 +1,8 @@
 package org.yanbwe.modularshoot.network;
 
 import org.yanbwe.modularshoot.ModularShoot;
+import org.yanbwe.modularshoot.client.PlayerShootStateManager;
+import org.yanbwe.modularshoot.client.render.BulletRenderManager;
 import org.yanbwe.modularshoot.shooting.ShootPacketHandler;
 
 import net.minecraft.server.level.ServerPlayer;
@@ -54,7 +56,13 @@ public final class ModularShootPayloads {
     @SubscribeEvent
     public static void onRegisterPayloads(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION);
+        // C → S (client-to-server)
         registerShootC2S(registrar);
+        // S → C (server-to-client)
+        registerBulletS2C(registrar);
+        registerBulletHitS2C(registrar);
+        registerGunSyncS2C(registrar);
+        registerShootAnimS2C(registrar);
     }
 
     /**
@@ -83,6 +91,118 @@ public final class ModularShootPayloads {
         return (payload, context) -> {
             ServerPlayer player = (ServerPlayer) context.player();
             ShootPacketHandler.handleShootRequest(player, payload.modifierVersion());
+        };
+    }
+
+    // ------------------------------------------------------------------
+    //  S → C  (server-to-client) payload registrations
+    // ------------------------------------------------------------------
+
+    /**
+     * Registers {@link BulletS2CPacket} as a play-phase, client-bound payload
+     * (S→C direction) and binds its handler.
+     *
+     * @param registrar the payload registrar to register through
+     */
+    private static void registerBulletS2C(PayloadRegistrar registrar) {
+        registrar.playToClient(BulletS2CPacket.TYPE, BulletS2CPacket.STREAM_CODEC, handleBulletS2C());
+    }
+
+    /**
+     * Registers {@link BulletHitS2CPacket} as a play-phase, client-bound
+     * payload (S→C direction) and binds its handler stub.
+     *
+     * @param registrar the payload registrar to register through
+     */
+    private static void registerBulletHitS2C(PayloadRegistrar registrar) {
+        registrar.playToClient(BulletHitS2CPacket.TYPE, BulletHitS2CPacket.STREAM_CODEC, handleBulletHitS2C());
+    }
+
+    /**
+     * Registers {@link GunSyncS2CPacket} as a play-phase, client-bound payload
+     * (S→C direction) and binds its handler stub.
+     *
+     * @param registrar the payload registrar to register through
+     */
+    private static void registerGunSyncS2C(PayloadRegistrar registrar) {
+        registrar.playToClient(GunSyncS2CPacket.TYPE, GunSyncS2CPacket.STREAM_CODEC, handleGunSyncS2C());
+    }
+
+    /**
+     * Registers {@link ShootAnimS2CPacket} as a play-phase, client-bound
+     * payload (S→C direction) and binds its handler stub.
+     *
+     * @param registrar the payload registrar to register through
+     */
+    private static void registerShootAnimS2C(PayloadRegistrar registrar) {
+        registrar.playToClient(ShootAnimS2CPacket.TYPE, ShootAnimS2CPacket.STREAM_CODEC, handleShootAnimS2C());
+    }
+
+    // ------------------------------------------------------------------
+    //  S → C  handler stubs (filled in by later M4 subtasks)
+    // ------------------------------------------------------------------
+
+    /**
+     * Builds the handler for {@link BulletS2CPacket}.
+     *
+     * <p>Delegates to {@link BulletRenderManager#handlePacket(BulletS2CPacket)}
+     * on the main client thread via
+     * {@link IPayloadContext#enqueueWork(Runnable)}. The manager reconciles
+     * its render-object map with the packet: creating new
+     * {@link org.yanbwe.modularshoot.client.render.BulletRenderObject}s,
+     * updating existing ones, and removing those whose bullets have
+     * expired.</p>
+     *
+     * @return the payload handler
+     */
+    private static IPayloadHandler<BulletS2CPacket> handleBulletS2C() {
+        return (payload, context) -> {
+            context.enqueueWork(() -> BulletRenderManager.getInstance().handlePacket(payload));
+        };
+    }
+
+    /**
+     * Builds the handler for {@link BulletHitS2CPacket}.
+     *
+     * <p><b>STUB:</b> No-op until the client-side impact-effect logic is
+     * implemented in a later M4 subtask.</p>
+     *
+     * @return the payload handler
+     */
+    private static IPayloadHandler<BulletHitS2CPacket> handleBulletHitS2C() {
+        return (payload, context) -> {
+            // Stub: client-side hit-effect handling to be implemented later.
+        };
+    }
+
+    /**
+     * Builds the handler for {@link GunSyncS2CPacket}.
+     *
+     * <p><b>STUB:</b> No-op until the client-side gun-data sync logic is
+     * implemented in a later M4 subtask.</p>
+     *
+     * @return the payload handler
+     */
+    private static IPayloadHandler<GunSyncS2CPacket> handleGunSyncS2C() {
+        return (payload, context) -> {
+            // Stub: client-side gun-data sync handling to be implemented later.
+        };
+    }
+
+    /**
+     * Builds the handler for {@link ShootAnimS2CPacket}.
+     *
+     * <p>Delegates to {@link PlayerShootStateManager#handlePacket} on the main
+     * client thread via {@link IPayloadContext#enqueueWork}, which updates the
+     * per-player animation state for the remote player identified by the
+     * packet. The local player's own state is maintained with zero delay by
+     * the manager itself and is ignored by {@code handlePacket}.</p>
+     *
+     * @return the payload handler
+     */
+    private static IPayloadHandler<ShootAnimS2CPacket> handleShootAnimS2C() {
+        return (payload, context) -> {
+            context.enqueueWork(() -> PlayerShootStateManager.getInstance().handlePacket(payload));
         };
     }
 }

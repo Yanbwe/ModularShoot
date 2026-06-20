@@ -10,6 +10,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
@@ -25,6 +26,8 @@ import org.yanbwe.modularshoot.bullet.BulletRecord;
 import org.yanbwe.modularshoot.bullet.BulletSnapshot;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.damage.ModularShootDamageTypes;
+import org.yanbwe.modularshoot.network.BulletSyncService;
+import org.yanbwe.modularshoot.network.ShootAnimSyncService;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 
@@ -51,7 +54,9 @@ import org.yanbwe.modularshoot.registry.gun.GunRegistry;
  *       {@link SpreadCalculator}. The client's direction is never trusted.</li>
  *   <li><b>Register bullet</b> — spawns a {@link BulletRecord} at the
  *       player's eye position and registers it with the per-dimension
- *       {@link BulletManager}.</li>
+ *       {@link BulletManager}, then immediately broadcasts an incremental
+ *       sync packet so short-life bullets reach clients for at least one
+ *       render frame (设计文档 §短寿命子弹保证).</li>
  *   <li><b>Sound</b> — plays the gun's {@code shoot} sound slot at the
  *       shooter's position, if the gun definition defines one.</li>
  *   <li><b>PostShootEvent</b> — fires a non-cancelable
@@ -145,8 +150,17 @@ public final class ShootingEngine {
         Vec3 direction = applySpread(player, snapshot);
         // Step 7: register the bullet with the per-dimension BulletManager.
         BulletRecord bulletRecord = registerBullet(player, snapshot, direction);
+        // Immediately broadcast the new bullet so that short-life bullets
+        // (created and removed within the same tick) still reach clients for
+        // at least one render frame (设计文档 §短寿命子弹保证). The regular
+        // Post-tick sync continues to update positions and cull expired
+        // bullets as usual.
+        BulletSyncService.broadcastBulletCreated((ServerLevel) player.level(), bulletRecord);
         // Step 8: play the shoot sound at the shooter's position.
         playShootSound(player, gunDefinition);
+        // Broadcast the shoot-animation state to nearby clients so remote
+        // players see the third-person animation (设计文档 §第三人称射击动画).
+        ShootAnimSyncService.getInstance().onShootFired(player);
         // Step 9: PostShootEvent — non-cancelable notification.
         firePostShootEvent(player, gunStack, bulletRecord);
     }

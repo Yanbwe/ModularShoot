@@ -10,6 +10,7 @@ import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
+import org.yanbwe.modularshoot.network.ShootAnimSyncService;
 
 /**
  * Server-side orchestrator for
@@ -56,6 +57,9 @@ public final class ShootPacketHandler {
      */
     public static void handleShootRequest(ServerPlayer player, int packetModifierVersion) {
         Objects.requireNonNull(player, "player");
+        // Notify the animation sync service that this player is actively shooting
+        // (设计文档 §isFiring 标记维护: 收到 ShootC2SPacket 即置 true).
+        ShootAnimSyncService.getInstance().onShootPacketReceived(player);
         ItemStack mainHand = player.getMainHandItem();
         if (!isMainHandGun(mainHand)) {
             return;

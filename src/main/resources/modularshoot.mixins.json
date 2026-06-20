@@ -3,6 +3,9 @@
   "package": "org.yanbwe.modularshoot.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [],
+  "client": [
+    "client.HumanoidModelMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   },

@@ -29,11 +29,11 @@ package org.yanbwe.modularshoot.trait;
  *   <tr><td>{@link #ON_REMOVE}</td>
  *       <td>{@link TraitCallbacks.TraitRemoveCallback}</td>
  *       <td>The bullet is removed from the manager for any reason</td></tr>
+ *   <tr><td>{@link #ON_VISUAL_TICK}</td>
+ *       <td>{@link TraitCallbacks.TraitVisualTickCallback}</td>
+ *       <td>Every client render frame before the bullet is drawn
+ *           (client-side only)</td></tr>
  * </table>
- *
- * <p><strong>{@code ON_VISUAL_TICK}</strong> is intentionally omitted from this
- * enum; it belongs to the M4 rendering milestone and will be added alongside
- * the client-side {@code BulletRenderObject} infrastructure.</p>
  *
  * @see TraitCallbacks
  * @see TraitHookRegistry
@@ -94,5 +94,23 @@ public enum TraitHookType {
      * scenarios should listen here rather than to each specific hook
      * (设计文档 §onRemove).</p>
      */
-    ON_REMOVE
+    ON_REMOVE,
+
+    /**
+     * Fired every client render frame before a bullet is drawn
+     * (设计文档 §特性视觉钩子, line 1269).
+     *
+     * <p>This is the only hook that runs <strong>client-side only</strong>;
+     * all other hook types fire on the server. It triggers once per render
+     * frame (not per server tick), so it runs at a higher frequency than
+     * {@link #ON_TICK} and is suited to smooth visual changes.</p>
+     *
+     * <p>The callback receives the client-side {@code BulletRenderObject},
+     * passed as {@link Object} to keep this common module free of client-class
+     * dependencies, and may mutate its texture, scale and render mode
+     * in-flight. See {@link TraitCallbacks.TraitVisualTickCallback} for the
+     * cast contract and {@code VisualTickHookDispatcher} for the client-side
+     * dispatch entry point.</p>
+     */
+    ON_VISUAL_TICK
 }

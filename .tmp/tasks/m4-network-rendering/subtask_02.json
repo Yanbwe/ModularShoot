@@ -2,7 +2,9 @@
   "id": "m4-network-rendering-02",
   "seq": "02",
   "title": "BulletS2CPacket (S to C bullet sync) + server tick broadcast with render-distance culling",
-  "status": "pending",
+  "status": "completed",
+  "agent_id": "coder-agent",
+  "started_at": "2026-06-20T00:00:00Z",
   "depends_on": ["01"],
   "parallel": false,
   "suggested_agent": "CoderAgent",
@@ -33,8 +35,6 @@
     "src/main/java/org/yanbwe/modularshoot/network/BulletS2CPacket.java (packet record + codec + stream codec)",
     "src/main/java/org/yanbwe/modularshoot/network/BulletSyncService.java (server-side tick collection + culling + broadcast)"
   ],
-  "agent_id": null,
-  "started_at": null,
-  "completed_at": null,
-  "completion_summary": null
+  "completed_at": "2026-06-20T00:00:00Z",
+  "completion_summary": "Rewrote BulletS2CPacket as batch record with BulletEntry (id/pos/dir/texture/model/renderMode/size/shooterId) + StreamCodec; added BulletSyncService listening to LevelTickEvent.Post with per-player render-distance culling and previousTickIds short-life tracking"
 }

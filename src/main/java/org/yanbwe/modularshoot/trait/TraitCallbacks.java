@@ -7,7 +7,8 @@ import org.yanbwe.modularshoot.bullet.BulletRecord;
 import org.yanbwe.modularshoot.bullet.BulletSnapshot;
 
 /**
- * Functional interfaces for the five server-side trait runtime hooks.
+ * Functional interfaces for the six trait runtime hooks (five server-side,
+ * one client-side).
  *
  * <p>Each interface corresponds to a {@link TraitHookType} and is invoked by
  * the bullet engine at the matching lifecycle point. Third-party mods
@@ -165,5 +166,48 @@ public final class TraitCallbacks {
          *                     never {@code null}
          */
         void onRemove(BulletRecord bullet, BulletSnapshot snapshot, RemoveReason removeReason);
+    }
+
+    /**
+     * Fired every render frame on the client before a bullet is drawn
+     * ({@link TraitHookType#ON_VISUAL_TICK}).
+     *
+     * <p>This is the only client-side hook. It runs once per frame (not per
+     * server tick) and is intended for smooth visual mutations: swapping the
+     * projectile texture, adjusting scale, or switching between billboard and
+     * 3d render modes (设计文档 §特性视觉钩子).</p>
+     *
+     * <p><strong>Parameter type contract.</strong> The {@code renderObject}
+     * parameter is typed {@link Object} so that this common interface does
+     * not depend on the client-only
+     * {@code org.yanbwe.modularshoot.client.render.BulletRenderObject} class
+     * &mdash; referencing a client class here would cause a
+     * {@code ClassNotFoundException} on a dedicated server that loads this
+     * common module. On the client the actual argument is always a
+     * {@code BulletRenderObject}; implementations cast it back before use:</p>
+     * <pre>{@code
+     * TraitHookRegistry.register(
+     *     ResourceLocation.parse("examplemod:glowing_bullet"),
+     *     TraitHookType.ON_VISUAL_TICK,
+     *     (TraitVisualTickCallback) renderObject -> {
+     *         BulletRenderObject ro = (BulletRenderObject) renderObject;
+     *         ro.setScale(1.5f);
+     *     }
+     * );
+     * }</pre>
+     * <p>The dispatch is driven by
+     * {@code org.yanbwe.modularshoot.client.render.VisualTickHookDispatcher},
+     * which passes the typed {@code BulletRenderObject} on the client.</p>
+     */
+    @FunctionalInterface
+    public interface TraitVisualTickCallback extends TraitCallback {
+
+        /**
+         * @param renderObject the client-side {@code BulletRenderObject},
+         *                     passed as {@link Object} to avoid a
+         *                     common-module dependency on client classes;
+         *                     never {@code null} on the client
+         */
+        void onVisualTick(Object renderObject);
     }
 }
