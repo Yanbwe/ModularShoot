@@ -2,7 +2,11 @@
   "id": "m6-datapack-degradation-debug-18",
   "seq": "18",
   "title": "GunRightClickEvent 完善",
-  "status": "pending",
+  "status": "completed",
+  "agent_id": "coder-agent",
+  "started_at": "2026-06-20T00:00:00Z",
+  "completed_at": "2026-06-20T00:00:00Z",
+  "completion_summary": "Verified RightClickHandler triggers GunRightClickEvent with container-open guard; fixed misleading method name isDefaultContainerOpen->hasNonDefaultContainerOpen",
   "depends_on": [],
   "parallel": true,
   "context_files": [

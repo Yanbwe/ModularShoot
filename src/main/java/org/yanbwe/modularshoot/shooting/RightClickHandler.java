@@ -83,7 +83,7 @@ public final class RightClickHandler {
         }
         // A non-default container GUI is open: the install flow owns
         // right-clicks inside inventories, so GunRightClickEvent must not fire.
-        if (isDefaultContainerOpen(player)) {
+        if (hasNonDefaultContainerOpen(player)) {
             return;
         }
         fireRightClickEvent(player, player.getMainHandItem());
@@ -110,7 +110,7 @@ public final class RightClickHandler {
         }
         // A non-default container GUI is open: the install flow owns
         // right-clicks inside inventories, so GunRightClickEvent must not fire.
-        if (isDefaultContainerOpen(player)) {
+        if (hasNonDefaultContainerOpen(player)) {
             return;
         }
         fireRightClickEvent(player, player.getMainHandItem());
@@ -144,7 +144,7 @@ public final class RightClickHandler {
      * @param player the player to inspect
      * @return {@code true} when a non-default container GUI is open
      */
-    private static boolean isDefaultContainerOpen(Player player) {
+    private static boolean hasNonDefaultContainerOpen(Player player) {
         return player.hasContainerOpen();
     }
 
