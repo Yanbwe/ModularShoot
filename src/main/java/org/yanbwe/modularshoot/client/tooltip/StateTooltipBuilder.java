@@ -16,6 +16,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShootAPI;
+import org.yanbwe.modularshoot.degradation.StateDegradationHandler;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
 import org.yanbwe.modularshoot.state.GunState;
 import org.yanbwe.modularshoot.state.PlayerState;
@@ -118,6 +119,15 @@ public final class StateTooltipBuilder {
         for (Map.Entry<ResourceKey<StateDefinition>, StateDefinition> regEntry : registry.entrySet()) {
             ResourceLocation stateId = regEntry.getKey().location();
             StateDefinition def = regEntry.getValue();
+            // Defensive degradation guard (设计文档 §状态 ID 失效降级): skip
+            // states whose definition is missing from the registry. The loop
+            // iterates the registry so this is normally redundant, but the
+            // guard documents the degradation contract explicitly and
+            // protects against future refactors that might source state ids
+            // from stored NBT keys rather than the registry.
+            if (StateDegradationHandler.isStateDefinitionMissing(stateId, registryAccess)) {
+                continue;
+            }
             collectOne(entries, stateId, def, gunState, playerState);
         }
         return entries;

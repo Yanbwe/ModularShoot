@@ -1,0 +1,9 @@
+{
+  "default_value": false,
+  "description": "示例特性：默认关闭，可由枪械或插件开启",
+  "name": "§b示例特性",
+  "color": "#66DDFF",
+  "brief": "一个示例自定义特性",
+  "force_show": true,
+  "priority": 10
+}

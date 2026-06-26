@@ -1,0 +1,12 @@
+{
+  "domain": "gun",
+  "value_type": "int",
+  "default_value": 0,
+  "display": {
+    "name": "§e击杀计数",
+    "color": "#FFAA00",
+    "format": "击杀: {value}",
+    "priority": 100,
+    "hide_default": true
+  }
+}

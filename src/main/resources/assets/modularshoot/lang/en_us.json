@@ -14,5 +14,11 @@
   "item.modularshoot.plugin": "Plugin",
   "modularshoot.install_failed": "Plugin installation failed.",
   "key.modularshoot.reload": "Reload",
-  "modularshoot.category": "ModularShoot"
+  "modularshoot.category": "ModularShoot",
+  "modularshoot.command.no_gun": "Main hand is not holding a gun.",
+  "modularshoot.command.no_plugins": "No plugins installed.",
+  "modularshoot.command.stats_header": "Gun attribute stats",
+  "modularshoot.command.plugins_header": "Installed plugins (%s):",
+  "modularshoot.command.plugin_locked": "[Locked]",
+  "modularshoot.command.plugin_unlocked": "[Unlocked]"
 }

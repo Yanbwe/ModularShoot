@@ -4,6 +4,7 @@ import java.util.List;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.api.distmarker.Dist;
@@ -13,6 +14,7 @@ import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.ModularShootAPI;
+import org.yanbwe.modularshoot.degradation.GunDegradationHandler;
 
 /**
  * Entry point for injecting ModularShoot tooltip sections into gun item
@@ -40,12 +42,15 @@ public final class TooltipBuilder {
     }
 
     /**
-     * Injects the state bar into a gun item's tooltip lines.
+     * Injects ModularShoot tooltip sections into a gun item's tooltip lines.
      *
      * <p>Guard clauses short-circuit in order of increasing cost:
      * <ol>
      *   <li>Item type check — is the stack a gun?</li>
      *   <li>Player check — is a viewing player available (non-null)?</li>
+     *   <li>Degradation check — is the gun definition missing? If so, the
+     *       tooltip is replaced with only the degraded name and gunId
+     *       (设计文档 §枪械 gunId 失效降级).</li>
      *   <li>State bar build — collect, filter, sort, and render.</li>
      * </ol>
      * </p>
@@ -71,6 +76,14 @@ public final class TooltipBuilder {
 
         RegistryAccess registryAccess = player.registryAccess();
 
+        // Degradation check: when the gun definition is missing, show only
+        // the degraded name and gunId, skipping all state/attribute/trait/
+        // plugin bars (设计文档 §枪械 gunId 失效降级).
+        if (GunDegradationHandler.isGunDefinitionMissing(stack, registryAccess)) {
+            appendDegradedTooltip(event.getToolTip(), stack);
+            return;
+        }
+
         List<Component> stateBar = StateTooltipBuilder.buildStateBar(stack, player, registryAccess);
         if (stateBar.isEmpty()) {
             return;
@@ -78,5 +91,28 @@ public final class TooltipBuilder {
 
         event.getToolTip().add(Component.literal("状态:").withStyle(ChatFormatting.GRAY));
         event.getToolTip().addAll(stateBar);
+    }
+
+    /**
+     * Replaces the entire tooltip with the minimal degraded lines: the grey
+     * "未知枪械" name and the full gunId in dark grey.
+     *
+     * <p>The vanilla item-name line and any other previously-added lines are
+     * cleared so that the tooltip shows <em>only</em> the degraded name and
+     * gunId, per the design contract (设计文档 §提示文本降级: 仅显示
+     * [未知枪械] 与 gunId). No state, attribute, trait, or plugin bars are
+     * added.</p>
+     *
+     * @param toolTip the tooltip line list to replace
+     * @param stack   the degraded gun stack
+     */
+    private static void appendDegradedTooltip(List<Component> toolTip, ItemStack stack) {
+        toolTip.clear();
+        toolTip.add(GunDegradationHandler.getDegradedName(stack));
+        ResourceLocation gunId = ModularShootAPI.getGunId(stack);
+        if (gunId != null) {
+            toolTip.add(Component.literal("gunId: " + gunId)
+                    .withStyle(ChatFormatting.DARK_GRAY));
+        }
     }
 }

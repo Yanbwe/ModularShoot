@@ -2,7 +2,11 @@
   "id": "m6-datapack-degradation-debug-08",
   "seq": "08",
   "title": "数据包 JSON 加载失败错误处理",
-  "status": "pending",
+  "status": "completed",
+  "agent_id": "coder-agent",
+  "started_at": "2026-06-26T00:00:00Z",
+  "completed_at": "2026-06-26T00:00:00Z",
+  "completion_summary": "Implemented DatapackErrorHandler (unified ERROR/WARN logging facade via ModularShoot.LOGGER) and DatapackLoadSummary (immutable record with formatSummary/formatAllSummaries).",
   "depends_on": ["01", "02", "03", "04", "05", "06"],
   "parallel": true,
   "context_files": [

@@ -18,6 +18,8 @@ import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginInstance;
+import org.yanbwe.modularshoot.degradation.AttributeBindsDegradationHandler;
+import org.yanbwe.modularshoot.degradation.PluginDegradationHandler;
 import org.yanbwe.modularshoot.plugin.PluginDefinition;
 import org.yanbwe.modularshoot.plugin.PluginModifier;
 import org.yanbwe.modularshoot.plugin.PluginRegistry;
@@ -251,7 +253,16 @@ public final class AttributeModifierService {
      * stable {@link #GUN_BASE_MODIFIER_ID}, bound to
      * {@link EquipmentSlotGroup#MAINHAND}. Extracted from
      * {@link #computeGunModifiers} so {@link #computeAllModifiers} can reuse the
-     * same logic before appending plugin modifiers.
+     * same logic before appending plugin modifiers.</p>
+     *
+     * <p>Attributes whose registry id is not registered in
+     * {@link BuiltInRegistries#ATTRIBUTE} are silently skipped &mdash; no
+     * modifier is mounted and no exception is thrown. This covers the
+     * binds-degradation contract (设计文档 §属性元数据 binds 失效降级):
+     * when a third-party attribute body is uninstalled, its metadata entry
+     * remains but the modifier is not mounted. The check is delegated to
+     * {@link AttributeBindsDegradationHandler#isAttributeRegistered} so the
+     * predicate lives in a single place.</p>
      *
      * @param builder        the builder to append entries to
      * @param gunDef         the gun definition supplying declared stats
@@ -261,6 +272,9 @@ public final class AttributeModifierService {
             ItemAttributeModifiers.Builder builder, GunDefinition gunDef, RegistryAccess registryAccess) {
         for (Holder<Attribute> attribute : PRESET_ATTRIBUTES) {
             resolveAttributeId(attribute).ifPresent(id -> {
+                if (!AttributeBindsDegradationHandler.isAttributeRegistered(id)) {
+                    return;
+                }
                 double baseValue = resolveBaseValue(id, gunDef, registryAccess);
                 AttributeModifier modifier = new AttributeModifier(
                         GUN_BASE_MODIFIER_ID, baseValue, AttributeModifier.Operation.ADD_VALUE);
@@ -280,7 +294,17 @@ public final class AttributeModifierService {
      * modifiers from one plugin instance share the id derived from that
      * instance's {@code instanceUuid} (设计文档 §修饰符 ID 稳定性). Plugins
      * whose definition is missing and modifiers whose target attribute is not
-     * registered are silently skipped.
+     * registered are silently skipped.</p>
+     *
+     * <p>The binds-degradation contract is enforced by
+     * {@link #resolveAttributeHolder}, which calls
+     * {@link BuiltInRegistries#ATTRIBUTE#getHolder(ResourceLocation)} and
+     * returns {@code Optional.empty()} for unregistered attributes. This is
+     * equivalent to the check in
+     * {@link AttributeBindsDegradationHandler#isAttributeRegistered} &mdash;
+     * both consult the same vanilla registry &mdash; so plugin modifiers
+     * targeting a binds-failed attribute are not mounted (设计文档 §属性元数据
+     * binds 失效降级).</p>
      *
      * @param builder        the builder to append entries to
      * @param gunData        the per-gun data carrying the installed plugin list
@@ -289,7 +313,9 @@ public final class AttributeModifierService {
      */
     private static void addPluginModifiers(
             ItemAttributeModifiers.Builder builder, GunData gunData, RegistryAccess registryAccess) {
-        for (PluginInstance instance : gunData.installedPlugins()) {
+        List<PluginInstance> validPlugins =
+                PluginDegradationHandler.filterValidPlugins(gunData.installedPlugins(), registryAccess);
+        for (PluginInstance instance : validPlugins) {
             Optional<PluginDefinition> pluginDef = PluginRegistry.getPlugin(registryAccess, instance.pluginId());
             if (pluginDef.isEmpty()) {
                 continue;

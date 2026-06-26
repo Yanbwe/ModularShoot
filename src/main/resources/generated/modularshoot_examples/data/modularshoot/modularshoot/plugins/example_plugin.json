@@ -1,0 +1,28 @@
+{
+  "tags": ["c:barrel", "c:accessory"],
+  "priority": 120,
+  "item_icon": "modularshoot:textures/plugins/example_plugin.png",
+  "modifiers": [
+    { "attribute": "hit_damage", "operation": "add", "value": 3.0 },
+    { "attribute": "fire_rate", "operation": "multiply", "value": 0.5 },
+    { "attribute": "accuracy_yaw", "operation": "multiply_total", "value": -0.1 }
+  ],
+  "traits": {
+    "modularshoot:example_trait": true
+  },
+  "exclusive_group": "group:example_upgrade",
+  "bullet_style": {
+    "model": {
+      "billboard": "modularshoot:textures/bullet/example_plugin_bullet.png"
+    },
+    "render_mode": "billboard"
+  },
+  "texture_overlay": {
+    "texture": "modularshoot:textures/plugins/example_overlay.png",
+    "layer": 10
+  },
+  "name": "§e示例插件",
+  "brief": "综合性能提升插件",
+  "description": "伤害+3，射速提升50%，散布略降。附带纹理叠加与子弹样式覆盖",
+  "color": "#FFDD44"
+}

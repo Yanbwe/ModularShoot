@@ -26,6 +26,7 @@ import org.yanbwe.modularshoot.bullet.BulletRecord;
 import org.yanbwe.modularshoot.bullet.BulletSnapshot;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.damage.ModularShootDamageTypes;
+import org.yanbwe.modularshoot.degradation.GunDegradationHandler;
 import org.yanbwe.modularshoot.network.BulletSyncService;
 import org.yanbwe.modularshoot.network.ShootAnimSyncService;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
@@ -126,6 +127,14 @@ public final class ShootingEngine {
      */
     public static void fire(ServerPlayer player, GunData gunData) {
         ItemStack gunStack = player.getMainHandItem();
+        // Early degradation check: if the gun definition is missing, silently
+        // cancel the shot with a rate-limited WARN (设计文档 §枪械 gunId 失效降级).
+        // This runs before predicates and PreShootEvent so that a degraded gun
+        // never fires, never triggers predicate side-effects, and never fires
+        // events that listeners might expect to be paired with a bullet.
+        if (GunDegradationHandler.shouldSilenceShoot(player, gunStack, player.registryAccess())) {
+            return;
+        }
         // Step 3: ShootPredicate — abort on first failure (reason shown to player).
         if (!runPredicates(player, gunStack)) {
             return;
@@ -138,10 +147,9 @@ public final class ShootingEngine {
         GunDefinition gunDefinition =
                 GunRegistry.getGun(player.registryAccess(), gunData.gunId()).orElse(null);
         if (gunDefinition == null) {
-            ModularShoot.LOGGER.warn(
-                    "Gun definition {} not found for player {}; aborting shot.",
-                    gunData.gunId(),
-                    player.getName().getString());
+            // Defensive guard: shouldSilenceShoot already handled the missing
+            // definition case above. This only triggers if the definition was
+            // removed between the early check and here (a rare race).
             return;
         }
         // Step 5: build the frozen attribute/trait snapshot.

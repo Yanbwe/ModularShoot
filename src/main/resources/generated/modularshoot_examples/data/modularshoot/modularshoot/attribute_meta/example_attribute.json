@@ -1,0 +1,8 @@
+{
+  "binds": "modularshoot:example_attribute",
+  "default_value": 10.0,
+  "description": "示例属性：影响示例枪械的某项性能",
+  "color": "#88FF88",
+  "priority": 5,
+  "force_show": true
+}

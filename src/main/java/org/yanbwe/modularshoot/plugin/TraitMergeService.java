@@ -11,6 +11,7 @@ import net.minecraft.world.item.ItemStack;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginInstance;
+import org.yanbwe.modularshoot.degradation.PluginDegradationHandler;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 
@@ -95,10 +96,15 @@ public final class TraitMergeService {
      * Resolves and sorts installed plugins by priority ascending, preserving
      * install order as the same-priority tiebreaker.
      *
-     * <p>Each {@link PluginInstance} is resolved to its {@link PluginDefinition}
-     * via {@link PluginRegistry#getPlugin(RegistryAccess, ResourceLocation)};
-     * instances whose definition is missing from the registry are silently
-     * skipped. The resulting stream is an ordered stream, so
+     * <p>Degraded plugins (whose definition is missing from the registry) are
+     * filtered out up-front by
+     * {@link PluginDegradationHandler#filterValidPlugins} so their trait
+     * overrides never participate in the merge (设计文档 §插件 pluginId 失效降级).
+     * Each remaining {@link PluginInstance} is resolved to its
+     * {@link PluginDefinition} via
+     * {@link PluginRegistry#getPlugin(RegistryAccess, ResourceLocation)};
+     * instances whose definition is missing are silently skipped. The
+     * resulting stream is an ordered stream, so
      * {@link java.util.stream.Stream#sorted(Comparator) Stream.sorted} is
      * stable and equal-priority plugins retain their relative install
      * order (设计文档 line 668).</p>
@@ -109,7 +115,7 @@ public final class TraitMergeService {
      *         ascending, stable on install order
      */
     private static List<PluginDefinition> sortPluginsByPriority(List<PluginInstance> plugins, RegistryAccess registryAccess) {
-        return plugins.stream()
+        return PluginDegradationHandler.filterValidPlugins(plugins, registryAccess).stream()
                 .map(instance -> PluginRegistry.getPlugin(registryAccess, instance.pluginId()).orElse(null))
                 .filter(definition -> definition != null)
                 .sorted(Comparator.comparingInt(PluginDefinition::priority))

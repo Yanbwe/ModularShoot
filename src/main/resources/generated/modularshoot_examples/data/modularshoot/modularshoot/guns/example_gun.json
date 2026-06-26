@@ -1,0 +1,34 @@
+{
+  "name": "§a示例枪械",
+  "texture": "modularshoot:textures/gun/example_gun.png",
+  "shoot_texture": "modularshoot:textures/gun/example_gun_shoot.png",
+  "shoot_texture_mode": "while_firing",
+  "stats": {
+    "modularshoot:hit_damage": 8.0,
+    "modularshoot:fire_rate": 4.0,
+    "modularshoot:range": 64.0,
+    "modularshoot:accuracy_yaw": 3.0,
+    "modularshoot:accuracy_pitch": 3.0,
+    "modularshoot:entity_penetration": 1,
+    "modularshoot:bullet_speed": 25.0,
+    "modularshoot:bullet_size": 0.3,
+    "modularshoot:block_penetration": 0
+  },
+  "traits": {
+    "modularshoot:example_trait": true
+  },
+  "slots": {
+    "modularshoot:barrel": 1,
+    "modularshoot:accessory": 2
+  },
+  "sounds": {
+    "shoot": "modularshoot:gun.example_gun.shoot",
+    "reload": "modularshoot:gun.example_gun.reload"
+  },
+  "bullet_style": {
+    "model": {
+      "billboard": "modularshoot:textures/bullet/example_bullet.png"
+    },
+    "render_mode": "billboard"
+  }
+}

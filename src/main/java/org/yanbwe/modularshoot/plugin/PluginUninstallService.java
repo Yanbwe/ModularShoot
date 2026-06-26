@@ -15,6 +15,7 @@ import org.yanbwe.modularshoot.attribute.AttributeModifierService;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginInstance;
+import org.yanbwe.modularshoot.degradation.PluginDegradationHandler;
 import org.yanbwe.modularshoot.item.ModularShootItems;
 import org.yanbwe.modularshoot.plugin.event.PostPluginUninstallEvent;
 import org.yanbwe.modularshoot.plugin.event.PrePluginUninstallEvent;
@@ -50,7 +51,11 @@ import org.yanbwe.modularshoot.plugin.event.PrePluginUninstallEvent;
  *       {@code success = false}.</li>
  *   <li><b>{@code returnItems}</b> &mdash; controls whether the removed
  *       plugin is returned as an item stack. See the {@code player}
- *       description above for the full interaction.</li>
+ *       description above for the full interaction. A plugin whose
+ *       definition is missing from the {@code modularshoot:plugins} registry
+ *       (degraded) is <b>never</b> returned even when {@code returnItems} is
+ *       {@code true}; it is silently destroyed instead, since there is no
+ *       definition to bind the returned stack to (设计文档 §插件 pluginId 失效降级).</li>
  * </ul>
  *
  * <h2>Instance-uuid locating</h2>
@@ -104,7 +109,9 @@ public final class PluginUninstallService {
      *   <li>fire {@link PrePluginUninstallEvent}; if cancelled, skip and
      *       return {@code (false, pluginId, instanceUuid)};</li>
      *   <li>remove the plugin, write the new {@link GunData}, optionally
-     *       return the item, refresh modifiers, fire
+     *       return the item (skipped when the plugin definition is missing
+     *       &mdash; degraded plugins are destroyed, not returned, even with
+     *       {@code returnItems = true}), refresh modifiers, fire
      *       {@link PostPluginUninstallEvent}, and return
      *       {@code (true, pluginId, instanceUuid)}.</li>
      * </ol>
@@ -115,8 +122,11 @@ public final class PluginUninstallService {
      *                       {@code null} when triggered by a non-player source
      * @param force          {@code true} to ignore the {@code locked} flag
      * @param returnItems    {@code true} to return the removed plugin as an
-     *                       item stack to {@code player} (when non-null)
-     * @param registryAccess the runtime registry view (for modifier refresh)
+     *                       item stack to {@code player} (when non-null and
+     *                       the plugin definition still exists; degraded
+     *                       plugins are destroyed instead)
+     * @param registryAccess the runtime registry view (for modifier refresh
+     *                       and degradation check)
      * @return an {@link UninstallResult} describing the outcome
      */
     public static UninstallResult uninstallPlugin(
@@ -146,7 +156,8 @@ public final class PluginUninstallService {
             return new UninstallResult(false, plugin.pluginId(), instanceUuid);
         }
         removePluginFromGun(gun, gunData, instanceUuid);
-        if (returnItems && player != null) {
+        if (returnItems && player != null
+                && !PluginDegradationHandler.isPluginDefinitionMissing(plugin, registryAccess)) {
             returnPluginItem(player, plugin.pluginId());
         }
         AttributeModifierService.refreshModifiers(gun, registryAccess);
