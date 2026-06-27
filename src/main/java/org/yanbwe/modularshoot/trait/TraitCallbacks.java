@@ -177,37 +177,50 @@ public final class TraitCallbacks {
      * projectile texture, adjusting scale, or switching between billboard and
      * 3d render modes (设计文档 §特性视觉钩子).</p>
      *
-     * <p><strong>Parameter type contract.</strong> The {@code renderObject}
-     * parameter is typed {@link Object} so that this common interface does
-     * not depend on the client-only
-     * {@code org.yanbwe.modularshoot.client.render.BulletRenderObject} class
-     * &mdash; referencing a client class here would cause a
-     * {@code ClassNotFoundException} on a dedicated server that loads this
-     * common module. On the client the actual argument is always a
-     * {@code BulletRenderObject}; implementations cast it back before use:</p>
+     * <p><strong>Parameter type contract.</strong> Both parameters are typed
+     * {@link Object} so that this common interface does not depend on
+     * client-only classes &mdash; referencing
+     * {@code org.yanbwe.modularshoot.client.ClientBulletSnapshot} or
+     * {@code org.yanbwe.modularshoot.client.render.BulletRenderObject} here
+     * would cause a {@code ClassNotFoundException} on a dedicated server that
+     * loads this common module. On the client the actual arguments are always
+     * a {@code ClientBulletSnapshot} (carrying the bullet's frozen
+     * stats/traits and identity) and a {@code BulletRenderObject} (the
+     * mutable render data); implementations cast them back before use:</p>
      * <pre>{@code
      * TraitHookRegistry.register(
      *     ResourceLocation.parse("examplemod:glowing_bullet"),
      *     TraitHookType.ON_VISUAL_TICK,
-     *     (TraitVisualTickCallback) renderObject -> {
+     *     (TraitVisualTickCallback) (snapshot, renderObject) -> {
+     *         ClientBulletSnapshot snap = (ClientBulletSnapshot) snapshot;
      *         BulletRenderObject ro = (BulletRenderObject) renderObject;
-     *         ro.setScale(1.5f);
+     *         if (snap.getTrait(ResourceLocation.parse("examplemod:glowing_bullet"))) {
+     *             ro.setScale(1.5f);
+     *         }
      *     }
      * );
      * }</pre>
      * <p>The dispatch is driven by
      * {@code org.yanbwe.modularshoot.client.render.VisualTickHookDispatcher},
-     * which passes the typed {@code BulletRenderObject} on the client.</p>
+     * which passes the typed {@code ClientBulletSnapshot} and
+     * {@code BulletRenderObject} on the client.</p>
      */
     @FunctionalInterface
     public interface TraitVisualTickCallback extends TraitCallback {
 
         /**
+         * @param snapshot     the client-side {@code ClientBulletSnapshot}
+         *                     carrying the bullet's frozen stats/traits and
+         *                     identity, passed as {@link Object} to avoid a
+         *                     common-module dependency on client classes;
+         *                     never {@code null} on the client. Cast to
+         *                     {@code org.yanbwe.modularshoot.client.ClientBulletSnapshot}
+         *                     before use.
          * @param renderObject the client-side {@code BulletRenderObject},
          *                     passed as {@link Object} to avoid a
          *                     common-module dependency on client classes;
          *                     never {@code null} on the client
          */
-        void onVisualTick(Object renderObject);
+        void onVisualTick(Object snapshot, Object renderObject);
     }
 }

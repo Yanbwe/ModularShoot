@@ -105,12 +105,16 @@ public enum TraitHookType {
      * frame (not per server tick), so it runs at a higher frequency than
      * {@link #ON_TICK} and is suited to smooth visual changes.</p>
      *
-     * <p>The callback receives the client-side {@code BulletRenderObject},
-     * passed as {@link Object} to keep this common module free of client-class
-     * dependencies, and may mutate its texture, scale and render mode
-     * in-flight. See {@link TraitCallbacks.TraitVisualTickCallback} for the
-     * cast contract and {@code VisualTickHookDispatcher} for the client-side
-     * dispatch entry point.</p>
+     * <p>The callback receives the client-side {@code ClientBulletSnapshot}
+     * (the bullet's frozen stats/traits projection) and
+     * {@code BulletRenderObject}, both passed as {@link Object} to keep this
+     * common module free of client-class dependencies. Hooks may read the
+     * snapshot to make data-driven visual decisions (e.g. scale by
+     * {@code bullet_size}, swap texture when a trait is active) and mutate
+     * the render object's texture, scale and render mode in-flight. See
+     * {@link TraitCallbacks.TraitVisualTickCallback} for the cast contract
+     * and {@code VisualTickHookDispatcher} for the client-side dispatch
+     * entry point.</p>
      */
     ON_VISUAL_TICK
 }

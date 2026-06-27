@@ -28,6 +28,7 @@ import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.damage.ModularShootDamageTypes;
 import org.yanbwe.modularshoot.degradation.GunDegradationHandler;
 import org.yanbwe.modularshoot.network.BulletSyncService;
+import org.yanbwe.modularshoot.plugin.TraitMergeService;
 import org.yanbwe.modularshoot.network.ShootAnimSyncService;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
@@ -55,9 +56,9 @@ import org.yanbwe.modularshoot.registry.gun.GunRegistry;
  *       {@link SpreadCalculator}. The client's direction is never trusted.</li>
  *   <li><b>Register bullet</b> — spawns a {@link BulletRecord} at the
  *       player's eye position and registers it with the per-dimension
- *       {@link BulletManager}, then immediately broadcasts an incremental
- *       sync packet so short-life bullets reach clients for at least one
- *       render frame (设计文档 §短寿命子弹保证).</li>
+ *       {@link BulletManager}, then marks it as created this tick so the
+ *       tick-end sync sends a full packet even if the bullet is removed by
+ *       collision in the same Pre step (设计文档 §短寿命子弹保证).</li>
  *   <li><b>Sound</b> — plays the gun's {@code shoot} sound slot at the
  *       shooter's position, if the gun definition defines one.</li>
  *   <li><b>PostShootEvent</b> — fires a non-cancelable
@@ -153,17 +154,18 @@ public final class ShootingEngine {
             return;
         }
         // Step 5: build the frozen attribute/trait snapshot.
-        BulletSnapshot snapshot = buildSnapshot(player, gunData, gunDefinition);
+        BulletSnapshot snapshot = buildSnapshot(player, gunStack, gunData, gunDefinition);
         // Step 6: apply server-side spread to the look angle.
         Vec3 direction = applySpread(player, snapshot);
         // Step 7: register the bullet with the per-dimension BulletManager.
         BulletRecord bulletRecord = registerBullet(player, snapshot, direction);
-        // Immediately broadcast the new bullet so that short-life bullets
-        // (created and removed within the same tick) still reach clients for
-        // at least one render frame (设计文档 §短寿命子弹保证). The regular
-        // Post-tick sync continues to update positions and cull expired
-        // bullets as usual.
-        BulletSyncService.broadcastBulletCreated((ServerLevel) player.level(), bulletRecord);
+        // Mark the new bullet as created this tick so that the tick-end
+        // sync includes it in the newBullets bucket — even if the bullet is
+        // removed by collision before the Post tick event fires (设计文档
+        // §短寿命子弹保证, line 1276: "子弹在创建 tick 末强制同步一次完整包").
+        // The actual packet is sent at tick end from BulletSyncService,
+        // aligning with the design doc's "创建 tick 末" timing requirement.
+        BulletSyncService.markBulletCreated(player.level(), bulletRecord);
         // Step 8: play the shoot sound at the shooter's position.
         playShootSound(player, gunDefinition);
         // Broadcast the shoot-animation state to nearby clients so remote
@@ -228,15 +230,17 @@ public final class ShootingEngine {
      * shooter identity (设计文档 §步骤五).
      *
      * @param player         the shooting player (attributes read from here)
+     * @param gunStack       the gun item stack (used for trait merge)
      * @param gunData        the gun data (gun id, instance uuid, per-gun state)
      * @param gunDefinition  the gun definition (inherent traits)
      * @return a new {@link BulletSnapshot} ready to be embedded in a bullet
      */
     private static BulletSnapshot buildSnapshot(
-            ServerPlayer player, GunData gunData, GunDefinition gunDefinition) {
+            ServerPlayer player, ItemStack gunStack, GunData gunData, GunDefinition gunDefinition) {
         Map<ResourceLocation, Double> stats = collectAttributeStats(player);
-        // TODO(later): merge plugin traits via TraitMergeService.computeTraits(gunStack, registryAccess).
-        Map<ResourceLocation, Boolean> traits = new HashMap<>(gunDefinition.traits());
+        // Merge gun inherent traits with installed plugin traits per design doc §布尔特性合并规则.
+        Map<ResourceLocation, Boolean> traits = new HashMap<>(
+                TraitMergeService.computeTraits(gunStack, player.registryAccess()));
         Holder<DamageType> damageType = resolveDamageType(player, gunData);
         return new BulletSnapshot(
                 stats,

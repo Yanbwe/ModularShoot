@@ -6,8 +6,6 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import net.minecraft.resources.ResourceLocation;
 import org.yanbwe.modularshoot.registry.Trait;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Post-load validation utility for the {@code modularshoot:traits} datapack
@@ -35,8 +33,6 @@ import org.slf4j.LoggerFactory;
  * @see TraitJsonCodec
  */
 public final class TraitDatapackLoader {
-    /** Dedicated subsystem logger for trait validation. */
-    private static final Logger LOGGER = LoggerFactory.getLogger("ModularShoot/Trait");
 
     /** Pattern matching a 6-digit hex colour code with optional {@code #} prefix. */
     private static final Pattern HEX_COLOR_PATTERN = Pattern.compile("^#?[0-9A-Fa-f]{6}$");
@@ -86,7 +82,7 @@ public final class TraitDatapackLoader {
         if (warning.isEmpty()) {
             return TraitValidation.ok(trait);
         }
-        LOGGER.warn(warning.get());
+        DatapackErrorHandler.logReferenceWarning(traitId, warning.get());
         return TraitValidation.warned(trait, warning.get());
     }
 

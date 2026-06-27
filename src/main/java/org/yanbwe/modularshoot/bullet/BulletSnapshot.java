@@ -1,5 +1,6 @@
 package org.yanbwe.modularshoot.bullet;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -86,6 +87,36 @@ public final class BulletSnapshot {
         this.gunId = gunId;
         this.gunInstanceUuid = gunInstanceUuid;
         this.state = new HashMap<>(state);
+    }
+
+    /**
+     * Returns an unmodifiable view of all frozen stats (attribute id → value).
+     *
+     * <p>Used by {@code BulletSyncService} to build the client-side
+     * {@code ClientBulletSnapshot} projection for visual-tick hooks. The
+     * returned map is a live unmodifiable view of the internal map; mutations
+     * made by server-side hooks via {@link #setStat} are visible to subsequent
+     * readers.</p>
+     *
+     * @return an unmodifiable view of the stats map
+     */
+    public Map<ResourceLocation, Double> getStats() {
+        return Collections.unmodifiableMap(stats);
+    }
+
+    /**
+     * Returns an unmodifiable view of all activated traits (trait id → flag).
+     *
+     * <p>Used by {@code BulletSyncService} to build the client-side
+     * {@code ClientBulletSnapshot} projection for visual-tick hooks. The
+     * returned map is a live unmodifiable view of the internal map; mutations
+     * made by server-side hooks via {@link #setTrait} are visible to subsequent
+     * readers.</p>
+     *
+     * @return an unmodifiable view of the traits map
+     */
+    public Map<ResourceLocation, Boolean> getTraits() {
+        return Collections.unmodifiableMap(traits);
     }
 
     /** Returns the stat value for the given attribute id, or {@code 0.0} if absent. */

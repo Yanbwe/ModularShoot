@@ -19,6 +19,7 @@ import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.yanbwe.modularshoot.ModularShootAPI;
+import org.yanbwe.modularshoot.client.PlayerShootStateManager;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 
 /**
@@ -44,6 +45,35 @@ import org.yanbwe.modularshoot.registry.gun.GunDefinition;
  * JSON must set {@code "neoforge:custom_renderer": true} (or equivalent)
  * so that {@link BakedModel#isCustomRenderer()} returns {@code true},
  * routing rendering into this class.</p>
+ *
+ * <h2>Design deviation note (E-01)</h2>
+ * <p>The design doc (§渲染器) states "使用原版物品渲染管线渲染枪械与
+ *插件物品". This is satisfied <em>spiritually</em>: the actual geometry
+ * rendering, lighting and texture extrusion are all performed by the vanilla
+ * {@code ItemRenderer.render} — this class only selects which BakedModel
+ * (base or shoot texture) to feed into it. The entry point, however, is the
+ * NeoForge BEWR extension rather than a vanilla {@code BakedModel} +
+ * {@code ItemOverrideList} combination.</p>
+ *
+ * <p>This is an <strong>intentional design deviation</strong>. The
+ * alternative (BakedModel + ItemOverrideList) was considered and rejected
+ * because:</p>
+ * <ul>
+ *   <li>{@code ItemOverrideList.resolve()} is designed for model switching
+ *       driven by the item's own data (damage value, Data Components), not
+ *       by external dynamic state such as the holding player's shoot state
+ *       ({@link PlayerShootStateManager}).</li>
+ *   <li>Shoot-texture switching is driven by per-player client state that
+ *       changes every tick; the BEWR entry point combined with the
+ *       {@link #RENDERING_PLAYER_UUID} ThreadLocal provides clean access to
+ *       this state for both first-person (local player) and third-person
+ *       (remote player) rendering.</li>
+ *   <li>Rewriting to ItemOverrideList would require injecting overrides into
+ *       baked models via {@code ModelEvent.ModifyBakingResult}, deepening
+ *       coupling to the model baking pipeline with no functional gain — the
+ *       vanilla pipeline already does the actual rendering.</li>
+ * </ul>
+ * <p>See 设计文档 §渲染器 for the documented rationale.</p>
  *
  * <h2>Render flow</h2>
  * <ol>

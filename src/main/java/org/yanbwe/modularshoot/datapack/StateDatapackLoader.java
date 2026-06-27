@@ -8,8 +8,6 @@ import net.minecraft.resources.ResourceLocation;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
 import org.yanbwe.modularshoot.state.StateDefinition;
 import org.yanbwe.modularshoot.state.StateValueCodecs;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Post-load validation utility for the {@code modularshoot:states}
@@ -41,8 +39,6 @@ import org.slf4j.LoggerFactory;
  * @see StateValueCodecs#isTypeMatch
  */
 public final class StateDatapackLoader {
-    /** Dedicated subsystem logger for state validation. */
-    private static final Logger LOGGER = LoggerFactory.getLogger("ModularShoot/State");
 
     private StateDatapackLoader() {
     }
@@ -83,7 +79,7 @@ public final class StateDatapackLoader {
         if (error.isEmpty()) {
             return StateValidation.ok(definition);
         }
-        LOGGER.warn(error.get());
+        DatapackErrorHandler.logParseError(buildStateFilePath(stateId), error.get());
         return StateValidation.invalid(definition, error.get());
     }
 
@@ -186,6 +182,19 @@ public final class StateDatapackLoader {
         }
         final String combined = builder.toString().trim();
         return combined.isEmpty() ? Optional.empty() : Optional.of(combined);
+    }
+
+    /**
+     * Builds the datapack file path for a state entry id, for use in
+     * {@link DatapackErrorHandler#logParseError} messages.
+     *
+     * @param stateId the state entry id
+     * @return the file path string (e.g.
+     *         {@code data/modularshoot/modularshoot/states/foo.json})
+     */
+    private static String buildStateFilePath(ResourceLocation stateId) {
+        return "data/" + stateId.getNamespace()
+                + "/modularshoot/states/" + stateId.getPath() + ".json";
     }
 
     /**

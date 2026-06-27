@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -116,9 +117,10 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
     }
 
     /**
-     * Executes the four-step post-reload logic: log, enter DATAPACK phase,
-     * validate-and-summarise, complete phase, then delegate creative-tab
-     * refresh to {@link ReloadBehaviorHandler}.
+     * Executes the post-reload logic: log, enter DATAPACK phase,
+     * validate-and-summarise, check registration conflicts and missing
+     * resources, complete phase, then delegate creative-tab refresh to
+     * {@link ReloadBehaviorHandler}.
      *
      * @param access the reloaded registry access (all registries loaded and frozen)
      */
@@ -128,6 +130,8 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
         LoadOrderManager.enterPhase(LoadOrderManager.LoadPhase.DATAPACK);
         List<DatapackLoadSummary> summaries = collectValidationSummaries(access);
         ModularShoot.LOGGER.info(DatapackLoadSummary.formatAllSummaries(summaries));
+        checkRegistrationConflicts(access);
+        checkMissingResources(access);
         LoadOrderManager.completePhase(LoadOrderManager.LoadPhase.DATAPACK);
         ReloadBehaviorHandler.onReloadComplete(access);
     }
@@ -211,6 +215,7 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
     private static DatapackLoadSummary summarizePlugins(RegistryAccess access) {
         Map<ResourceLocation, PluginValidationResult> results =
                 PluginDatapackLoader.validateLoadedPlugins(access);
+        results.forEach(DatapackReloadListener::logPluginValidation);
         return summarize("插件定义", results.size(), results.values(),
                 r -> r.valid() && r.warnings().isEmpty());
     }
@@ -245,5 +250,129 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
                 AttributeMetaDatapackLoader.validateBindings(entries);
         return summarize("属性元数据", entries.size(), results.values(),
                 AttributeMetaDatapackLoader.BindingValidation::bindsRegistered);
+    }
+
+    // ──────────────── Registration conflict checks (A-01) ────────────────
+
+    /**
+     * Checks all six framework registries for conflicts between datapack
+     * entries and ids claimed by the Java API via
+     * {@link RegistrationCoordinator#markJavaApiRegistered}.
+     *
+     * <p>For each registry, the datapack entry ids are compared against the
+     * Java-API-claimed ids. When a conflict is found,
+     * {@link RegistrationCoordinator#attemptDatapackOverride} is called,
+     * which logs a {@code WARN} and returns {@code false} (denying the
+     * override). This implements the design rule "Java API takes priority
+     * over datapack" (设计文档 §注册冲突与覆盖, line 2289).</p>
+     *
+     * @param access the reloaded registry access
+     */
+    private static void checkRegistrationConflicts(RegistryAccess access) {
+        checkConflictsForRegistry(access, ModularShootRegistries.GUNS_KEY);
+        checkConflictsForRegistry(access, ModularShootRegistries.PLUGINS_KEY);
+        checkConflictsForRegistry(access, ModularShootRegistries.PLUGIN_TYPES_KEY);
+        checkConflictsForRegistry(access, ModularShootRegistries.TRAITS_KEY);
+        checkConflictsForRegistry(access, ModularShootRegistries.STATES_KEY);
+        checkConflictsForRegistry(access, ModularShootRegistries.ATTRIBUTE_META_KEY);
+    }
+
+    /**
+     * Checks one registry for Java-API-vs-datapack id conflicts.
+     *
+     * <p>Uses {@link RegistrationCoordinator#findConflicts} to identify all
+     * conflicting ids in one pass, then calls
+     * {@link RegistrationCoordinator#attemptDatapackOverride} for each
+     * conflict to emit the {@code WARN} log line (设计文档 §容错优先
+     * &mdash; collect all conflicts, then report).</p>
+     *
+     * @param access      the reloaded registry access
+     * @param registryKey the registry to check
+     * @param <T>         the registry value type
+     */
+    private static <T> void checkConflictsForRegistry(
+            RegistryAccess access, ResourceKey<Registry<T>> registryKey) {
+        Set<ResourceLocation> datapackIds = collectEntries(access, registryKey).keySet();
+        Set<ResourceLocation> conflicts =
+                RegistrationCoordinator.findConflicts(registryKey, datapackIds);
+        for (ResourceLocation conflictId : conflicts) {
+            RegistrationCoordinator.attemptDatapackOverride(registryKey, conflictId);
+        }
+    }
+
+    // ──────────────── Missing resource checks (A-02) ────────────────
+
+    /**
+     * Checks registered entries for obviously invalid resource paths
+     * (null or empty).
+     *
+     * <p>The server cannot preload client-side assets (textures, models), so
+     * this check only verifies that required resource path fields are
+     * non-null. When a null path is found,
+     * {@link DatapackErrorHandler#logMissingResource} is called so the
+     * operator is warned that the runtime will fall back to a default asset
+     * (设计文档 line 2380).</p>
+     *
+     * @param access the reloaded registry access
+     */
+    private static void checkMissingResources(RegistryAccess access) {
+        checkGunTextures(access);
+    }
+
+    /**
+     * Checks gun definitions for null texture paths.
+     *
+     * @param access the reloaded registry access
+     */
+    private static void checkGunTextures(RegistryAccess access) {
+        Map<ResourceLocation, GunDefinition> guns =
+                collectEntries(access, ModularShootRegistries.GUNS_KEY);
+        for (Map.Entry<ResourceLocation, GunDefinition> entry : guns.entrySet()) {
+            final GunDefinition gun = entry.getValue();
+            if (gun.texture() == null) {
+                DatapackErrorHandler.logMissingResource(entry.getKey(), "texture (null)");
+            }
+        }
+    }
+
+    // ──────────────── Plugin validation logging (A-02) ────────────────
+
+    /**
+     * Routes a {@link PluginValidationResult} through
+     * {@link DatapackErrorHandler}.
+     *
+     * <p>{@link PluginDatapackLoader} is a pure validator that returns
+     * results without logging. This method consumes those results and emits
+     * the appropriate log lines: {@code ERROR} for fatal errors (null
+     * modifier operation) and {@code WARN} for non-fatal warnings (empty
+     * tags), keeping validation and logging concerns separated
+     * (设计文档 §数据包JSON加载失败错误处理).</p>
+     *
+     * @param pluginId the plugin entry id
+     * @param result   the validation result produced by
+     *                 {@link PluginDatapackLoader#validateLoadedPlugin}
+     */
+    private static void logPluginValidation(
+            ResourceLocation pluginId, PluginValidationResult result) {
+        final String filePath = buildPluginFilePath(pluginId);
+        for (String error : result.errors()) {
+            DatapackErrorHandler.logParseError(filePath, error);
+        }
+        for (String warning : result.warnings()) {
+            DatapackErrorHandler.logReferenceWarning(pluginId, warning);
+        }
+    }
+
+    /**
+     * Builds the datapack file path for a plugin entry id, for use in
+     * {@link DatapackErrorHandler#logParseError} messages.
+     *
+     * @param pluginId the plugin entry id
+     * @return the file path string (e.g.
+     *         {@code data/modularshoot/modularshoot/plugins/foo.json})
+     */
+    private static String buildPluginFilePath(ResourceLocation pluginId) {
+        return "data/" + pluginId.getNamespace()
+                + "/modularshoot/plugins/" + pluginId.getPath() + ".json";
     }
 }

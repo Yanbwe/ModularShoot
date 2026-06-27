@@ -6,6 +6,7 @@ import java.util.List;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import org.yanbwe.modularshoot.component.PluginInstance;
+import org.yanbwe.modularshoot.network.GunSyncS2CPacket;
 import org.yanbwe.modularshoot.plugin.PluginDefinition;
 import org.yanbwe.modularshoot.plugin.PluginRegistry;
 import org.yanbwe.modularshoot.plugin.TextureOverlay;
@@ -76,11 +77,62 @@ public final class PluginOverlayCompositor {
     public static List<OverlayEntry> collectOverlays(
             List<PluginInstance> installedPlugins,
             RegistryAccess registryAccess) {
+        List<ResourceLocation> pluginIds = new ArrayList<>(installedPlugins.size());
+        for (PluginInstance instance : installedPlugins) {
+            pluginIds.add(instance.pluginId());
+        }
+        return collectOverlaysByIds(pluginIds, registryAccess);
+    }
 
-        List<OverlayEntry> entries = new ArrayList<>(installedPlugins.size());
-        for (int i = 0; i < installedPlugins.size(); i++) {
-            PluginInstance instance = installedPlugins.get(i);
-            PluginDefinition definition = PluginRegistry.getPlugin(registryAccess, instance.pluginId()).orElse(null);
+    /**
+     * Sync-data overload of {@link #collectOverlays}, accepting the wire
+     * format {@link GunSyncS2CPacket.PluginSyncEntry} list pushed by the
+     * server and stored in
+     * {@link org.yanbwe.modularshoot.client.ClientGunDataStore}.
+     *
+     * <p>Behaviour is identical to the {@link PluginInstance} overload —
+     * only the {@code pluginId} of each entry is read, so the two record
+     * types are interchangeable here. A separate method name is required
+     * because {@code List<PluginInstance>} and
+     * {@code List<PluginSyncEntry>} share the same erasure and cannot
+     * overload each other.</p>
+     *
+     * @param installedPlugins the synced plugin entry list
+     * @param registryAccess   the runtime registry view (from a loaded world)
+     * @return a new, sorted list of overlay entries; empty when no installed
+     *         plugin declares a texture overlay
+     */
+    public static List<OverlayEntry> collectOverlaysFromSync(
+            List<GunSyncS2CPacket.PluginSyncEntry> installedPlugins,
+            RegistryAccess registryAccess) {
+        List<ResourceLocation> pluginIds = new ArrayList<>(installedPlugins.size());
+        for (GunSyncS2CPacket.PluginSyncEntry entry : installedPlugins) {
+            pluginIds.add(entry.pluginId());
+        }
+        return collectOverlaysByIds(pluginIds, registryAccess);
+    }
+
+    /**
+     * Shared core that collects and sorts overlays from a plain list of
+     * plugin ids, using the list index as the installation order.
+     *
+     * <p>Plugins whose definition is absent from the registry (e.g. on the
+     * main menu) or that declare no {@code texture_overlay} are skipped. The
+     * returned list is ordered so that compositing it front-to-back places
+     * higher layers and later installs on top, matching the design doc rule
+     * "同层级按安装顺序，后装覆盖先装".</p>
+     *
+     * @param pluginIds      the ordered plugin definition ids
+     * @param registryAccess the runtime registry view (from a loaded world)
+     * @return a new, sorted list of overlay entries; empty when no plugin
+     *         declares a texture overlay
+     */
+    private static List<OverlayEntry> collectOverlaysByIds(
+            List<ResourceLocation> pluginIds,
+            RegistryAccess registryAccess) {
+        List<OverlayEntry> entries = new ArrayList<>(pluginIds.size());
+        for (int i = 0; i < pluginIds.size(); i++) {
+            PluginDefinition definition = PluginRegistry.getPlugin(registryAccess, pluginIds.get(i)).orElse(null);
             if (definition == null) {
                 continue;
             }
@@ -111,6 +163,25 @@ public final class PluginOverlayCompositor {
             RegistryAccess registryAccess) {
 
         return collectOverlays(installedPlugins, registryAccess).stream()
+                .map(OverlayEntry::texture)
+                .toList();
+    }
+
+    /**
+     * Sync-data convenience overload of {@link #collectOverlayTextures},
+     * accepting the wire format {@link GunSyncS2CPacket.PluginSyncEntry}
+     * list.
+     *
+     * @param installedPlugins the synced plugin entry list
+     * @param registryAccess   the runtime registry view
+     * @return a new, sorted list of overlay texture paths; empty when no
+     *         installed plugin declares a texture overlay
+     */
+    public static List<ResourceLocation> collectOverlayTexturesFromSync(
+            List<GunSyncS2CPacket.PluginSyncEntry> installedPlugins,
+            RegistryAccess registryAccess) {
+
+        return collectOverlaysFromSync(installedPlugins, registryAccess).stream()
                 .map(OverlayEntry::texture)
                 .toList();
     }

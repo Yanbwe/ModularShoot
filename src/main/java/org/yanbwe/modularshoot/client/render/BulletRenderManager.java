@@ -3,9 +3,8 @@ package org.yanbwe.modularshoot.client.render;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
@@ -16,8 +15,10 @@ import net.neoforged.neoforge.event.level.LevelEvent;
 
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShoot;
+import org.yanbwe.modularshoot.client.ClientBulletSnapshot;
 import org.yanbwe.modularshoot.network.BulletS2CPacket;
-import org.yanbwe.modularshoot.network.BulletS2CPacket.BulletEntry;
+import org.yanbwe.modularshoot.network.BulletS2CPacket.DeltaBulletEntry;
+import org.yanbwe.modularshoot.network.BulletS2CPacket.FullBulletEntry;
 
 /**
  * Client-side singleton managing the set of in-flight {@link BulletRenderObject}
@@ -31,15 +32,24 @@ import org.yanbwe.modularshoot.network.BulletS2CPacket.BulletEntry;
  * Minecraft entities (设计文档 §客户端视觉同步与渲染).</p>
  *
  * <p>Lifecycle is driven entirely by {@link BulletS2CPacket} messages from the
- * server. On each packet:</p>
+ * server. On each packet the manager reconciles its render-object map
+ * according to the packet's three buckets (设计文档 §同步策略, lines 2045-2048):</p>
  * <ul>
- *   <li>new bullet ids → create a {@link BulletRenderObject}</li>
- *   <li>existing bullet ids → update position (via
- *       {@link BulletRenderObject#updatePosition(Vec3)}) and direction</li>
- *   <li>ids present in the manager but absent from a <b>full-sync</b> packet →
- *       destroy the render object (the bullet has expired or hit something).
- *       Incremental packets (short-life creation broadcast) never cull.</li>
+ *   <li>{@link BulletS2CPacket#newBullets()} (full entries) → create a
+ *       {@link BulletRenderObject} (or update an existing one with full
+ *       visual data, e.g. when a short-life bullet is re-created after a
+ *       force-full-sync).</li>
+ *   <li>{@link BulletS2CPacket#updatedBullets()} (delta entries) → update
+ *       position (via {@link BulletRenderObject#updatePosition(Vec3)}) and
+ *       direction of the existing render object.</li>
+ *   <li>{@link BulletS2CPacket#removedBulletIds()} → destroy the render
+ *       object (the bullet has expired or hit something).</li>
  * </ul>
+ *
+ * <p>When {@link BulletS2CPacket#forceFullSync()} is {@code true}, the manager
+ * first clears its entire render-object map, then rebuilds from
+ * {@link BulletS2CPacket#newBullets()} alone — the other buckets are ignored.
+ * This recovers from any dropped delta packets (periodic drift recovery).</p>
  *
  * <p>Position interpolation: each render object keeps a
  * {@link BulletRenderObject#getPrevPosition() prevPosition} that lags one tick
@@ -68,6 +78,19 @@ public final class BulletRenderManager {
 
     private final Map<Integer, BulletRenderObject> renderObjects = new HashMap<>();
 
+    /**
+     * Per-bullet client-side snapshot projections keyed by bullet id
+     * (设计文档 §特性视觉钩子, line 1298).
+     *
+     * <p>Populated from {@link FullBulletEntry#snapshot()} when a render
+     * object is created or fully updated, and evicted when the bullet is
+     * removed. Exposed to visual-tick hooks via {@link #getSnapshot(int)} so
+     * trait callbacks can read the bullet's frozen stats/traits and adjust
+     * appearance in-flight. Kept in lock-step with {@link #renderObjects}:
+     * every put/remove on one map is mirrored on the other.</p>
+     */
+    private final Map<Integer, ClientBulletSnapshot> snapshots = new HashMap<>();
+
     private BulletRenderManager() {
     }
 
@@ -85,53 +108,101 @@ public final class BulletRenderManager {
 
     /**
      * Processes a {@link BulletS2CPacket}, reconciling the render-object map
-     * with the server's current bullet set (设计文档 §客户端创建).
+     * with the server's current bullet state (设计文档 §客户端创建).
      *
-     * <p>For each {@link BulletEntry} in the packet:</p>
+     * <p>When {@link BulletS2CPacket#forceFullSync()} is {@code true}, the
+     * entire render-object map is cleared and rebuilt from
+     * {@link BulletS2CPacket#newBullets()} alone — the other buckets are
+     * ignored. This is the periodic drift-recovery / initial-sync path.</p>
+     *
+     * <p>Otherwise (incremental delta packet):</p>
      * <ul>
-     *   <li>new bullet id → {@link #createRenderObject(BulletEntry)}</li>
-     *   <li>existing bullet id →
-     *       {@link #updateRenderObject(BulletRenderObject, BulletEntry)}</li>
+     *   <li>{@link BulletS2CPacket#newBullets()} →
+     *       {@link #createRenderObject(FullBulletEntry)} (or
+     *       {@link #updateRenderObjectFull(BulletRenderObject, FullBulletEntry)}
+     *       if the id already exists, e.g. after a dropped remove packet).</li>
+     *   <li>{@link BulletS2CPacket#updatedBullets()} →
+     *       {@link #updateRenderObjectDelta(BulletRenderObject, DeltaBulletEntry)}
+     *       for each existing render object.</li>
+     *   <li>{@link BulletS2CPacket#removedBulletIds()} → destroy the render
+     *       object.</li>
      * </ul>
-     * <p>After processing all entries, if the packet is a <b>full-sync</b>
-     * ({@link BulletS2CPacket#fullSync()} is {@code true}), any render object
-     * whose id is not in the packet is removed — the corresponding bullet has
-     * expired or hit something on the server. Incremental packets
-     * ({@code fullSync = false}, used for the short-life creation broadcast)
-     * only create/update and never cull, so a single-bullet packet does not
-     * wipe the rest of the in-flight set.</p>
      *
      * @param packet the sync packet from the server
      */
     public void handlePacket(BulletS2CPacket packet) {
-        Set<Integer> currentIds = new HashSet<>();
-        for (BulletEntry entry : packet.bullets()) {
-            currentIds.add(entry.bulletId());
+        if (packet.forceFullSync()) {
+            renderObjects.clear();
+            snapshots.clear();
+            for (FullBulletEntry entry : packet.newBullets()) {
+                createRenderObject(entry);
+            }
+            return;
+        }
+        processNewBullets(packet.newBullets());
+        processUpdatedBullets(packet.updatedBullets());
+        processRemovedBullets(packet.removedBulletIds());
+    }
+
+    /**
+     * Creates or updates render objects from the new-bullets (full-data)
+     * bucket.
+     *
+     * <p>An id that already exists (e.g. after a dropped remove packet) is
+     * updated with the full visual data rather than discarded, keeping the
+     * client in sync with the server's authoritative style.</p>
+     *
+     * @param newBullets the full-data entries to create or update
+     */
+    private void processNewBullets(List<FullBulletEntry> newBullets) {
+        for (FullBulletEntry entry : newBullets) {
             BulletRenderObject existing = renderObjects.get(entry.bulletId());
             if (existing != null) {
-                updateRenderObject(existing, entry);
+                updateRenderObjectFull(existing, entry);
             } else {
                 createRenderObject(entry);
             }
         }
-        // Only a full-sync packet represents the complete in-flight set;
-        // incremental packets (short-life creation broadcast) must not cull
-        // bullets that are simply absent from the partial list.
-        if (packet.fullSync()) {
-            renderObjects.keySet().removeIf(id -> !currentIds.contains(id));
+    }
+
+    /**
+     * Updates existing render objects from the updated-bullets (delta)
+     * bucket. Entries whose id is not in the map are silently skipped — the
+     * server's periodic force-full-sync will recover them.
+     *
+     * @param updatedBullets the delta entries to apply
+     */
+    private void processUpdatedBullets(List<DeltaBulletEntry> updatedBullets) {
+        for (DeltaBulletEntry entry : updatedBullets) {
+            BulletRenderObject existing = renderObjects.get(entry.bulletId());
+            if (existing != null) {
+                updateRenderObjectDelta(existing, entry);
+            }
         }
     }
 
     /**
-     * Creates a new {@link BulletRenderObject} from a packet entry and
+     * Destroys render objects listed in the removed-bullets bucket.
+     *
+     * @param removedBulletIds the ids of bullets that have expired
+     */
+    private void processRemovedBullets(List<Integer> removedBulletIds) {
+        for (Integer id : removedBulletIds) {
+            renderObjects.remove(id);
+            snapshots.remove(id);
+        }
+    }
+
+    /**
+     * Creates a new {@link BulletRenderObject} from a full-data entry and
      * registers it in the map.
      *
      * <p>The {@code bulletSize} from the entry is used as the initial visual
      * scale.</p>
      *
-     * @param entry the bullet entry describing the new bullet
+     * @param entry the full-data entry describing the new bullet
      */
-    private void createRenderObject(BulletEntry entry) {
+    private void createRenderObject(FullBulletEntry entry) {
         Vec3 position = new Vec3(entry.posX(), entry.posY(), entry.posZ());
         Vec3 direction = new Vec3(entry.dirX(), entry.dirY(), entry.dirZ());
         BulletRenderObject obj = new BulletRenderObject(
@@ -143,11 +214,32 @@ public final class BulletRenderManager {
                 entry.renderMode(),
                 entry.bulletSize());
         renderObjects.put(entry.bulletId(), obj);
+        snapshots.put(entry.bulletId(), entry.snapshot());
+    }
+
+    /**
+     * Updates an existing render object with full visual data (position,
+     * direction, texture, model, render mode, size) from a full-data entry.
+     *
+     * <p>Used when a new-bullets entry references an id that already has a
+     * render object (e.g. after a dropped remove packet or a force-full-sync
+     * race). Position is advanced via
+     * {@link BulletRenderObject#updatePosition(Vec3)} which atomically
+     * archives the old position as {@code prevPosition} for frame
+     * interpolation.</p>
+     *
+     * @param obj   the existing render object to update
+     * @param entry the full-data entry with the new state
+     */
+    private void updateRenderObjectFull(BulletRenderObject obj, FullBulletEntry entry) {
+        obj.updatePosition(new Vec3(entry.posX(), entry.posY(), entry.posZ()));
+        obj.setDirection(new Vec3(entry.dirX(), entry.dirY(), entry.dirZ()));
+        snapshots.put(entry.bulletId(), entry.snapshot());
     }
 
     /**
      * Updates an existing render object's position and direction from a
-     * packet entry.
+     * delta entry (position/direction only, no visual style).
      *
      * <p>Position is advanced via
      * {@link BulletRenderObject#updatePosition(Vec3)} which atomically
@@ -156,9 +248,9 @@ public final class BulletRenderManager {
      * {@link BulletRenderObject#setDirection(Vec3)}.</p>
      *
      * @param obj   the existing render object to update
-     * @param entry the packet entry with the new state
+     * @param entry the delta entry with the new position/direction
      */
-    private void updateRenderObject(BulletRenderObject obj, BulletEntry entry) {
+    private void updateRenderObjectDelta(BulletRenderObject obj, DeltaBulletEntry entry) {
         obj.updatePosition(new Vec3(entry.posX(), entry.posY(), entry.posZ()));
         obj.setDirection(new Vec3(entry.dirX(), entry.dirY(), entry.dirZ()));
     }
@@ -176,6 +268,27 @@ public final class BulletRenderManager {
     @Nullable
     public BulletRenderObject getRenderObject(int bulletId) {
         return renderObjects.get(bulletId);
+    }
+
+    /**
+     * Returns the client-side snapshot projection for the given bullet id,
+     * or {@code null} if no bullet with that id is currently in flight
+     * (设计文档 §特性视觉钩子 — onVisualTick 快照参数).
+     *
+     * <p>The returned snapshot carries the bullet's frozen stats/traits and
+     * identity at the last full-sync point. It is the data source for
+     * {@code onVisualTick} hooks that need to read server-side attribute
+     * values (e.g. scaling a bullet by {@code bullet_size}, or changing
+     * texture when a trait is active). The snapshot is immutable; hooks read
+     * it but never mutate it (in-flight mutation happens server-side and is
+     * re-synced on the next full-sync).</p>
+     *
+     * @param bulletId the server-assigned bullet id
+     * @return the client-side snapshot, or {@code null}
+     */
+    @Nullable
+    public ClientBulletSnapshot getSnapshot(int bulletId) {
+        return snapshots.get(bulletId);
     }
 
     /**
@@ -199,6 +312,7 @@ public final class BulletRenderManager {
      */
     public void clear() {
         renderObjects.clear();
+        snapshots.clear();
     }
 
     /**

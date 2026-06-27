@@ -4,7 +4,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -15,6 +17,7 @@ import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginData;
 import org.yanbwe.modularshoot.component.PluginInstance;
+import org.yanbwe.modularshoot.datapack.RegistrationCoordinator;
 import org.yanbwe.modularshoot.item.ModularShootItems;
 import org.yanbwe.modularshoot.plugin.PluginDefinition;
 import org.yanbwe.modularshoot.plugin.PluginLockService;
@@ -337,6 +340,31 @@ public final class ModularShootAPI {
     // ---- Registry queries -----------------------------------------------
 
     /**
+     * Registers a gun definition via the Java API.
+     *
+     * <p>Delegates to {@link GunRegistry#registerGun}. Must be called during
+     * mod initialisation (before datapack loading begins, i.e. in the mod
+     * constructor or {@code FMLCommonSetupEvent}). The registered id is
+     * marked with {@link RegistrationCoordinator#markJavaApiRegistered} so
+     * that any later datapack JSON attempting to register the same id is
+     * rejected with a {@code WARN} (设计文档 §注册冲突与覆盖, line 2289).</p>
+     *
+     * <p>Java-API-registered entries survive {@code /reload} and take
+     * priority over datapack entries with the same id. See
+     * {@link GunRegistry#registerGun} for full semantics.</p>
+     *
+     * @param gunId      the gun definition id, e.g.
+     *                   {@code modularshoot:sniper_rifle}; must not be
+     *                   {@code null}
+     * @param definition the gun definition; must not be {@code null}
+     */
+    public static void registerGun(ResourceLocation gunId, GunDefinition definition) {
+        Objects.requireNonNull(gunId, "gunId");
+        Objects.requireNonNull(definition, "definition");
+        GunRegistry.registerGun(gunId, definition);
+    }
+
+    /**
      * Looks up a plugin definition by id in the
      * {@code modularshoot:plugins} registry.
      *
@@ -490,21 +518,20 @@ public final class ModularShootAPI {
      * {@link RegistryAccess}; it is not cached and may be created freely on
      * every read/write site (设计文档 §读写 API).</p>
      *
-     * @param gun            the gun item stack; must not be {@code null}
-     * @param registryAccess the runtime registry view (from a loaded world,
-     *                       e.g. {@code level.registryAccess()}); must not be
-     *                       {@code null}
+     * @param gun    the gun item stack; must not be {@code null}
+     * @param player the player context used to resolve the runtime registry;
+     *               must not be {@code null}
      * @return a {@link GunState} instance, or {@code null} when the stack is
      *         not a gun
      */
     @Nullable
-    public static GunState getState(ItemStack gun, RegistryAccess registryAccess) {
+    public static GunState getState(ItemStack gun, Player player) {
         Objects.requireNonNull(gun, "gun");
-        Objects.requireNonNull(registryAccess, "registryAccess");
+        Objects.requireNonNull(player, "player");
         if (!isGun(gun)) {
             return null;
         }
-        return GunState.of(gun, registryAccess);
+        return GunState.of(gun, player);
     }
 
     /**
@@ -515,16 +542,12 @@ public final class ModularShootAPI {
      * {@link RegistryAccess}; it is not cached and may be created freely on
      * every read/write site (设计文档 §读写 API).</p>
      *
-     * @param player         the player; must not be {@code null}
-     * @param registryAccess the runtime registry view (from a loaded world,
-     *                       e.g. {@code level.registryAccess()}); must not be
-     *                       {@code null}
+     * @param player the player; must not be {@code null}
      * @return a {@link PlayerState} instance
      */
-    public static PlayerState getPlayerState(Player player, RegistryAccess registryAccess) {
+    public static PlayerState getPlayerState(Player player) {
         Objects.requireNonNull(player, "player");
-        Objects.requireNonNull(registryAccess, "registryAccess");
-        return PlayerState.of(player, registryAccess);
+        return PlayerState.of(player);
     }
 
     // ---- Shoot predicates ------------------------------------------------
@@ -591,5 +614,33 @@ public final class ModularShootAPI {
     public static void registerDamageHandler(DamageHandler handler) {
         Objects.requireNonNull(handler, "handler");
         DamageHandlerRegistry.register(handler);
+    }
+
+    // ---- Registration coordination --------------------------------------
+
+    /**
+     * Marks an entry id as registered by the Java API in the given framework
+     * registry.
+     *
+     * <p>Add-on mods that register entries programmatically (via the Java API
+     * rather than datapack JSON) should call this during mod initialisation,
+     * before world load. When a datapack JSON later attempts to register the
+     * same id, the framework's {@link RegistrationCoordinator} detects the
+     * conflict, rejects the datapack override, and logs a {@code WARN}
+     * (设计文档 §注册冲突与覆盖, line 2289).</p>
+     *
+     * <p>This is a no-op when the id has already been marked; duplicate marks
+     * for the same registry + id are safely ignored.</p>
+     *
+     * @param registryKey the framework registry the id is registered in (one
+     *                    of the six {@code modularshoot:*} registries)
+     * @param id          the entry id claimed by the Java API
+     * @param <T>         the registry value type
+     */
+    public static <T> void markJavaApiRegistered(
+            ResourceKey<Registry<T>> registryKey, ResourceLocation id) {
+        Objects.requireNonNull(registryKey, "registryKey");
+        Objects.requireNonNull(id, "id");
+        RegistrationCoordinator.markJavaApiRegistered(registryKey, id);
     }
 }

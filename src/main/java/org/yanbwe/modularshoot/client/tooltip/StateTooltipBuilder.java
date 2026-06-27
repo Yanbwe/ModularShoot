@@ -7,6 +7,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.chat.Component;
@@ -16,6 +18,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShootAPI;
+import org.yanbwe.modularshoot.client.ClientGunDataStore;
 import org.yanbwe.modularshoot.degradation.StateDegradationHandler;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
 import org.yanbwe.modularshoot.state.GunState;
@@ -105,7 +108,7 @@ public final class StateTooltipBuilder {
             ItemStack gunStack,
             @Nullable Player viewingPlayer,
             RegistryAccess registryAccess) {
-        GunState gunState = GunState.of(gunStack, registryAccess);
+        GunState gunState = resolveGunState(gunStack, viewingPlayer, registryAccess);
         @Nullable PlayerState playerState = createPlayerStateIfHoldingGun(viewingPlayer, registryAccess);
 
         Optional<Registry<StateDefinition>> registryOpt =
@@ -134,6 +137,62 @@ public final class StateTooltipBuilder {
     }
 
     /**
+     * Resolves the {@link GunState} view to read per-gun state values from.
+     *
+     * <p>When the tooltip is being built for the local player's own
+     * main-hand gun and {@link ClientGunDataStore} has received a sync
+     * snapshot, the state is read from the authoritative server-pushed tag
+     * via {@link GunState#of(CompoundTag, RegistryAccess)}. Otherwise the
+     * local {@code GunData} component on the stack is used as a fallback
+     * (设计文档 §GunSyncS2CPacket 客户端用途, lines 2054-2056).</p>
+     *
+     * @param gunStack       the gun stack being tooltip'd
+     * @param viewingPlayer  the viewing player, or {@code null}
+     * @param registryAccess the runtime registry view
+     * @return a {@link GunState} view backed by either the sync store or
+     *         the local stack
+     */
+    private static GunState resolveGunState(
+            ItemStack gunStack,
+            @Nullable Player viewingPlayer,
+            RegistryAccess registryAccess) {
+        ClientGunDataStore store = ClientGunDataStore.getInstance();
+        if (store.hasSyncData() && isLocalMainHand(gunStack, viewingPlayer)) {
+            return GunState.of(store.getState(), registryAccess);
+        }
+        if (viewingPlayer != null) {
+            return GunState.of(gunStack, viewingPlayer);
+        }
+        net.minecraft.world.level.Level level = Minecraft.getInstance().level;
+        if (level != null) {
+            return GunState.of(gunStack, level);
+        }
+        // Fallback: read-only view from the sync store (no level available)
+        return GunState.of(store.getState(), registryAccess);
+    }
+
+    /**
+     * Checks whether the tooltip'd gun stack is the local player's own
+     * main-hand item.
+     *
+     * <p>This guards the sync-store read path so that tooltips for guns in
+     * chests, the off-hand, or other inventories never accidentally use the
+     * main-hand sync snapshot.</p>
+     *
+     * @param gunStack      the gun stack being tooltip'd
+     * @param viewingPlayer the viewing player, or {@code null}
+     * @return {@code true} if {@code gunStack} is the local player's
+     *         main-hand item
+     */
+    private static boolean isLocalMainHand(ItemStack gunStack, @Nullable Player viewingPlayer) {
+        LocalPlayer localPlayer = Minecraft.getInstance().player;
+        if (localPlayer == null || viewingPlayer != localPlayer) {
+            return false;
+        }
+        return ItemStack.isSameItemSameComponents(gunStack, localPlayer.getMainHandItem());
+    }
+
+    /**
      * Creates a {@link PlayerState} view only when the viewing player is
      * non-null and is holding a gun in their main hand.
      *
@@ -157,7 +216,7 @@ public final class StateTooltipBuilder {
         if (!ModularShootAPI.isGun(viewingPlayer.getMainHandItem())) {
             return null;
         }
-        return PlayerState.of(viewingPlayer, registryAccess);
+        return PlayerState.of(viewingPlayer);
     }
 
     /**

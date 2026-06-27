@@ -6,6 +6,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -13,6 +14,8 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 
 import org.yanbwe.modularshoot.ModularShoot;
+import org.yanbwe.modularshoot.bullet.BulletManager;
+import org.yanbwe.modularshoot.client.ClientBulletSnapshot;
 
 /**
  * Client-side render dispatcher that draws all in-flight bullets every frame
@@ -97,8 +100,12 @@ public final class BulletRenderDispatcher {
      *              and partial-tick data
      */
     private static void renderAllBullets(RenderLevelStageEvent event) {
-        Collection<BulletRenderObject> renderObjects =
-                BulletRenderManager.getInstance().getAllRenderObjects();
+        Level level = Minecraft.getInstance().level;
+        if (level == null) {
+            return;
+        }
+        BulletRenderManager renderManager = BulletManager.getClientRenderManager(level);
+        Collection<BulletRenderObject> renderObjects = renderManager.getAllRenderObjects();
         if (renderObjects.isEmpty()) {
             return;
         }
@@ -110,8 +117,11 @@ public final class BulletRenderDispatcher {
         MultiBufferSource bufferSource = Minecraft.getInstance().renderBuffers().bufferSource();
 
         for (BulletRenderObject renderObject : renderObjects) {
-            // Fire visual-tick hooks so traits can mutate appearance before draw
-            VisualTickHookDispatcher.dispatchVisualTick(renderObject);
+            // Fire visual-tick hooks so traits can mutate appearance before draw.
+            // The snapshot supplies frozen stats/traits so hooks can make
+            // data-driven visual decisions (设计文档 §特性视觉钩子, line 1298).
+            ClientBulletSnapshot snapshot = renderManager.getSnapshot(renderObject.getBulletId());
+            VisualTickHookDispatcher.dispatchVisualTick(snapshot, renderObject);
 
             Vec3 interpolatedPos = interpolatePosition(renderObject, partialTick);
             renderByMode(renderObject, poseStack, bufferSource, partialTick, cameraPos, interpolatedPos);

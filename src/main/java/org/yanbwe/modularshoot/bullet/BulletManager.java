@@ -16,6 +16,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShoot;
+import org.yanbwe.modularshoot.client.render.BulletRenderManager;
 import org.yanbwe.modularshoot.trait.RemoveReason;
 
 /**
@@ -102,6 +103,39 @@ public final class BulletManager {
             }
             return mgr;
         }
+    }
+
+    /**
+     * Returns the client-side {@link BulletRenderManager} for the given
+     * dimension (设计文档 §渲染对象与渲染管理器, line 1260:
+     * "通过 {@code BulletManager.getClientLevel(Level)} 获取").
+     *
+     * <p>This is the client-side counterpart to {@link #get(Level)}: where
+     * {@code get(level)} returns the server-side logical bullet manager
+     * (collision, damage, trajectory), this method returns the client-side
+     * render manager (pure visual data — render objects, snapshots, visual
+     * hooks). The two are deliberately accessed through the same
+     * {@code BulletManager} facade so that third-party code has a single
+     * entry point for bullet-related lookups, distinguished by side.</p>
+     *
+     * <p><strong>Client-only.</strong> Calling this method on the server
+     * throws {@link IllegalStateException}. The {@link BulletRenderManager}
+     * class lives in the {@code client.render} package and is annotated
+     * {@code @EventBusSubscriber(Dist.CLIENT)}; although it is present in
+     * the main source set (and therefore on the server classpath), it is
+     * only functional on the client. The {@code level.isClientSide()} guard
+     * ensures the render manager is never touched on the authoritative
+     * server.</p>
+     *
+     * @param level the client dimension to look up the render manager for
+     * @return the client-side bullet render manager singleton
+     * @throws IllegalStateException if {@code level} is not client-side
+     */
+    public static BulletRenderManager getClientRenderManager(Level level) {
+        if (level.isClientSide()) {
+            return BulletRenderManager.getInstance();
+        }
+        throw new IllegalStateException("getClientRenderManager() is client-side only");
     }
 
     /**

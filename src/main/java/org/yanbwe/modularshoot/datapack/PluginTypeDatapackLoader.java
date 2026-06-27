@@ -8,8 +8,6 @@ import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import org.yanbwe.modularshoot.plugin.PluginTypeDefinition;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Post-load validation utility for the
@@ -38,8 +36,6 @@ import org.slf4j.LoggerFactory;
  * @see ModularShootRegistries#PLUGIN_TYPES_KEY
  */
 public final class PluginTypeDatapackLoader {
-    /** Dedicated subsystem logger for plugin type validation. */
-    private static final Logger LOGGER = LoggerFactory.getLogger("ModularShoot/PluginType");
 
     private PluginTypeDatapackLoader() {
     }
@@ -66,7 +62,7 @@ public final class PluginTypeDatapackLoader {
             ResourceLocation typeId, PluginTypeDefinition definition) {
         if (PluginTypeJsonCodec.hasEmptyTags(definition)) {
             final String warning = buildEmptyTagsWarning(typeId);
-            LOGGER.warn(warning);
+            DatapackErrorHandler.logReferenceWarning(typeId, warning);
             return TypeValidation.emptyTags(definition, warning);
         }
         return TypeValidation.ok(definition);

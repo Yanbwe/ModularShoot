@@ -8,8 +8,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
 import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Post-load validation utility for the {@code modularshoot:attribute_meta}
@@ -39,8 +37,6 @@ import org.slf4j.LoggerFactory;
  * @see BuiltInRegistries#ATTRIBUTE
  */
 public final class AttributeMetaDatapackLoader {
-    /** Dedicated subsystem logger for attribute metadata validation. */
-    private static final Logger LOGGER = LoggerFactory.getLogger("ModularShoot/AttributeMeta");
 
     private AttributeMetaDatapackLoader() {
     }
@@ -97,7 +93,7 @@ public final class AttributeMetaDatapackLoader {
             return BindingValidation.ok(meta);
         }
         final String warning = buildUnboundWarning(logicalId, meta.binds());
-        LOGGER.warn(warning);
+        DatapackErrorHandler.logReferenceWarning(logicalId, warning);
         return BindingValidation.unbound(meta, warning);
     }
 

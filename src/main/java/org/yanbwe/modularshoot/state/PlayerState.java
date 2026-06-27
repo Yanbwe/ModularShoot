@@ -64,14 +64,31 @@ public final class PlayerState {
     }
 
     /**
-     * Creates a {@link PlayerState} view over the given player.
+     * Creates a {@link PlayerState} view over the given player, deriving the
+     * {@link RegistryAccess} from the player itself (设计文档 §读写 API).
      *
-     * @param player         the player whose state is read/written
-     * @param registryAccess the runtime registry view (from a loaded world,
-     *                       e.g. {@code level.registryAccess()})
+     * @param player the player whose state is read/written
      * @return a new {@link PlayerState}
      */
-    public static PlayerState of(Player player, RegistryAccess registryAccess) {
+    public static PlayerState of(Player player) {
+        Objects.requireNonNull(player, "player");
+        return new PlayerState(player, player.registryAccess());
+    }
+
+    /**
+     * Creates a {@link PlayerState} view over the given player using an
+     * explicit {@link RegistryAccess}.
+     *
+     * <p>Package-private: external callers should prefer {@link #of(Player)}
+     * which derives the registry view from the player (设计文档 §读写 API —
+     * 无 RegistryAccess 参数). This overload is retained for internal
+     * state-package classes that already hold a {@link RegistryAccess}.</p>
+     *
+     * @param player         the player whose state is read/written
+     * @param registryAccess the runtime registry view
+     * @return a new {@link PlayerState}
+     */
+    static PlayerState of(Player player, RegistryAccess registryAccess) {
         return new PlayerState(player, registryAccess);
     }
 

@@ -1,11 +1,15 @@
 package org.yanbwe.modularshoot.state;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.core.RegistryAccess;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
@@ -46,24 +50,84 @@ import org.yanbwe.modularshoot.component.ModularShootDataComponents;
  * @see GunData
  */
 public final class GunState {
-    private final ItemStack gunStack;
+    private final @Nullable ItemStack gunStack;
+    private final @Nullable CompoundTag stateOverride;
     private final RegistryAccess registryAccess;
 
     private GunState(ItemStack gunStack, RegistryAccess registryAccess) {
         this.gunStack = gunStack;
+        this.stateOverride = null;
+        this.registryAccess = registryAccess;
+    }
+
+    private GunState(CompoundTag stateOverride, RegistryAccess registryAccess) {
+        this.gunStack = null;
+        this.stateOverride = stateOverride;
         this.registryAccess = registryAccess;
     }
 
     /**
-     * Creates a {@link GunState} view over the given gun stack.
+     * Creates a {@link GunState} view over the given gun stack, deriving the
+     * {@link RegistryAccess} from the supplied player (设计文档 §读写 API).
      *
-     * @param gunStack       the {@code modularshoot:gun} item stack to read/write
-     * @param registryAccess the runtime registry view (from a loaded world,
-     *                       e.g. {@code level.registryAccess()})
+     * @param gunStack the {@code modularshoot:gun} item stack to read/write
+     * @param player   the player context used to resolve the runtime registry
      * @return a new {@link GunState}
      */
-    public static GunState of(ItemStack gunStack, RegistryAccess registryAccess) {
+    public static GunState of(ItemStack gunStack, Player player) {
+        Objects.requireNonNull(player, "player");
+        return new GunState(gunStack, player.registryAccess());
+    }
+
+    /**
+     * Creates a {@link GunState} view over the given gun stack, deriving the
+     * {@link RegistryAccess} from the supplied level (设计文档 §读写 API).
+     *
+     * @param gunStack the {@code modularshoot:gun} item stack to read/write
+     * @param level    the level used to resolve the runtime registry
+     * @return a new {@link GunState}
+     */
+    public static GunState of(ItemStack gunStack, Level level) {
+        Objects.requireNonNull(level, "level");
+        return new GunState(gunStack, level.registryAccess());
+    }
+
+    /**
+     * Creates a {@link GunState} view over the given gun stack using an
+     * explicit {@link RegistryAccess}.
+     *
+     * <p>Package-private: external callers should prefer
+     * {@link #of(ItemStack, Player)} or {@link #of(ItemStack, Level)} which
+     * derive the registry view from a readily available context (设计文档
+     * §读写 API — 无 RegistryAccess 参数). This overload is retained for
+     * internal state-package classes that already hold a
+     * {@link RegistryAccess}.</p>
+     *
+     * @param gunStack       the {@code modularshoot:gun} item stack to read/write
+     * @param registryAccess the runtime registry view
+     * @return a new {@link GunState}
+     */
+    static GunState of(ItemStack gunStack, RegistryAccess registryAccess) {
         return new GunState(gunStack, registryAccess);
+    }
+
+    /**
+     * Creates a read-only {@link GunState} view over a standalone state
+     * compound tag, decoupled from any item stack.
+     *
+     * <p>Used by client-side consumers that read the authoritative server
+     * state from
+     * {@link org.yanbwe.modularshoot.client.ClientGunDataStore#getState()}
+     * rather than the local {@code GunData} component. All mutator
+     * operations ({@link #setInt}, {@link #clearState}, etc.) are silent
+     * no-ops on this view because there is no backing stack to write to.</p>
+     *
+     * @param state          the per-gun state compound tag to read from
+     * @param registryAccess the runtime registry view (from a loaded world)
+     * @return a new read-only {@link GunState}
+     */
+    public static GunState of(CompoundTag state, RegistryAccess registryAccess) {
+        return new GunState(state, registryAccess);
     }
 
     // ------------------------------------------------------------------
@@ -267,6 +331,10 @@ public final class GunState {
      * @param stateId the state id to remove
      */
     public void clearState(ResourceLocation stateId) {
+        if (stateOverride != null) {
+            // Read-only view (from ClientGunDataStore): writes are not supported.
+            return;
+        }
         final GunData gunData = currentGunData();
         if (gunData == null) {
             return;
@@ -361,6 +429,10 @@ public final class GunState {
      * @param value        the value to write; {@code null} is only valid for UUID
      */
     private void setTypedValue(ResourceLocation stateId, StateValueType requestedType, @Nullable Object value) {
+        if (stateOverride != null) {
+            // Read-only view (from ClientGunDataStore): writes are not supported.
+            return;
+        }
         final StateDefinition def = validateState(stateId, requestedType);
         if (def == null) {
             return;
@@ -387,10 +459,20 @@ public final class GunState {
      * Returns the {@link GunData} currently stored on the wrapped stack, or
      * {@code null} when the stack carries no gun data component.
      *
+     * <p>In read-only mode (created via {@link #of(CompoundTag, RegistryAccess)})
+     * a lightweight {@link GunData} is synthesised from the
+     * {@code stateOverride} tag so that all read accessors work unchanged.
+     * The synthesised data carries {@code null} {@code gunId}/
+     * {@code gunInstanceUuid} and an empty plugin list, which is safe because
+     * state-value reads only touch the {@code state} tag.</p>
+     *
      * @return the current {@link GunData}, or {@code null}
      */
     @Nullable
     private GunData currentGunData() {
+        if (stateOverride != null) {
+            return new GunData(null, null, List.of(), 0, stateOverride);
+        }
         return gunStack.get(ModularShootDataComponents.GUN_DATA.get());
     }
 

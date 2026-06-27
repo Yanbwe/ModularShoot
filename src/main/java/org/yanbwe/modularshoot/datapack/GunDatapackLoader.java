@@ -7,8 +7,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import net.minecraft.resources.ResourceLocation;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Post-load validation utility for the {@code modularshoot:guns} datapack
@@ -39,8 +37,6 @@ import org.slf4j.LoggerFactory;
  * @see GunJsonCodec
  */
 public final class GunDatapackLoader {
-    /** Dedicated subsystem logger for gun validation. */
-    private static final Logger LOGGER = LoggerFactory.getLogger("ModularShoot/Gun");
 
     private GunDatapackLoader() {
     }
@@ -90,7 +86,7 @@ public final class GunDatapackLoader {
         if (warning.isEmpty()) {
             return GunValidation.ok(gun);
         }
-        LOGGER.warn(warning.get());
+        DatapackErrorHandler.logReferenceWarning(gunId, warning.get());
         return GunValidation.warned(gun, warning.get());
     }
 

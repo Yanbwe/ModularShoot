@@ -3,13 +3,19 @@ package org.yanbwe.modularshoot.network;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.api.event.ReloadEvent;
+import org.yanbwe.modularshoot.bullet.BulletManager;
+import org.yanbwe.modularshoot.client.ClientGunDataStore;
 import org.yanbwe.modularshoot.client.ClientGunSyncHandler;
+import org.yanbwe.modularshoot.client.ClientHitEffectHandler;
 import org.yanbwe.modularshoot.client.PlayerShootStateManager;
 import org.yanbwe.modularshoot.client.render.BulletRenderManager;
 import org.yanbwe.modularshoot.shooting.ShootPacketHandler;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.common.NeoForge;
@@ -42,8 +48,15 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 @EventBusSubscriber(modid = ModularShoot.MODID)
 public final class ModularShootPayloads {
 
-    /** Network protocol version shared by all ModularShoot payloads. */
-    public static final String PROTOCOL_VERSION = "1";
+    /**
+     * Network protocol version shared by all ModularShoot payloads.
+     *
+     * <p>Bumped to {@code "2"} at the D-02/D-03/D-04 fix: {@code BulletS2CPacket}
+     * wire format changed from a single flat bullet list + fullSync flag to
+     * a three-bucket structure (newBullets / updatedBullets / removedBulletIds
+     * + forceFullSync flag) for incremental delta sync.</p>
+     */
+    public static final String PROTOCOL_VERSION = "2";
 
     private ModularShootPayloads() {}
 
@@ -189,8 +202,12 @@ public final class ModularShootPayloads {
      *
      * <p>Delegates to {@link BulletRenderManager#handlePacket(BulletS2CPacket)}
      * on the main client thread via
-     * {@link IPayloadContext#enqueueWork(Runnable)}. The manager reconciles
-     * its render-object map with the packet: creating new
+     * {@link IPayloadContext#enqueueWork(Runnable)}. The manager is obtained
+     * through {@link BulletManager#getClientRenderManager(Level)} (设计文档
+     * §渲染对象与渲染管理器, line 1260) using the client {@code Level} from
+     * {@link Minecraft#level}, keeping a single entry point for bullet-manager
+     * lookups. The manager reconciles its render-object map with the packet:
+     * creating new
      * {@link org.yanbwe.modularshoot.client.render.BulletRenderObject}s,
      * updating existing ones, and removing those whose bullets have
      * expired.</p>
@@ -199,40 +216,68 @@ public final class ModularShootPayloads {
      */
     private static IPayloadHandler<BulletS2CPacket> handleBulletS2C() {
         return (payload, context) -> {
-            context.enqueueWork(() -> BulletRenderManager.getInstance().handlePacket(payload));
+            context.enqueueWork(() -> {
+                Level level = Minecraft.getInstance().level;
+                if (level != null) {
+                    BulletManager.getClientRenderManager(level).handlePacket(payload);
+                }
+            });
         };
     }
 
     /**
      * Builds the handler for {@link BulletHitS2CPacket}.
      *
-     * <p><b>STUB:</b> No-op until the client-side impact-effect logic is
-     * implemented in a later M4 subtask.</p>
+     * <p>Delegates to {@link ClientHitEffectHandler#playHitEffect} on the
+     * main client thread via {@link IPayloadContext#enqueueWork(Runnable)}.
+     * The handler spawns the appropriate particles and plays a local sound
+     * for the hit type (entity / block / pierce) without mutating any game
+     * state — the server has already resolved damage authoritatively
+     * (设计文档 §BulletHitS2CPacket 客户端处理, lines 2033-2035).</p>
      *
      * @return the payload handler
      */
     private static IPayloadHandler<BulletHitS2CPacket> handleBulletHitS2C() {
         return (payload, context) -> {
-            // Stub: client-side hit-effect handling to be implemented later.
+            context.enqueueWork(() -> {
+                Minecraft mc = Minecraft.getInstance();
+                if (mc.level == null) {
+                    return;
+                }
+                Vec3 hitPos = new Vec3(payload.hitX(), payload.hitY(), payload.hitZ());
+                ClientHitEffectHandler.playHitEffect(
+                        mc.level, hitPos, payload.hitType(), payload.hitEntityId());
+            });
         };
     }
 
     /**
      * Builds the handler for {@link GunSyncS2CPacket}.
      *
-     * <p>Delegates to {@link ClientGunSyncHandler#handlePacket} on the main
-     * client thread via {@link IPayloadContext#enqueueWork}. The handler
-     * rebuilds the local player's main-hand
-     * {@link org.yanbwe.modularshoot.component.GunData} from the packet's
-     * plugin list, {@code modifierVersion} and per-gun {@code state} map,
-     * keeping the client's gun model, plugin visual overlays, and HUD state
-     * text aligned with the authoritative server state.</p>
+     * <p>Delegates to two client-side consumers on the main client thread
+     * via {@link IPayloadContext#enqueueWork(Runnable)}:</p>
+     * <ol>
+     *   <li>{@link ClientGunSyncHandler#handlePacket} rebuilds the local
+     *       player's main-hand
+     *       {@link org.yanbwe.modularshoot.component.GunData} from the
+     *       packet's plugin list, {@code modifierVersion} and per-gun
+     *       {@code state} map, keeping the client's gun model aligned with
+     *       the server (and serving as a fallback data source for
+     *       consumers).</li>
+     *   <li>{@link ClientGunDataStore#handleSync} stores the same snapshot
+     *       in a dedicated singleton so the plugin overlay compositor and
+     *       state tooltip builder can read from an explicit sync channel
+     *       (设计文档 §GunSyncS2CPacket 客户端用途, lines 2054-2056).</li>
+     * </ol>
      *
      * @return the payload handler
      */
     private static IPayloadHandler<GunSyncS2CPacket> handleGunSyncS2C() {
         return (payload, context) -> {
-            context.enqueueWork(() -> ClientGunSyncHandler.handlePacket(payload));
+            context.enqueueWork(() -> {
+                ClientGunSyncHandler.handlePacket(payload);
+                ClientGunDataStore.getInstance().handleSync(payload);
+            });
         };
     }
 

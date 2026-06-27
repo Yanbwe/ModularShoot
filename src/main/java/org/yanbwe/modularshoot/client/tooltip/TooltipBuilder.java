@@ -25,9 +25,12 @@ import org.yanbwe.modularshoot.degradation.GunDegradationHandler;
  * client. This prevents {@code ClassNotFoundException} for client-only
  * classes on a dedicated server.</p>
  *
- * <p><b>M5 scope:</b> this builder injects only the state bar via
- * {@link StateTooltipBuilder}. Attribute, trait, and plugin tooltip bars
- * are handled by separate builders in later milestones.</p>
+ * <p><b>Scope:</b> this builder injects the state bar via
+ * {@link StateTooltipBuilder} and the plugin bar via
+ * {@link PluginBarTooltipBuilder}. Attribute and trait tooltip bars are
+ * handled by separate builders in later milestones. Plugin-item tooltips
+ * (items of type {@code modularshoot:plugin}) are handled by a separate
+ * subscriber, {@link PluginTooltipBuilder}.</p>
  *
  * <p><b>Main-menu safety:</b> {@link ItemTooltipEvent} can fire with a
  * {@code null} player during search-tree population (e.g. on startup). The
@@ -35,6 +38,8 @@ import org.yanbwe.modularshoot.degradation.GunDegradationHandler;
  * on the main menu and per-player states require a live player context.</p>
  *
  * @see StateTooltipBuilder
+ * @see PluginBarTooltipBuilder
+ * @see PluginTooltipBuilder
  */
 @EventBusSubscriber(modid = ModularShoot.MODID, value = Dist.CLIENT)
 public final class TooltipBuilder {
@@ -52,13 +57,20 @@ public final class TooltipBuilder {
      *       tooltip is replaced with only the degraded name and gunId
      *       (设计文档 §枪械 gunId 失效降级).</li>
      *   <li>State bar build — collect, filter, sort, and render.</li>
+     *   <li>Plugin bar build — group installed plugins by category, render
+     *       the configured slot headers and the trailing
+     *       {@code [未知种类]} degradation group (A-03), and degrade
+     *       missing-plugin instances to grey {@code [失效插件]} lines
+     *       (A-04).</li>
      * </ol>
      * </p>
      *
      * <p>When the state bar is non-empty, a grey {@code "状态:"} header is
      * added followed by the state lines. When no state is displayable
      * (empty registry, all values at default with {@code hide_default},
-     * etc.) the entire section is omitted.</p>
+     * etc.) the state section is omitted but the plugin bar is still
+     * rendered, since plugin slots are always shown per the design contract
+     * (设计文档 line 1473).</p>
      *
      * @param event the item tooltip event
      */
@@ -85,12 +97,18 @@ public final class TooltipBuilder {
         }
 
         List<Component> stateBar = StateTooltipBuilder.buildStateBar(stack, player, registryAccess);
-        if (stateBar.isEmpty()) {
-            return;
+        if (!stateBar.isEmpty()) {
+            event.getToolTip().add(Component.literal("状态:").withStyle(ChatFormatting.GRAY));
+            event.getToolTip().addAll(stateBar);
         }
 
-        event.getToolTip().add(Component.literal("状态:").withStyle(ChatFormatting.GRAY));
-        event.getToolTip().addAll(stateBar);
+        // Plugin bar (设计文档 §插件栏; A-03 种类降级 + A-04 插件降级).
+        // Rendered after the state bar; plugin slots are always shown per
+        // the design contract, so an empty state bar does not skip this.
+        List<Component> pluginBar = PluginBarTooltipBuilder.buildPluginBar(stack, player, registryAccess);
+        if (!pluginBar.isEmpty()) {
+            event.getToolTip().addAll(pluginBar);
+        }
     }
 
     /**

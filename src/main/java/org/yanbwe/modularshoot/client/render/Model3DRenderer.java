@@ -45,13 +45,32 @@ import org.jetbrains.annotations.Nullable;
  * its built-in missing model (the black-and-purple cube), so rendering never
  * crashes.</p>
  *
- * <p><b>Registration requirement:</b> a standalone JSON model is only present
- * in the model manager's baked registry if something references it. Bullet
- * models must therefore be registered for baking separately — e.g. via
- * NeoForge's additional-model registration ({@code ModelEvent.RegisterAdditional}).
- * That registration is intentionally out of scope for this renderer: it only
- * looks up and draws. TODO: wire bullet model ids into the additional-model
- * registration event once the model-generation subtask lands.</p>
+ * <p><b>Registration requirement (E-02):</b> a standalone JSON model is only
+ * present in the model manager's baked registry if something references it.
+ * Bullet models must therefore be registered for baking separately — e.g.
+ * via NeoForge's additional-model registration
+ * ({@code ModelEvent.RegisterAdditional}).</p>
+ *
+ * <p>This renderer intentionally does <strong>not</strong> perform that
+ * registration. There is a fundamental timing constraint:
+ * {@code ModelEvent.RegisterAdditional} fires during resource reload (on a
+ * worker thread), before datapack-driven registries such as
+ * {@code modularshoot:guns} are populated on the client. The gun definitions
+ * — and therefore the bullet model paths — are simply not available at
+ * registration time. Additionally, {@code RegisterAdditional} requires the
+ * {@code STANDALONE_VARIANT} variant, while this renderer looks up models
+ * via the {@code inventory} variant, making the two incompatible without a
+ * dual-registration scheme.</p>
+ *
+ * <p>Instead, this renderer adopts a <em>deferred-loading</em> strategy:
+ * {@link ModelManager#getModel} returns the built-in missing model (the
+ * black-and-purple cube) for unregistered locations, so rendering never
+ * crashes. When a bullet model has not been pre-registered the player sees
+ * the missing-model pattern rather than the intended projectile — a safe,
+ * non-fatal degradation. Model registration will be handled in a future
+ * milestone via a resource-convention scan (registering all JSON files under
+ * a conventional path such as {@code assets/<namespace>/models/bullet/}).
+ * See 设计文档 §模型 for the documented rationale.</p>
  *
  * <h2>Direction rotation</h2>
  * <p>The model's forward axis is assumed to be local {@code +Z}. Two Euler
