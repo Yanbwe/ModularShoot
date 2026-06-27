@@ -448,6 +448,28 @@ public final class ModularShootAPI {
     }
 
     /**
+     * Returns the {@link GunData} component of a gun stack.
+     *
+     * <p>Delegates to the {@code gun_data} component carried by the stack.
+     * Returns {@link Optional#empty()} when the stack is not a
+     * {@code modularshoot:gun} item or carries no {@code gun_data} component.
+     * Upper-layer mods can use this to access the full per-gun runtime state
+     * (gun id, instance uuid, installed plugins, modifier version, state
+     * payload) rather than only the gun id exposed by {@link #getGunId}.</p>
+     *
+     * @param gun the stack to inspect; must not be {@code null}
+     * @return the {@link GunData}, or empty when the stack is not a gun
+     *         or has no component
+     */
+    public static Optional<GunData> getGunData(ItemStack gun) {
+        Objects.requireNonNull(gun, "gun");
+        if (!gun.is(ModularShootItems.GUN_ITEM.get())) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(gun.get(ModularShootDataComponents.GUN_DATA.get()));
+    }
+
+    /**
      * Checks whether the given stack is a framework {@code modularshoot:gun}
      * item.
      *

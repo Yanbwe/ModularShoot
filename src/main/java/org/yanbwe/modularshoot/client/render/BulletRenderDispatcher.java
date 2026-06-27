@@ -104,7 +104,7 @@ public final class BulletRenderDispatcher {
         if (level == null) {
             return;
         }
-        BulletRenderManager renderManager = BulletManager.getClientRenderManager(level);
+        BulletRenderManager renderManager = BulletManager.getClientLevel(level);
         Collection<BulletRenderObject> renderObjects = renderManager.getAllRenderObjects();
         if (renderObjects.isEmpty()) {
             return;

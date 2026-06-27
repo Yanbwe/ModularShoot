@@ -94,9 +94,16 @@ public final class PluginInstallEventHandler {
         RegistryAccess registryAccess = player.level().registryAccess();
         ValidationResult result =
                 PluginInstallService.installPlugin(stackedOnItem, carriedItem, player, registryAccess);
-        // 7. On failure, notify the player via the action bar.
+        // 7. On failure, notify the player via the action bar, appending the
+        //    specific error message from ValidationResult when present.
         if (!result.valid()) {
-            player.displayClientMessage(Component.translatable(INSTALL_FAILED_KEY), true);
+            Component message = Component.translatable(INSTALL_FAILED_KEY);
+            if (result.errorMessage().isPresent()) {
+                message = Component.empty()
+                        .append(message)
+                        .append(Component.literal(": " + result.errorMessage().get()));
+            }
+            player.displayClientMessage(message, true);
         }
     }
 

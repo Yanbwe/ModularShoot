@@ -131,11 +131,11 @@ public final class BulletManager {
      * @return the client-side bullet render manager singleton
      * @throws IllegalStateException if {@code level} is not client-side
      */
-    public static BulletRenderManager getClientRenderManager(Level level) {
+    public static BulletRenderManager getClientLevel(Level level) {
         if (level.isClientSide()) {
             return BulletRenderManager.getInstance();
         }
-        throw new IllegalStateException("getClientRenderManager() is client-side only");
+        throw new IllegalStateException("getClientLevel() is client-side only");
     }
 
     /**

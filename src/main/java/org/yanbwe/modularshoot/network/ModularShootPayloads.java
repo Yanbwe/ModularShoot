@@ -203,7 +203,7 @@ public final class ModularShootPayloads {
      * <p>Delegates to {@link BulletRenderManager#handlePacket(BulletS2CPacket)}
      * on the main client thread via
      * {@link IPayloadContext#enqueueWork(Runnable)}. The manager is obtained
-     * through {@link BulletManager#getClientRenderManager(Level)} (设计文档
+     * through {@link BulletManager#getClientLevel(Level)} (设计文档
      * §渲染对象与渲染管理器, line 1260) using the client {@code Level} from
      * {@link Minecraft#level}, keeping a single entry point for bullet-manager
      * lookups. The manager reconciles its render-object map with the packet:
@@ -219,7 +219,7 @@ public final class ModularShootPayloads {
             context.enqueueWork(() -> {
                 Level level = Minecraft.getInstance().level;
                 if (level != null) {
-                    BulletManager.getClientRenderManager(level).handlePacket(payload);
+                    BulletManager.getClientLevel(level).handlePacket(payload);
                 }
             });
         };
