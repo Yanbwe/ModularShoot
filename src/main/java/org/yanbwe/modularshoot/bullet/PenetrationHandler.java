@@ -53,11 +53,11 @@ public final class PenetrationHandler {
 
     /** Attribute id for {@code entity_penetration}, read from the frozen snapshot. */
     private static final ResourceLocation ENTITY_PENETRATION_ID =
-            ModularShootAttributes.ENTITY_PENETRATION.getId();
+            ModularShootAttributes.ENTITY_PENETRATION.getKey().location();
 
     /** Attribute id for {@code block_penetration}, read from the frozen snapshot. */
     private static final ResourceLocation BLOCK_PENETRATION_ID =
-            ModularShootAttributes.BLOCK_PENETRATION.getId();
+            ModularShootAttributes.BLOCK_PENETRATION.getKey().location();
 
     private PenetrationHandler() {
     }

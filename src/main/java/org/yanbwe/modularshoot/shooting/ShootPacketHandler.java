@@ -19,7 +19,7 @@ import org.yanbwe.modularshoot.network.ShootAnimSyncService;
  *
  * <p>Implements the server-side processing pipeline from 设计文档 §网络同步方案
  * (服务端处理), steps 1&ndash;3 plus the fire-rate gate, and delegates the
- * remaining bullet-spawn work to the shooting engine (subtask 17).</p>
+ * remaining bullet-spawn work to the shooting engine.</p>
  *
  * <p><b>Pipeline:</b></p>
  * <ol>
@@ -28,7 +28,7 @@ import org.yanbwe.modularshoot.network.ShootAnimSyncService;
  *   <li>Run the {@link ModifierVersionAntiCheat} modifier-version check.</li>
  *   <li>Run the {@link FireRateController} tick-based fire-rate gate using
  *       the player's final {@code fire_rate} attribute value.</li>
- *   <li>Delegate to the shooting engine (TODO subtask 17) for look-angle
+ *   <li>Delegate to the shooting engine for look-angle
  *       derivation, spread, bullet snapshot, {@code BulletManager}
  *       registration and broadcast.</li>
  * </ol>

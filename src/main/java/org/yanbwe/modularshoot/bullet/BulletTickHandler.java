@@ -51,13 +51,16 @@ import org.yanbwe.modularshoot.trait.RemoveReason;
 public final class BulletTickHandler {
 
     /** Attribute id for {@code bullet_speed}, read from the snapshot each tick. */
-    private static final ResourceLocation BULLET_SPEED_ID = ModularShootAttributes.BULLET_SPEED.getId();
+    private static final ResourceLocation BULLET_SPEED_ID =
+            ModularShootAttributes.BULLET_SPEED.getKey().location();
 
     /** Attribute id for {@code range}, read from the snapshot each tick. */
-    private static final ResourceLocation RANGE_ID = ModularShootAttributes.RANGE.getId();
+    private static final ResourceLocation RANGE_ID =
+            ModularShootAttributes.RANGE.getKey().location();
 
     /** Attribute id for {@code hit_damage}, read from the snapshot on entity hit. */
-    private static final ResourceLocation HIT_DAMAGE_ID = ModularShootAttributes.HIT_DAMAGE.getId();
+    private static final ResourceLocation HIT_DAMAGE_ID =
+            ModularShootAttributes.HIT_DAMAGE.getKey().location();
 
     private BulletTickHandler() {
     }
@@ -97,8 +100,7 @@ public final class BulletTickHandler {
     /**
      * Processes a single bullet for one tick, executing the flight pipeline:
      * {@code onTick} hook, aging, position advance, chunk migration, range
-     * expiry, unloaded-chunk expiry, then collision/penetration/damage
-     * (TODO subtasks 10–12).
+     * expiry, unloaded-chunk expiry, then collision/penetration/damage.
      *
      * <p>Returns early once the bullet is removed so no further processing
      * runs on a dead record.</p>

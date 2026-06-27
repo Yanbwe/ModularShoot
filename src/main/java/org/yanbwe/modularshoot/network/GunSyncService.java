@@ -24,6 +24,8 @@ import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginInstance;
 import org.yanbwe.modularshoot.plugin.event.PostPluginInstallEvent;
 import org.yanbwe.modularshoot.plugin.event.PostPluginUninstallEvent;
+import org.yanbwe.modularshoot.shooting.FireRateController;
+import org.yanbwe.modularshoot.shooting.ModifierVersionAntiCheat;
 
 /**
  * Server-side gun-data sync orchestrator (设计文档 §GunSyncS2CPacket 触发时机,
@@ -215,6 +217,10 @@ public final class GunSyncService {
      * Removes per-player tracking entries when a player logs out to prevent
      * unbounded growth of the static maps.
      *
+     * <p>Also cascades cleanup to the fire-rate controller and modifier-version
+     * anti-cheat, whose per-player state maps would otherwise retain entries
+     * for disconnected players indefinitely (内存泄漏修复).</p>
+     *
      * @param event the logout event
      */
     @SubscribeEvent
@@ -222,6 +228,8 @@ public final class GunSyncService {
         UUID playerUuid = event.getEntity().getUUID();
         previousMainHandGun.remove(playerUuid);
         dirtyPlayers.remove(playerUuid);
+        FireRateController.clearPlayer(playerUuid);
+        ModifierVersionAntiCheat.clearPlayer(playerUuid);
     }
 
     // ------------------------------------------------------------------

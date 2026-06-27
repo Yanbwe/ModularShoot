@@ -62,7 +62,8 @@ import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 public final class CollisionDetector {
 
     /** Attribute id for {@code bullet_size}, read from the frozen snapshot. */
-    private static final ResourceLocation BULLET_SIZE_ID = ModularShootAttributes.BULLET_SIZE.getId();
+    private static final ResourceLocation BULLET_SIZE_ID =
+            ModularShootAttributes.BULLET_SIZE.getKey().location();
 
     /** Nudge applied to advance the ray start past a skipped (penetrated) block. */
     private static final double SKIP_NUDGE = 1.0E-4;

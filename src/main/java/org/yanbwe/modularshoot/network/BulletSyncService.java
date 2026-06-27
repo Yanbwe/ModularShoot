@@ -103,7 +103,8 @@ import org.jetbrains.annotations.Nullable;
 public final class BulletSyncService {
 
     /** Attribute id for {@code bullet_size}, read from each bullet's frozen snapshot. */
-    private static final ResourceLocation BULLET_SIZE_ID = ModularShootAttributes.BULLET_SIZE.getId();
+    private static final ResourceLocation BULLET_SIZE_ID =
+            ModularShootAttributes.BULLET_SIZE.getKey().location();
 
     /** Render-mode tag for the billboard pipeline, used as the default when no style is defined. */
     private static final String DEFAULT_RENDER_MODE = BulletStyle.RenderMode.BILLBOARD.getSerializedName();

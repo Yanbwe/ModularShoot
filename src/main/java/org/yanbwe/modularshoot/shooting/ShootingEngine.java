@@ -69,10 +69,11 @@ import org.yanbwe.modularshoot.registry.gun.GunRegistry;
  * shot. The class is not instantiable; all methods are static. Every method is
  * kept under 50 lines per the project code-quality standard.</p>
  *
- * <p><b>Trait merge note:</b> this implementation uses the gun definition's
- * inherent traits directly ({@link GunDefinition#traits()}). Full plugin-trait
- * merging via {@code TraitMergeService} will be integrated in a later
- * subtask; until then plugin-installed traits do not appear in the snapshot.</p>
+ * <p><b>Trait merge:</b> the snapshot's traits are computed by
+ * {@link org.yanbwe.modularshoot.plugin.TraitMergeService#computeTraits},
+ * which merges the gun's inherent traits with all installed plugin traits
+ * per 设计文档 §布尔特性合并规则 (plugins sorted by priority ascending,
+ * then the gun's inherent traits override the final result).</p>
  */
 public final class ShootingEngine {
 
