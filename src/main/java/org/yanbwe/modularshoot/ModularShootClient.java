@@ -57,7 +57,7 @@ public class ModularShootClient {
          * may use a file-system scan when the asset index is available.
          */
         private static void registerBulletModels(ModelEvent.RegisterAdditional event) {
-            event.register(ModelResourceLocation.inventory(
+            event.register(ModelResourceLocation.standalone(
                     ResourceLocation.fromNamespaceAndPath(ModularShoot.MODID, "bullet/normol_fazhang")));
         }
     }

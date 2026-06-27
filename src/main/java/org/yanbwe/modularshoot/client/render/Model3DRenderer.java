@@ -206,13 +206,19 @@ public final class Model3DRenderer {
     }
 
     /**
-     * Normalises a raw model location to an inventory-variant
+     * Normalises a raw model location to a standalone-variant
      * {@link ModelResourceLocation}, tolerating either the asset path
      * ({@code models/bullet/bullet.json}) or the bare model id
      * ({@code bullet/bullet}).
      *
+     * <p>Uses the {@code standalone} variant because
+     * {@code ModelEvent.RegisterAdditional} requires that variant for
+     * side-loaded models (NeoForge 1.21.1). The model is registered with
+     * {@link ModelResourceLocation#standalone(ResourceLocation)} during
+     * resource reload and must be looked up with the same variant.</p>
+     *
      * @param raw the raw model location
-     * @return the inventory-variant model resource location
+     * @return the standalone-variant model resource location
      */
     private static ModelResourceLocation toModelResourceLocation(ResourceLocation raw) {
         String path = raw.getPath();
@@ -222,7 +228,7 @@ public final class Model3DRenderer {
         if (path.endsWith(".json")) {
             path = path.substring(0, path.length() - ".json".length());
         }
-        return ModelResourceLocation.inventory(ResourceLocation.fromNamespaceAndPath(raw.getNamespace(), path));
+        return ModelResourceLocation.standalone(ResourceLocation.fromNamespaceAndPath(raw.getNamespace(), path));
     }
 
     /**
