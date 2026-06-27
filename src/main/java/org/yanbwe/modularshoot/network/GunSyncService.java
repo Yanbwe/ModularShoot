@@ -78,8 +78,9 @@ public final class GunSyncService {
 
     /**
      * Tracks the {@code gunInstanceUuid} of each player's previous-tick
-     * main-hand gun, keyed by player uuid. A {@code null} value means the
-     * previous main-hand item was not a (valid) gun.
+     * main-hand gun, keyed by player uuid. When a player is not holding a
+     * (valid) gun, the entry is removed from this map (absent means non-gun,
+     * matching {@code ConcurrentHashMap}'s no-null-value contract).
      */
     private static final Map<UUID, UUID> previousMainHandGun = new ConcurrentHashMap<>();
 
@@ -301,11 +302,14 @@ public final class GunSyncService {
         UUID currentGunUuid = readMainHandGunUuid(player);
         UUID previousGunUuid = previousMainHandGun.get(playerUuid);
         if (!Objects.equals(currentGunUuid, previousGunUuid)) {
-            previousMainHandGun.put(playerUuid, currentGunUuid);
-            // Only sync when the player is now holding a gun; switching away
-            // from a gun needs no sync (there is nothing to render).
             if (currentGunUuid != null) {
+                previousMainHandGun.put(playerUuid, currentGunUuid);
                 syncToPlayer(player);
+            } else {
+                // Switching away from a gun (or to a non-gun item).
+                // ConcurrentHashMap does not allow null values, so remove
+                // the entry rather than putting null.
+                previousMainHandGun.remove(playerUuid);
             }
         }
     }

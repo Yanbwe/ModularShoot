@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 import java.util.UUID;
+import javax.annotation.Nullable;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
@@ -56,6 +57,37 @@ public final class PluginInstallService {
     }
 
     /**
+     * Immutable result of an installation attempt.
+     *
+     * <p>On success {@link #success()} is {@code true}, {@link #installedGun()}
+     * carries the modified gun (a copy of the original with the plugin installed),
+     * and {@link #consumedPlugin()} carries the consumed plugin (a copy, shrunk
+     * by one). The original input stacks are never mutated.</p>
+     *
+     * <p>On failure {@link #success()} is {@code false} and {@link #errorMessage()}
+     * explains the rejection. The output stacks are {@code null} on failure.</p>
+     *
+     * @param success        {@code true} when installation completed
+     * @param installedGun   the modified gun copy, or {@code null} on failure
+     * @param consumedPlugin the consumed plugin copy, or {@code null} on failure
+     * @param errorMessage   the rejection reason, or empty on success
+     */
+    public record InstallResult(
+            boolean success,
+            @Nullable ItemStack installedGun,
+            @Nullable ItemStack consumedPlugin,
+            Optional<String> errorMessage
+    ) {
+        public static InstallResult success(ItemStack gun, ItemStack plugin) {
+            return new InstallResult(true, gun, plugin, Optional.empty());
+        }
+
+        public static InstallResult failure(String error) {
+            return new InstallResult(false, null, null, Optional.of(error));
+        }
+    }
+
+    /**
      * Carries the outcome of the validation + selection phase: either a failing
      * {@link ValidationResult} (with {@code selectedTypeId = null}) or a passing
      * result paired with the resolved category id to install into.
@@ -73,37 +105,43 @@ public final class PluginInstallService {
      *
      * <p>Reads the {@code pluginId} from the plugin stack's {@link PluginData}
      * component, runs every validation gate, and &mdash; on success &mdash;
-     * performs the write. The gun stack is mutated in place; the plugin stack
-     * is shrunk by one. Both mutations happen only after all validations pass
-     * and the {@link PrePluginInstallEvent} is not canceled.</p>
+     * works on <strong>copies</strong> of the input stacks so the originals
+     * are never mutated. The caller receives the modified copies via
+     * {@link InstallResult} and is responsible for writing them back to the
+     * appropriate container slots via {@code Slot.set()} / {@code SlotAccess.set()}
+     * (following the Apotheosis pattern).</p>
      *
-     * @param gun            the gun item stack to install into (mutated on success)
-     * @param pluginStack    the plugin item stack to install from (shrunk by one
-     *                       on success); must carry {@link PluginData}
+     * @param gun            the gun item stack to inspect (not mutated)
+     * @param pluginStack    the plugin item stack to inspect (not mutated);
+     *                       must carry {@link PluginData}
      * @param player         the player performing the installation; supplies the
      *                       random source for category auto-selection
      * @param registryAccess the runtime registry view (from a loaded world)
-     * @return {@link ValidationResult#success()} on a completed installation;
-     *         otherwise a failing {@link ValidationResult} whose error message
-     *         explains the rejection
+     * @return an {@link InstallResult} carrying the modified copies on success,
+     *         or a failure with an error message
      */
-    public static ValidationResult installPlugin(
+    public static InstallResult installPlugin(
             ItemStack gun, ItemStack pluginStack, Player player, RegistryAccess registryAccess) {
         // a. Read the plugin id from the plugin stack's component.
         PluginData pluginData = pluginStack.get(ModularShootDataComponents.PLUGIN_DATA.get());
         if (pluginData == null) {
-            return ValidationResult.error("Item is not a plugin");
+            return InstallResult.failure("Item is not a plugin");
         }
         ResourceLocation pluginId = pluginData.pluginId();
 
         // b-h. Validate every gate and select the target category.
         SelectionOutcome outcome = validateAndSelect(gun, pluginId, player, registryAccess);
         if (!outcome.result().valid()) {
-            return outcome.result();
+            return InstallResult.failure(outcome.result().errorMessage().orElse("Install failed"));
         }
 
-        // i-o. Execute the write, consume the plugin, refresh, and post the post-event.
-        return executeInstall(gun, pluginStack, pluginId, outcome.selectedTypeId(), player, registryAccess);
+        // i-o. Work on copies so the originals are never mutated (Apotheosis pattern).
+        ItemStack resultGun = gun.copy();
+        ItemStack resultPlugin = pluginStack.copy();
+
+        executeInstall(resultGun, resultPlugin, pluginId, outcome.selectedTypeId(), player, registryAccess);
+
+        return InstallResult.success(resultGun, resultPlugin);
     }
 
     /**
@@ -207,7 +245,7 @@ public final class PluginInstallService {
     }
 
     /**
-     * Performs the actual write: appends the plugin instance, bumps the
+     * Performs the actual write on the given copies: appends the plugin instance,
      * modifier version, consumes the plugin item, refreshes attribute
      * modifiers, and fires the {@link PostPluginInstallEvent}.
      *
@@ -225,9 +263,8 @@ public final class PluginInstallService {
      * @param selectedTypeId the resolved category id to install into
      * @param player         the player performing the installation
      * @param registryAccess the runtime registry view
-     * @return {@link ValidationResult#success()} (this phase cannot fail)
      */
-    private static ValidationResult executeInstall(
+    private static void executeInstall(
             ItemStack gun, ItemStack pluginStack, ResourceLocation pluginId,
             ResourceLocation selectedTypeId, Player player, RegistryAccess registryAccess) {
         // i. Generate a unique instance id for this installation.
@@ -253,7 +290,6 @@ public final class PluginInstallService {
         AttributeModifierService.refreshModifiers(gun, registryAccess);
         // o. Fire the post-install event so listeners observe the final state.
         NeoForge.EVENT_BUS.post(new PostPluginInstallEvent(player, gun, pluginId, instanceUuid));
-        return ValidationResult.success();
     }
 
     /**
