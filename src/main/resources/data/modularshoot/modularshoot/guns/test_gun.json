@@ -19,5 +19,11 @@
   },
   "sounds": {
     "shoot": "modularshoot:gun.test_gun.shoot"
+  },
+  "bullet_style": {
+    "model": {
+      "3d": "modularshoot:bullet/normol_fazhang"
+    },
+    "render_mode": "3d"
   }
 }

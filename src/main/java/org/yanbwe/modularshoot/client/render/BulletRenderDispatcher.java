@@ -159,10 +159,9 @@ public final class BulletRenderDispatcher {
      * which builds a camera-facing quad, binds a custom RenderType (depth
      * test, alpha blend, no lighting), and samples the texture
      * (设计文档 §渲染流程, line 1240).</p>
-     * <p><b>TODO (子任务 10):</b> implement Model3DRenderer call for the
-     * {@code 3d} branch — load a vanilla static JSON model and rotate it
-     * by {@link BulletRenderObject#getDirection()} before drawing
-     * (设计文档 §渲染流程, line 1241).</p>
+     * <p>The {@code 3d} branch delegates to {@link Model3DRenderer}, which
+     * loads a vanilla static JSON model, rotates it to align with the bullet's
+     * flight direction, and draws it (设计文档 §渲染流程, line 1241).</p>
      *
      * @param renderObject    the bullet to render
      * @param poseStack       the camera-space pose stack
@@ -191,7 +190,7 @@ public final class BulletRenderDispatcher {
         if (BulletRenderObject.RENDER_MODE_BILLBOARD.equals(renderMode)) {
             BillboardRenderer.render(renderObject, poseStack, bufferSource, partialTick, cameraPos);
         } else if (BulletRenderObject.RENDER_MODE_3D.equals(renderMode)) {
-            // TODO 子任务 10: Model3DRenderer.render(renderObject, poseStack, bufferSource, partialTick, cameraPos);
+            Model3DRenderer.render(renderObject, poseStack, bufferSource, partialTick, cameraPos);
         }
 
         poseStack.popPose();

@@ -173,6 +173,9 @@ public final class ShootingEngine {
         ShootAnimSyncService.getInstance().onShootFired(player);
         // Step 9: PostShootEvent — non-cancelable notification.
         firePostShootEvent(player, gunStack, bulletRecord);
+        ModularShoot.LOGGER.info("Bullet fired: id={}, gun={}, player={}, pos=({},{},{})",
+                bulletRecord.getBulletId(), gunData.gunId(), player.getName().getString(),
+                bulletRecord.getPosition().x, bulletRecord.getPosition().y, bulletRecord.getPosition().z);
     }
 
     // --- Step 3: ShootPredicate ------------------------------------------

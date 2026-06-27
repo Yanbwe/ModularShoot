@@ -62,16 +62,23 @@ public final class ShootPacketHandler {
         ShootAnimSyncService.getInstance().onShootPacketReceived(player);
         ItemStack mainHand = player.getMainHandItem();
         if (!isMainHandGun(mainHand)) {
+            ModularShoot.LOGGER.warn("Shoot rejected: main hand is not a gun (player={})", player.getName().getString());
             return;
         }
         GunData gunData = readGunData(mainHand);
         if (gunData == null) {
+            ModularShoot.LOGGER.warn("Shoot rejected: gun has no gun_data component (player={})", player.getName().getString());
             return;
         }
         if (!validateModifierVersion(player, packetModifierVersion, gunData.modifierVersion())) {
+            ModularShoot.LOGGER.warn("Shoot rejected: modifier version mismatch (player={}, packet={}, server={})",
+                    player.getName().getString(), packetModifierVersion, gunData.modifierVersion());
             return;
         }
         if (!checkFireRate(player, gunData.gunId())) {
+            ModularShoot.LOGGER.info("Shoot rejected by fire-rate controller (player={}, gun={}, fireRate={})",
+                    player.getName().getString(), gunData.gunId(),
+                    player.getAttributeValue(ModularShootAttributes.FIRE_RATE));
             return;
         }
         delegateToShootEngine(player, gunData);

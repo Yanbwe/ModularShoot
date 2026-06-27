@@ -231,20 +231,19 @@ public final class BulletTickHandler {
     }
 
     /**
-     * Advances the bullet's position by {@code bullet_speed} blocks along its
-     * current direction and accumulates the traveled distance
-     * (设计文档 §位置推进).
+     * Advances the bullet's position by {@code bullet_speed / 20} blocks along its
+     * current direction and accumulates the traveled distance.
      *
      * <p>No gravity is applied — flight is straight-line. The direction is
-     * assumed normalized (guaranteed at construction); multiplying by
-     * {@code stepLength} yields a displacement of exactly {@code stepLength}
-     * blocks.</p>
+     * assumed normalized (guaranteed at construction). The attribute value is
+     * in blocks-per-second; dividing by 20 yields blocks-per-tick
+     * (设计文档 §位置推进).</p>
      *
      * @param bullet the bullet to advance
      */
     private static void advancePosition(BulletRecord bullet) {
         BulletSnapshot snapshot = bullet.getSnapshot();
-        double stepLength = snapshot.getStat(BULLET_SPEED_ID);
+        double stepLength = snapshot.getStat(BULLET_SPEED_ID) / 20.0;
         Vec3 direction = bullet.getDirection();
         Vec3 oldPos = bullet.getPosition();
         Vec3 newPos = oldPos.add(direction.multiply(stepLength, stepLength, stepLength));
