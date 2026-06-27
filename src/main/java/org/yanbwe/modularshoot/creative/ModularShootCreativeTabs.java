@@ -16,6 +16,7 @@ import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.registries.DeferredHolder;
 
 import org.yanbwe.modularshoot.ModularShoot;
+import org.yanbwe.modularshoot.attribute.AttributeModifierService;
 import org.yanbwe.modularshoot.item.ModularShootItems;
 import org.yanbwe.modularshoot.plugin.PluginRegistry;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
@@ -126,6 +127,10 @@ public final class ModularShootCreativeTabs {
         Set<ResourceLocation> gunIds = GunRegistry.getAllGunIds(registryAccess);
         for (ResourceLocation gunId : gunIds) {
             ItemStack gunStack = GunRegistry.createGunStack(gunId);
+            // Apply attribute modifiers so guns from the creative tab have
+            // non-zero stats (fire_rate, etc.). Without this the vanilla base
+            // (0) is used, making the gun unable to fire.
+            AttributeModifierService.refreshModifiers(gunStack, registryAccess);
             event.accept(gunStack);
         }
         Set<ResourceLocation> pluginIds = PluginRegistry.getAllPluginIds(registryAccess);

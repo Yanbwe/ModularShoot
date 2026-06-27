@@ -11,6 +11,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
+import org.yanbwe.modularshoot.attribute.AttributeModifierService;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 
 /**
@@ -56,6 +57,11 @@ public final class GunSubcommand {
         }
 
         ItemStack stack = GunRegistry.createGunStack(gunId);
+        // Apply attribute modifiers so the gun's stats (fire_rate, hit_damage, etc.)
+        // are non-zero when the player first holds it. Without this the vanilla base
+        // (0) is used for every attribute, which makes the gun unable to fire
+        // (FireRateController rejects fire_rate <= 0).
+        AttributeModifierService.refreshModifiers(stack, source.getLevel().registryAccess());
         if (!player.getInventory().add(stack)) {
             player.drop(stack, false);
         }

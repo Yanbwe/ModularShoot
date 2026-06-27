@@ -1,7 +1,11 @@
 package org.yanbwe.modularshoot.item;
 
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import org.yanbwe.modularshoot.client.ItemNameResolver;
+import org.yanbwe.modularshoot.component.GunData;
+import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 
 /**
  * Framework gun item, registered as {@code modularshoot:gun}.
@@ -18,10 +22,10 @@ import net.minecraft.world.item.ItemStack;
  *   <li><b>Not enchantable</b> &mdash; vanilla enchantments have no effect on guns. Both
  *       {@link #getEnchantmentValue()} and {@link #isEnchantable(ItemStack)} are overridden
  *       to guarantee this regardless of future component changes.</li>
+ *   <li><b>Dynamic display name</b> &mdash; {@link #getName(ItemStack)} resolves the
+ *       registered gun definition's display name at runtime; falls back to the gun id
+ *       path when the definition is absent (主菜单 / reload 过渡状态).</li>
  * </ul>
- *
- * <p>M1 scope: this class only defines the item shell. Shooting, plugin installation and
- * other interactions are implemented in later milestones (M2/M3).</p>
  */
 public class GunItem extends Item {
 
@@ -31,6 +35,42 @@ public class GunItem extends Item {
      */
     public GunItem(Item.Properties properties) {
         super(properties);
+    }
+
+    /**
+     * Resolves the display name from the gun definition referenced by the
+     * stack's {@code gun_data} component.
+     *
+     * <p>Priority (first non-null wins):
+     * <ol>
+     *   <li>Client-side registry lookup: reads the definition's {@code name}
+     *       field, resolved via {@link ItemNameResolver#resolveGunDisplayName}
+     *       (supports {@code §} colour codes and {@code lang:} translation keys).
+     *       Returns {@code null} on the server, on the main menu, or when the
+     *       definition is absent.</li>
+     *   <li>Gun id path fallback: the path portion of the gun id
+     *       (e.g. {@code "sniper_rifle"} from
+     *       {@code modularshoot:sniper_rifle}), per the design doc fallback
+     *       rule (设计文档: 不指定时使用枪械 ID 的路径部分作为回退名称).</li>
+     *   <li>Default item name: when the stack carries no {@code gun_data}
+     *       component at all, delegates to {@link Item#getName(ItemStack)}.</li>
+     * </ol>
+     * </p>
+     *
+     * @param stack the gun item stack
+     * @return the resolved display name {@link Component}
+     */
+    @Override
+    public Component getName(ItemStack stack) {
+        GunData data = stack.get(ModularShootDataComponents.GUN_DATA.get());
+        if (data == null) {
+            return super.getName(stack);
+        }
+        Component resolved = ItemNameResolver.resolveGunDisplayName(stack);
+        if (resolved != null) {
+            return resolved;
+        }
+        return Component.literal(data.gunId().getPath());
     }
 
     /**

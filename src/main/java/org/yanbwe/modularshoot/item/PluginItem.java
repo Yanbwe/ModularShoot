@@ -1,7 +1,11 @@
 package org.yanbwe.modularshoot.item;
 
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import org.yanbwe.modularshoot.client.ItemNameResolver;
+import org.yanbwe.modularshoot.component.ModularShootDataComponents;
+import org.yanbwe.modularshoot.component.PluginData;
 
 /**
  * Framework plugin item, registered as {@code modularshoot:plugin}.
@@ -19,10 +23,10 @@ import net.minecraft.world.item.ItemStack;
  *   <li><b>Not enchantable</b> &mdash; vanilla enchantments have no effect on plugins. Both
  *       {@link #getEnchantmentValue()} and {@link #isEnchantable(ItemStack)} are overridden
  *       to guarantee this regardless of future component changes.</li>
+ *   <li><b>Dynamic display name</b> &mdash; {@link #getName(ItemStack)} resolves the
+ *       registered plugin definition's display name and colour at runtime; falls back to
+ *       the plugin id path when the definition is absent.</li>
  * </ul>
- *
- * <p>M2 scope: this class only defines the item shell. Plugin installation, trait resolution
- * and other interactions are implemented in later milestones (M2/M3).</p>
  */
 public class PluginItem extends Item {
 
@@ -32,6 +36,42 @@ public class PluginItem extends Item {
      */
     public PluginItem(Item.Properties properties) {
         super(properties);
+    }
+
+    /**
+     * Resolves the display name from the plugin definition referenced by the
+     * stack's {@code plugin_data} component.
+     *
+     * <p>Priority (first non-null wins):
+     * <ol>
+     *   <li>Client-side registry lookup: reads the definition's {@code name}
+     *       and {@code color} fields via
+     *       {@link ItemNameResolver#resolvePluginDisplayName}
+     *       (supports {@code §} colour codes and {@code lang:} translation keys).
+     *       Returns {@code null} on the server, on the main menu, or when the
+     *       definition is absent.</li>
+     *   <li>Plugin id path fallback: the path portion of the plugin id
+     *       (e.g. {@code "rapid_barrel"} from
+     *       {@code modularshoot:rapid_barrel}).</li>
+     *   <li>Default item name: when the stack carries no {@code plugin_data}
+     *       component at all, delegates to {@link Item#getName(ItemStack)}.</li>
+     * </ol>
+     * </p>
+     *
+     * @param stack the plugin item stack
+     * @return the resolved display name {@link Component}
+     */
+    @Override
+    public Component getName(ItemStack stack) {
+        PluginData data = stack.get(ModularShootDataComponents.PLUGIN_DATA.get());
+        if (data == null) {
+            return super.getName(stack);
+        }
+        Component resolved = ItemNameResolver.resolvePluginDisplayName(stack);
+        if (resolved != null) {
+            return resolved;
+        }
+        return Component.literal(data.pluginId().getPath());
     }
 
     /**
