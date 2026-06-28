@@ -76,10 +76,14 @@ public record GunData(
      * <p>The underlying {@link CompoundTag} is decoded via
      * {@link GunStateStorage#toMap} using the
      * {@code modularshoot:states} registry to dispatch value types.
-     * Entries whose state id is not registered are silently skipped.</p>
+     * Entries whose state id is not registered are preserved as their raw
+     * entry {@link CompoundTag} so a full
+     * {@code stateMap()}&harr;{@code withStateMap()} round-trip is lossless
+     * (W26 fix).</p>
      *
      * @param registryAccess the runtime registry view (from a loaded world)
-     * @return a mutable map of state id to decoded value
+     * @return a mutable map of state id to decoded value (or raw entry tag
+     *         for unregistered ids)
      */
     public Map<ResourceLocation, Object> stateMap(RegistryAccess registryAccess) {
         return GunStateStorage.toMap(state, registryAccess);

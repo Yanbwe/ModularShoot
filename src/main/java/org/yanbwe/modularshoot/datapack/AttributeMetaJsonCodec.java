@@ -31,7 +31,7 @@ import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
  *   <li>{@code binds} — required, the registered vanilla attribute id</li>
  *   <li>{@code default_value} — required, the gun base value</li>
  *   <li>{@code description} — optional, defaults to {@code ""}</li>
- *   <li>{@code color} — optional hex color, defaults to {@code ""}</li>
+ *   <li>{@code color} — optional hex color; absent when unspecified</li>
  *   <li>{@code priority} — optional display priority, defaults to {@code 0}</li>
  *   <li>{@code force_show} — optional tooltip flag, defaults to {@code false}</li>
  * </ul>

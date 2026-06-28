@@ -3,7 +3,9 @@ package org.yanbwe.modularshoot.plugin;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.world.item.ItemStack;
+import org.yanbwe.modularshoot.attribute.AttributeModifierService;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginInstance;
@@ -31,6 +33,14 @@ import org.yanbwe.modularshoot.item.ModularShootItems;
  * (with {@code modifierVersion} bumped because a lock change counts as a
  * modification per the {@link GunData} contract) and writes the new component
  * back onto the stack.</p>
+ *
+ * <p>The {@link #setPluginLocked(ItemStack, UUID, boolean, RegistryAccess)}
+ * overload additionally calls
+ * {@link AttributeModifierService#refreshModifiers} after the update, honouring
+ * the design's refresh-trigger-point list (设计文档 §组件刷新时机). The
+ * deprecated {@link #setPluginLocked(ItemStack, UUID, boolean)} overload skips
+ * the refresh because a lock-state change does not alter which modifiers are
+ * active; callers without a {@link RegistryAccess} may use it safely.</p>
  */
 public final class PluginLockService {
 
@@ -38,7 +48,20 @@ public final class PluginLockService {
     }
 
     /**
-     * Locks or unlocks a specific installed plugin instance on a gun stack.
+     * Locks or unlocks a specific installed plugin instance on a gun stack,
+     * then refreshes the {@code ATTRIBUTE_MODIFIERS} component so the stack
+     * stays consistent with the design's trigger-point list (设计文档
+     * §组件刷新时机).
+     *
+     * <p>This is the preferred overload: it follows the same pattern as
+     * {@link org.yanbwe.modularshoot.plugin.PluginInstallService} and
+     * {@link org.yanbwe.modularshoot.plugin.PluginUninstallService}, which
+     * both call {@link AttributeModifierService#refreshModifiers} after
+     * mutating the plugin list. Although a lock-state change does not alter
+     * which modifiers are active (a locked plugin still contributes its
+     * modifiers &mdash; lock only prevents non-forced uninstall), the design
+     * explicitly lists lock changes as a refresh trigger point, so this
+     * overload honours that contract.</p>
      *
      * <p>This is a no-op when any of the following holds:
      * <ul>
@@ -50,24 +73,82 @@ public final class PluginLockService {
      *       anti-cheat stale-modifier detection).</li>
      * </ul>
      *
+     * @param gun            the gun item stack to modify (mutated on success)
+     * @param instanceUuid   the instance uuid of the plugin to lock/unlock
+     * @param locked         {@code true} to lock, {@code false} to unlock
+     * @param registryAccess the runtime registry view used to refresh
+     *                       attribute modifiers after the update
+     */
+    public static void setPluginLocked(
+            ItemStack gun, UUID instanceUuid, boolean locked, RegistryAccess registryAccess) {
+        if (!applyLockState(gun, instanceUuid, locked)) {
+            return;
+        }
+        AttributeModifierService.refreshModifiers(gun, registryAccess);
+    }
+
+    /**
+     * Locks or unlocks a specific installed plugin instance on a gun stack
+     * <em>without</em> refreshing the {@code ATTRIBUTE_MODIFIERS} component.
+     *
+     * <p><strong>This overload does not refresh attribute modifiers.</strong>
+     * It is retained for backward compatibility with callers that do not have
+     * a {@link RegistryAccess} available. Because a lock-state change does not
+     * alter which modifiers are active (a locked plugin still contributes its
+     * modifiers &mdash; lock only prevents non-forced uninstall), skipping the
+     * refresh is safe in practice: the modifier set on the stack remains
+     * correct. The {@code modifierVersion} bump is still applied so that
+     * anti-cheat stale-modifier detection stays consistent.</p>
+     *
+     * <p>Callers that have a {@link RegistryAccess} should prefer
+     * {@link #setPluginLocked(ItemStack, UUID, boolean, RegistryAccess)} to
+     * fully honour the design's refresh-trigger-point list (设计文档
+     * §组件刷新时机).</p>
+     *
      * @param gun          the gun item stack to modify (mutated on success)
      * @param instanceUuid the instance uuid of the plugin to lock/unlock
      * @param locked       {@code true} to lock, {@code false} to unlock
+     * @deprecated Use {@link #setPluginLocked(ItemStack, UUID, boolean, RegistryAccess)}
+     *             to ensure the {@code ATTRIBUTE_MODIFIERS} component is
+     *             refreshed after the lock change, per the design's
+     *             trigger-point list.
      */
+    @Deprecated
     public static void setPluginLocked(ItemStack gun, UUID instanceUuid, boolean locked) {
+        applyLockState(gun, instanceUuid, locked);
+    }
+
+    /**
+     * Applies the lock-state change to the target plugin instance on the gun
+     * stack, writing the updated {@link GunData} component and bumping
+     * {@code modifierVersion}.
+     *
+     * <p>Extracted from the public {@code setPluginLocked} overloads so both
+     * can share the same validation and mutation logic. The caller decides
+     * whether to refresh attribute modifiers afterwards.</p>
+     *
+     * @param gun          the gun item stack to modify (mutated on success)
+     * @param instanceUuid the instance uuid of the plugin to lock/unlock
+     * @param locked       {@code true} to lock, {@code false} to unlock
+     * @return {@code true} if the lock state was changed and the component
+     *         was written; {@code false} if any guard condition failed (not a
+     *         gun, no gun data, plugin absent, or already in the requested
+     *         state)
+     */
+    private static boolean applyLockState(ItemStack gun, UUID instanceUuid, boolean locked) {
         if (!gun.is(ModularShootItems.GUN_ITEM.get())) {
-            return;
+            return false;
         }
         GunData gunData = gun.get(ModularShootDataComponents.GUN_DATA.get());
         if (gunData == null) {
-            return;
+            return false;
         }
         Optional<PluginInstance> target = findPlugin(gunData.installedPlugins(), instanceUuid);
         if (target.isEmpty()) {
-            return;
+            return false;
         }
         if (target.get().locked() == locked) {
-            return;
+            return false;
         }
         List<PluginInstance> newPlugins = gunData.installedPlugins().stream()
                 .map(p -> p.instanceUuid().equals(instanceUuid) ? p.withLocked(locked) : p)
@@ -79,6 +160,7 @@ public final class PluginLockService {
                 gunData.modifierVersion() + 1,
                 gunData.state());
         gun.set(ModularShootDataComponents.GUN_DATA.get(), newGunData);
+        return true;
     }
 
     /**

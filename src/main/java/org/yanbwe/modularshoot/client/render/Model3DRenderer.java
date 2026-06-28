@@ -17,6 +17,7 @@ import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.client.resources.model.ModelManager;
 import net.minecraft.client.resources.model.ModelResourceLocation;
+import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
@@ -105,16 +106,28 @@ import org.jetbrains.annotations.Nullable;
 public final class Model3DRenderer {
 
     /**
-     * Render type for bullet models — vanilla block cutout. Uses the block
-     * atlas ({@code BLOCK_SHEET}) and the {@code BLOCK} vertex format, which
-     * matches what {@link ModelBlockRenderer#renderModel} emits via
-     * {@code putBulkData}. The default output target (main render target)
-     * keeps geometry visible in both fabulous and non-fabulous graphics,
-     * avoiding the translucent-target compositing timing issues that
-     * {@link RenderType#translucent()} would hit in the
-     * {@code AFTER_PARTICLES} stage.
+     * Render type for bullet models — entity cutout without face culling,
+     * bound to the block atlas ({@code BLOCK_SHEET}).
+     *
+     * <p>Uses {@link RenderType#entityCutoutNoCull(ResourceLocation)} with
+     * {@link TextureAtlas#LOCATION_BLOCKS} rather than {@link RenderType#cutout()}
+     * (W23). The vanilla {@code cutout()} render type is designed for world
+     * chunk rendering: it uses the {@code BLOCK} vertex format (no overlay
+     * element) and is flushed during the chunk render pass. The entity
+     * variant uses the {@code NEW_ENTITY} vertex format (position, color, uv,
+     * overlay, light) which is the correct format for geometry submitted
+     * during {@code RenderLevelStageEvent.AFTER_PARTICLES} — the same type
+     * vanilla item rendering uses via {@code Sheets.CUTOUT_BLOCK_SHEET}.</p>
+     *
+     * <p>Both render types bind the block atlas because {@link BakedModel}
+     * UV coordinates are baked against the block atlas (the model baker
+     * resolves every model texture into {@link TextureAtlas#LOCATION_BLOCKS}).
+     * Using a standalone texture ResourceLocation here would mis-map the UVs,
+     * since the baked quads carry atlas-relative coordinates, not 0&ndash;1
+     * full-texture coordinates. The {@code NoCull} variant renders both
+     * faces of each quad so small bullets stay visible from any angle.</p>
      */
-    private static final RenderType RENDER_TYPE = RenderType.cutout();
+    private static final RenderType RENDER_TYPE = RenderType.entityCutoutNoCull(TextureAtlas.LOCATION_BLOCKS);
 
     /** Full-bright fallback when the client level is unavailable (e.g. main menu). */
     private static final int FULL_BRIGHT = LightTexture.FULL_BRIGHT;

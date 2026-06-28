@@ -23,10 +23,18 @@ import org.yanbwe.modularshoot.trait.RemoveReason;
  * Server-side per-tick bullet flight driver (设计文档 §子弹飞行与碰撞检测).
  *
  * <p>Listens to {@link LevelTickEvent.Pre} on the game bus and, for every
- * active bullet in the dimension, performs the full flight pipeline:
+ * active bullet in the dimension, performs the full flight pipeline
+ * (设计文档 §执行顺序):
  * {@code onTick} hook, aging, straight-line position advance, chunk-bucket
- * migration, range expiry, unloaded-chunk expiry, collision detection,
- * penetration bookkeeping, and damage application.</p>
+ * migration, collision detection, penetration bookkeeping, damage
+ * application, range expiry, then unloaded-chunk expiry.</p>
+ *
+ * <p><b>Execution order rationale.</b> Collision detection runs <em>before</em>
+ * range and unloaded-chunk expiry so that a bullet whose final step both
+ * passes through a target and exceeds its range still hits the target. If
+ * range/unloaded checks ran first, the bullet would be removed for expiring
+ * and the target along the last step would be silently missed
+ * (设计文档 §执行顺序 — 碰撞检测先于范围/未加载检查).</p>
  *
  * <p><b>Server-only.</b> The event fires on both logical sides; a
  * {@code level.isClientSide()} guard ensures the authoritative server drives
@@ -41,10 +49,11 @@ import org.yanbwe.modularshoot.trait.RemoveReason;
  * {@link #processBullet}.</p>
  *
  * <h2>Position advance</h2>
- * <p>Each tick the bullet advances {@code bullet_speed} blocks along its
+ * <p>Each tick the bullet advances {@code bullet_speed / 20} blocks along its
  * current (normalized) direction — no gravity, straight-line flight
- * (设计文档 §位置推进). The step length equals the {@code bullet_speed}
- * attribute value read from the frozen snapshot, so in-flight attribute
+ * (设计文档 §位置推进). The step length equals {@code bullet_speed / 20}
+ * (the attribute value is in blocks-per-second; dividing by 20 yields
+ * blocks-per-tick), read from the frozen snapshot, so in-flight attribute
  * changes on the gun do not affect already-fired bullets.</p>
  */
 @EventBusSubscriber(modid = ModularShoot.MODID)
@@ -98,12 +107,24 @@ public final class BulletTickHandler {
     }
 
     /**
-     * Processes a single bullet for one tick, executing the flight pipeline:
-     * {@code onTick} hook, aging, position advance, chunk migration, range
-     * expiry, unloaded-chunk expiry, then collision/penetration/damage.
+     * Processes a single bullet for one tick, executing the flight pipeline
+     * (设计文档 §执行顺序):
+     * {@code onTick} hook, aging, position advance, chunk migration,
+     * collision/penetration/damage, range expiry, then unloaded-chunk expiry.
      *
-     * <p>Returns early once the bullet is removed so no further processing
-     * runs on a dead record.</p>
+     * <p>Collision detection runs <em>before</em> range and unloaded-chunk
+     * expiry. This guarantees that when a bullet's step both crosses a target
+     * and exceeds its range (or lands in an unloaded chunk), the target is
+     * hit first rather than being skipped because the bullet was removed for
+     * expiring. Each stage returns early once the bullet is removed so no
+     * further processing runs on a dead record.</p>
+     *
+     * <p><b>onTick liveness check (W13 fix).</b> Immediately after the
+     * {@code onTick} hook fires, the bullet's continued presence in the
+     * manager's id index is verified. If an {@code onTick} callback removed
+     * the bullet (e.g. a fuse/detonation trait), the remaining stages are
+     * skipped — no aging, position advance, chunk migration or collision
+     * detection runs on the already-removed record.</p>
      *
      * @param level   the server level
      * @param manager the dimension's bullet manager
@@ -113,28 +134,46 @@ public final class BulletTickHandler {
         // 1. onTick trait hook — fire ON_TICK callbacks before aging/advance.
         BulletHookInvoker.fireOnTick(bullet);
 
+        // 1b. liveness check (W13 fix): an onTick hook may have called
+        //     manager.removeBullet(...) (e.g. a "fuse" trait that detonates
+        //     after N ticks). Once the bullet is evicted from the id index,
+        //     every subsequent stage would operate on a stale record —
+        //     advancing a dead bullet's position, re-inserting it into chunk
+        //     buckets, even re-detecting collisions for a projectile that no
+        //     longer exists. Bail out early so the rest of the pipeline is
+        //     skipped for a bullet removed by its own onTick hook.
+        if (manager.getBulletById(bullet.getBulletId()) == null) {
+            return;
+        }
+
         // 2. age++
         bullet.incrementAge();
 
-        // 3. position advance (records prevPos for chunk migration & future collision)
+        // 3. position advance (records prevPos for chunk migration & collision)
         Vec3 prevPos = bullet.getPosition();
         advancePosition(bullet);
 
         // 4. chunk-bucket migration if the bullet crossed a chunk boundary
         checkChunkMigration(level, manager, bullet, prevPos);
 
-        // 5. range expiry — the bullet's lifetime has ended
+        // 5. collision detection → penetration dedup → damage application
+        //    (设计文档 §执行顺序: 碰撞检测必须在范围/未加载检查之前执行，
+        //    否则子弹本 tick 步进既穿过目标又超出射程时会因射程移除而漏判命中)
+        if (handleCollision(level, manager, bullet, prevPos)) {
+            return;
+        }
+
+        // 6. range expiry — the bullet's lifetime has ended
+        //    (设计文档 §执行顺序: 范围检查在碰撞检测之后)
         if (checkRangeExpiry(manager, bullet)) {
             return;
         }
 
-        // 6. unloaded-chunk expiry — cannot raycast into unloaded space
+        // 7. unloaded-chunk expiry — cannot raycast into unloaded space
+        //    (设计文档 §执行顺序: 未加载区块处理在范围检查之后)
         if (checkUnloadedChunk(level, manager, bullet)) {
             return;
         }
-
-        // 7-9. collision detection → penetration → damage application
-        handleCollision(level, manager, bullet, prevPos);
     }
 
     /**
@@ -151,25 +190,33 @@ public final class BulletTickHandler {
      * {@link PenetrationHandler#handleBlockHit} fires the {@code onBlockHit}
      * hook and decides penetration vs removal.</p>
      *
+     * <p>Penetration dedup is handled inside {@link PenetrationHandler} (and
+     * the dedup sets are read by {@link CollisionDetector}): a target already
+     * in the bullet's dedup set is skipped, so the same entity/block is never
+     * hit twice by one bullet (设计文档 §穿透去重).</p>
+     *
      * @param level   the server level
      * @param manager the dimension's bullet manager
      * @param bullet  the bullet being processed
      * @param prevPos the bullet's position before this tick's advance
+     * @return {@code true} if the bullet was removed by this collision (the
+     *         caller should skip further processing this tick); {@code false}
+     *         if the bullet continues flying (no hit, or penetration succeeded)
      */
-    private static void handleCollision(Level level, BulletManager manager, BulletRecord bullet, Vec3 prevPos) {
+    private static boolean handleCollision(Level level, BulletManager manager, BulletRecord bullet, Vec3 prevPos) {
         Vec3 curPos = bullet.getPosition();
         CollisionResult collision = CollisionDetector.detectCollision(level, bullet, prevPos, curPos);
-        switch (collision.hitType()) {
+        return switch (collision.hitType()) {
             case ENTITY -> {
                 Vec3 hitPos = computeHitPos(bullet, prevPos, collision.distance());
-                handleEntityCollision((ServerLevel) level, manager, bullet, collision.hitEntity(), hitPos);
+                yield handleEntityCollision((ServerLevel) level, manager, bullet, collision.hitEntity(), hitPos);
             }
             case BLOCK -> {
                 Vec3 hitPos = computeHitPos(bullet, prevPos, collision.distance());
-                handleBlockCollision((ServerLevel) level, manager, bullet, collision.blockPos(), collision.blockFace(), hitPos);
+                yield handleBlockCollision((ServerLevel) level, manager, bullet, collision.blockPos(), collision.blockFace(), hitPos);
             }
-            case NONE -> { /* no hit this tick — bullet continues flying */ }
-        }
+            case NONE -> false; // no hit this tick — bullet continues flying
+        };
     }
 
     /**
@@ -184,14 +231,16 @@ public final class BulletTickHandler {
      * @param bullet  the bullet that hit the entity
      * @param target  the entity that was hit; never {@code null}
      * @param hitPos  the exact world-space hit position for client effects
+     * @return {@code true} if the bullet was removed (penetration exhausted);
+     *         {@code false} if the bullet continues flying (successful penetration)
      */
-    private static void handleEntityCollision(ServerLevel level, BulletManager manager, BulletRecord bullet, Entity target, Vec3 hitPos) {
+    private static boolean handleEntityCollision(ServerLevel level, BulletManager manager, BulletRecord bullet, Entity target, Vec3 hitPos) {
         BulletHitBroadcastService.broadcastHit(level, bullet.getBulletId(), hitPos, BulletHitS2CPacket.HitType.ENTITY, target.getId());
         double baseDamage = bullet.getSnapshot().getStat(HIT_DAMAGE_ID);
         double finalDamage = DamageHandlerRegistry.processChain(bullet, target, baseDamage);
         DamageApplier.applyDamage(bullet, target, finalDamage);
         BulletHookInvoker.fireOnHit(bullet, target);
-        PenetrationHandler.handleEntityHit(bullet, target, manager);
+        return PenetrationHandler.handleEntityHit(bullet, target, manager);
     }
 
     /**
@@ -206,11 +255,13 @@ public final class BulletTickHandler {
      * @param pos     the hit block position; never {@code null}
      * @param face    the hit block face; never {@code null}
      * @param hitPos  the exact world-space hit position for client effects
+     * @return {@code true} if the bullet was removed (penetration exhausted);
+     *         {@code false} if the bullet continues flying (successful penetration)
      */
-    private static void handleBlockCollision(ServerLevel level, BulletManager manager, BulletRecord bullet,
-                                             net.minecraft.core.BlockPos pos, net.minecraft.core.Direction face, Vec3 hitPos) {
+    private static boolean handleBlockCollision(ServerLevel level, BulletManager manager, BulletRecord bullet,
+                                                 net.minecraft.core.BlockPos pos, net.minecraft.core.Direction face, Vec3 hitPos) {
         BulletHitBroadcastService.broadcastHit(level, bullet.getBulletId(), hitPos, BulletHitS2CPacket.HitType.BLOCK, BulletHitS2CPacket.NO_ENTITY);
-        PenetrationHandler.handleBlockHit(bullet, pos, face, manager);
+        return PenetrationHandler.handleBlockHit(bullet, pos, face, manager);
     }
 
     /**

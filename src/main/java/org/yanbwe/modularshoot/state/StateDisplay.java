@@ -2,6 +2,7 @@ package org.yanbwe.modularshoot.state;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import java.util.Optional;
 
 /**
  * Display metadata for a state entry in the gun tooltip.
@@ -12,7 +13,9 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
  *
  * @param name        state name shown in the tooltip; supports colour codes
  *                    ({@code §}) and the {@code lang:} translation-key prefix
- * @param color       hex colour code for the name (e.g. {@code "#FFAA00"})
+ * @param color       optional hex colour code for the name (e.g.
+ *                    {@code "#FFAA00"}); empty when omitted, in which case
+ *                    the tooltip renderer falls back to its default colour
  * @param format      display template containing the {@code {value}}
  *                    placeholder; defaults to {@code "{value}"} when absent
  * @param priority    tooltip sort order — higher values appear earlier;
@@ -22,7 +25,7 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
  */
 public record StateDisplay(
         String name,
-        String color,
+        Optional<String> color,
         String format,
         int priority,
         boolean hideDefault
@@ -33,7 +36,7 @@ public record StateDisplay(
     public static final Codec<StateDisplay> CODEC = RecordCodecBuilder.create(
             instance -> instance.group(
                     Codec.STRING.fieldOf("name").forGetter(StateDisplay::name),
-                    Codec.STRING.fieldOf("color").forGetter(StateDisplay::color),
+                    Codec.STRING.optionalFieldOf("color").forGetter(StateDisplay::color),
                     Codec.STRING.optionalFieldOf("format", DEFAULT_FORMAT).forGetter(StateDisplay::format),
                     Codec.INT.optionalFieldOf("priority", 0).forGetter(StateDisplay::priority),
                     Codec.BOOL.optionalFieldOf("hide_default", false).forGetter(StateDisplay::hideDefault)
@@ -44,11 +47,11 @@ public record StateDisplay(
      * Convenience factory that fills optional fields with their defaults.
      *
      * @param name  the tooltip display name
-     * @param color the hex colour code
+     * @param color the hex colour code, or empty to use the default colour
      * @return a new {@link StateDisplay} with default format, priority, and
      *         hideDefault
      */
-    public static StateDisplay of(String name, String color) {
+    public static StateDisplay of(String name, Optional<String> color) {
         return new StateDisplay(name, color, DEFAULT_FORMAT, 0, false);
     }
 }

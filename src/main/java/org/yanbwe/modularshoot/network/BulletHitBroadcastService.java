@@ -10,8 +10,13 @@ import net.neoforged.neoforge.network.PacketDistributor;
  * <p>Provides a single static entry point that {@code BulletTickHandler}
  * calls when a bullet impacts an entity or block. The service constructs a
  * {@link BulletHitS2CPacket} from the hit parameters and distributes it to
- * every player within {@link #BROADCAST_RADIUS} blocks of the hit point via
- * {@link PacketDistributor#sendToPlayersNear}.</p>
+ * every player within {@link ShootAnimSyncService#BROADCAST_RADIUS} blocks of
+ * the hit point via {@link PacketDistributor#sendToPlayersNear}.</p>
+ *
+ * <p>The broadcast radius is shared with {@link ShootAnimSyncService} so that
+ * hit effects and shoot animations have a consistent visibility range. A
+ * single constant ensures both services stay in sync if the radius ever
+ * needs tuning.</p>
  *
  * <p><b>Not</b> an {@code @EventBusSubscriber} — this is a pure utility class
  * invoked imperatively by the tick handler at the moment a collision is
@@ -25,14 +30,6 @@ import net.neoforged.neoforge.network.PacketDistributor;
  */
 public final class BulletHitBroadcastService {
 
-    /**
-     * Radius (in blocks) around the hit point within which players receive
-     * the hit packet. 64 blocks is far enough for any player who could
-     * plausibly see the impact effect, while avoiding unnecessary network
-     * traffic to distant players.
-     */
-    private static final double BROADCAST_RADIUS = 64.0;
-
     private BulletHitBroadcastService() {
     }
 
@@ -42,7 +39,9 @@ public final class BulletHitBroadcastService {
      * <p>Builds a {@link BulletHitS2CPacket} from the supplied parameters and
      * sends it via {@link PacketDistributor#sendToPlayersNear} with
      * {@code null} excluded player (no one is skipped — even the shooter
-     * should see their own hit marker).</p>
+     * should see their own hit marker). The broadcast radius is
+     * {@link ShootAnimSyncService#BROADCAST_RADIUS}, shared with the shoot
+     * animation service for consistent visibility.</p>
      *
      * @param level       the server level in which the hit occurred
      * @param bulletId    the id of the bullet that hit
@@ -57,6 +56,7 @@ public final class BulletHitBroadcastService {
         BulletHitS2CPacket packet = new BulletHitS2CPacket(
                 bulletId, hitPos.x, hitPos.y, hitPos.z, hitType, hitEntityId);
         PacketDistributor.sendToPlayersNear(
-                level, null, hitPos.x, hitPos.y, hitPos.z, BROADCAST_RADIUS, packet);
+                level, null, hitPos.x, hitPos.y, hitPos.z,
+                ShootAnimSyncService.BROADCAST_RADIUS, packet);
     }
 }

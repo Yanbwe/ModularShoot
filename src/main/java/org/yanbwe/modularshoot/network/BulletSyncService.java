@@ -18,7 +18,7 @@ import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 import org.yanbwe.modularshoot.bullet.BulletManager;
 import org.yanbwe.modularshoot.bullet.BulletRecord;
 import org.yanbwe.modularshoot.bullet.BulletSnapshot;
-import org.yanbwe.modularshoot.client.ClientBulletSnapshot;
+import org.yanbwe.modularshoot.network.ClientBulletSnapshot;
 import org.yanbwe.modularshoot.registry.gun.BulletStyle;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
@@ -483,15 +483,30 @@ public final class BulletSyncService {
     // --- Culling & state helpers ----------------------------------------
 
     /**
-     * Returns whether the bullet is within the player's sync radius.
+     * Returns whether the bullet is within the player's sync radius, using
+     * Chebyshev (chessboard) distance — {@code max(|dx|, |dz|)} — rather than
+     * Euclidean distance.
+     *
+     * <p>The Chebyshev metric matches the square shape of the chunk tracking
+     * view: a player's visible area is a square of chunks centered on their
+     * chunk, not a circle. Using Euclidean distance would cull bullets at the
+     * corners of the square that are still within the player's render
+     * distance, causing bullets to pop in/out at diagonal directions. The
+     * vertical (y) axis is intentionally excluded because the sync radius is
+     * derived from the horizontal chunk view distance and players can see
+     * bullets far above or below them within the same chunk column.</p>
      *
      * @param bullet      the bullet to test
      * @param player      the player whose position is the cull center
      * @param syncRadius  the cull radius in blocks
-     * @return {@code true} if the bullet is within the radius
+     * @return {@code true} if the bullet is within the Chebyshev radius
      */
     private static boolean isInRenderDistance(BulletRecord bullet, ServerPlayer player, double syncRadius) {
-        return player.position().distanceToSqr(bullet.getPosition()) <= syncRadius * syncRadius;
+        Vec3 playerPos = player.position();
+        Vec3 bulletPos = bullet.getPosition();
+        double dx = Math.abs(playerPos.x - bulletPos.x);
+        double dz = Math.abs(playerPos.z - bulletPos.z);
+        return Math.max(dx, dz) <= syncRadius;
     }
 
     /**

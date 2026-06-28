@@ -175,9 +175,16 @@ public final class PluginUninstallService {
      * (empty list or all locked without {@code force}) the result is
      * {@code (false, null, null)}.</p>
      *
+     * <p>The random source is consistent with the install path: when
+     * {@code player} is non-null, the player's server-controlled
+     * {@link net.minecraft.util.RandomSource RandomSource} ({@code player.getRandom()})
+     * is used so the outcome stays deterministic under server authority;
+     * otherwise {@link ThreadLocalRandom} is used as a fallback for
+     * non-player (automation) contexts.</p>
+     *
      * @param gun            the gun item stack to modify (mutated on success)
-     * @param player         the player context for item return, or
-     *                       {@code null}
+     * @param player         the player context for item return and random
+     *                       source, or {@code null}
      * @param force          {@code true} to ignore the {@code locked} flag
      * @param returnItems    {@code true} to return the removed plugin item
      * @param registryAccess the runtime registry view
@@ -200,8 +207,13 @@ public final class PluginUninstallService {
         if (candidates.isEmpty()) {
             return new UninstallResult(false, null, null);
         }
-        PluginInstance selected = candidates.get(
-                ThreadLocalRandom.current().nextInt(candidates.size()));
+        // Use the player's server-controlled random source when available,
+        // consistent with the install path (PluginInstallService). Fall back
+        // to ThreadLocalRandom for non-player (automation) contexts.
+        int index = (player != null)
+                ? player.getRandom().nextInt(candidates.size())
+                : ThreadLocalRandom.current().nextInt(candidates.size());
+        PluginInstance selected = candidates.get(index);
         return uninstallPlugin(gun, selected.instanceUuid(), player, force, returnItems, registryAccess);
     }
 

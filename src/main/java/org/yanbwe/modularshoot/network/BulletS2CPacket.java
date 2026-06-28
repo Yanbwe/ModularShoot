@@ -5,7 +5,7 @@ import java.util.List;
 
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShoot;
-import org.yanbwe.modularshoot.client.ClientBulletSnapshot;
+import org.yanbwe.modularshoot.network.ClientBulletSnapshot;
 
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;

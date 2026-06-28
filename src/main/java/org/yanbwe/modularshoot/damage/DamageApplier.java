@@ -79,7 +79,14 @@ public final class DamageApplier {
     public static void applyDamage(BulletRecord bullet, Entity target, double finalDamage) {
         clearInvulnerableFrames(target);
         DamageSource damageSource = buildDamageSource(bullet, target);
-        target.hurt(damageSource, (float) finalDamage);
+        // Clamp to non-negative before hurt(): a damage processor returning a
+        // negative value would have undefined behaviour in vanilla hurt()
+        // (negative damage is handled inconsistently across versions and may
+        // heal the target or trigger unexpected event paths). Guard against
+        // it explicitly so the contract "applyDamage never heals" holds
+        // (W17 fix, 设计文档 §伤害应用机制 — 防御性编程).
+        float safeDamage = (float) Math.max(0.0, finalDamage);
+        target.hurt(damageSource, safeDamage);
     }
 
     /**
@@ -111,13 +118,26 @@ public final class DamageApplier {
      * fails (offline / unloaded / {@code null}) an attacker-less source is
      * produced so death messages degrade gracefully.</p>
      *
-     * @param bullet  the bullet record (supplies the snapshot)
+     * <p><b>Shooter source consistency (W12 fix).</b> The shooter uuid is read
+     * from {@link BulletRecord#getShooter()} — the runtime authoritative
+     * field — <em>not</em> from {@code bullet.getSnapshot().getShooter()}.
+     * This matches {@link CollisionDetector#isSkippableEntity}, which also
+     * uses {@code bullet.getShooter()}. The two code paths therefore share
+     * the exact same shooter identity, so the entity skipped as "self" during
+     * collision is always the same entity credited as the attacker in the
+     * {@link DamageSource}. {@link BulletRecord} allows the runtime shooter
+     * to differ from the snapshot shooter (independent firing path), so
+     * reading the snapshot here would risk a mismatch where the shooter is
+     * skipped for collision but a stale snapshot uuid is credited for the
+     * kill (or vice versa).</p>
+     *
+     * @param bullet  the bullet record (supplies the snapshot + runtime shooter)
      * @param target  the hit entity (supplies the level for shooter lookup)
      * @return a {@link DamageSource} ready for {@link Entity#hurt}
      */
     private static DamageSource buildDamageSource(BulletRecord bullet, Entity target) {
         Holder<DamageType> damageType = bullet.getSnapshot().getDamageType();
-        UUID shooterUuid = bullet.getSnapshot().getShooter();
+        UUID shooterUuid = bullet.getShooter();
         Entity shooter = resolveShooterEntity(shooterUuid, target.level());
         if (shooter == null) {
             return new DamageSource(damageType);
@@ -146,7 +166,8 @@ public final class DamageApplier {
      * player is offline, or a mob shooter is not loaded — all of which the
      * design treats as "no attacker".</p>
      *
-     * @param shooterUuid the shooter uuid from the bullet snapshot, or {@code null}
+     * @param shooterUuid the shooter uuid from {@link BulletRecord#getShooter()},
+     *                    or {@code null}
      * @param level       the level to resolve in (the target's level)
      * @return the resolved shooter entity, or {@code null} if not found
      */

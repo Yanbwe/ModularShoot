@@ -8,6 +8,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -156,17 +157,21 @@ public final class PluginTooltipBuilder {
 
         matched.sort(PluginTooltipBuilder::compareTypes);
         Set<ResourceLocation> validSet = Set.copyOf(validIds);
-        List<String> names = new ArrayList<>();
+        MutableComponent line = Component.literal("可安装至: ");
+        boolean first = true;
         for (MatchedType entry : matched) {
             if (validSet.contains(entry.id())) {
-                names.add(resolveTypeName(entry.id(), entry.definition()));
+                if (!first) {
+                    line.append(Component.literal("、"));
+                }
+                first = false;
+                line.append(TooltipUtils.resolveText(resolveTypeName(entry.id(), entry.definition())));
             }
         }
-        if (names.isEmpty()) {
+        if (first) {
             return PluginTypeDegradationHandler.getDegradedInstallTarget();
         }
-        return Component.literal("可安装至: " + String.join("、", names))
-                .withStyle(ChatFormatting.GRAY);
+        return line.withStyle(ChatFormatting.GRAY);
     }
 
     /**
@@ -236,7 +241,7 @@ public final class PluginTooltipBuilder {
      */
     private static void addBriefLine(List<Component> lines, PluginDefinition def) {
         def.brief().filter(s -> !s.isEmpty()).ifPresent(brief ->
-                lines.add(Component.literal(brief).withStyle(ChatFormatting.GRAY)));
+                lines.add(TooltipUtils.resolveText(brief).withStyle(ChatFormatting.GRAY)));
     }
 
     /**

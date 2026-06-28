@@ -55,10 +55,25 @@ public enum TraitHookType {
      * Fired when a bullet collides with an entity.
      *
      * <p>Receives the bullet record, snapshot and the hit
-     * {@link net.minecraft.world.entity.Entity}. Damage application happens
-     * after all {@code ON_HIT} callbacks for this bullet have run, so hooks
-     * may adjust {@code hit_damage} or the damage type in-flight (设计文档
-     * §onHit).</p>
+     * {@link net.minecraft.world.entity.Entity}. Damage is applied to the
+     * entity <em>before</em> the {@code ON_HIT} callbacks fire, so hooks
+     * cannot retroactively adjust {@code hit_damage} or the damage type for
+     * the current hit. The {@code ON_HIT} hook is intended for side effects
+     * only (ignite, knockback, particles, etc.); use the damage
+     * post-processor chain
+     * ({@link org.yanbwe.modularshoot.damage.DamageHandlerRegistry}) to
+     * rewrite damage values. Modifying {@code hit_damage} inside an
+     * {@code onHit} callback does, however, propagate to subsequent
+     * penetration targets because they share the same mutable snapshot
+     * (设计文档 §onHit).</p>
+     *
+     * <p><b>中文说明：</b>伤害在 {@code ON_HIT} 回调触发<em>之前</em>应用到
+     * 实体，因此钩子无法追溯调整当前命中的 {@code hit_damage} 或伤害类型。
+     * {@code ON_HIT} 钩子仅用于副作用（点燃、击退、粒子等）；如需改写伤害
+     * 数值请使用伤害后处理器链
+     * （{@link org.yanbwe.modularshoot.damage.DamageHandlerRegistry}）。
+     * 但在 {@code onHit} 回调中修改 {@code hit_damage} 会传播到后续穿透目标，
+     * 因为它们共享同一个可变快照（设计文档 §onHit）。</p>
      */
     ON_HIT,
 

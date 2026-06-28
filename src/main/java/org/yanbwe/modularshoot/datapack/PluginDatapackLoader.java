@@ -1,9 +1,11 @@
 package org.yanbwe.modularshoot.datapack;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
@@ -18,8 +20,9 @@ import org.yanbwe.modularshoot.registry.ModularShootRegistries;
  * <p>After the vanilla datapack registry pipeline has parsed and registered
  * {@link PluginDefinition} entries, this class performs a secondary
  * validation pass: it checks that each entry's {@code tags} list is
- * non-empty so the plugin can match categories via tag intersection, and
- * that each modifier's {@code operation} is legal
+ * non-empty so the plugin can match categories via tag intersection, that
+ * each modifier's {@code operation} is legal, and that no two modifiers
+ * within the same plugin target the same attribute
  * (设计文档 §插件数据包 JSON and §数据包JSON加载失败错误处理).</p>
  *
  * <h2>Degradation policy</h2>
@@ -65,7 +68,8 @@ public final class PluginDatapackLoader {
      *                   for traceability
      * @param definition the parsed definition to validate
      * @return a {@link PluginValidationResult} carrying any warnings (empty
-     *         tags) and/or errors (null modifier operation)
+     *         tags, duplicate attribute targets) and/or errors (null modifier
+     *         operation)
      */
     public static PluginValidationResult validateLoadedPlugin(
             ResourceLocation pluginId, PluginDefinition definition) {
@@ -73,6 +77,7 @@ public final class PluginDatapackLoader {
         List<String> warnings = new ArrayList<>();
         validateTags(pluginId, definition, warnings);
         validateModifiers(pluginId, definition, errors);
+        validateDuplicateAttributes(pluginId, definition, warnings);
         return PluginValidationResult.of(errors, warnings);
     }
 
@@ -174,6 +179,40 @@ public final class PluginDatapackLoader {
                 errors.add("Plugin '" + pluginId + "': modifier for attribute '"
                         + modifier.attribute() + "' has null operation; "
                         + "expected add/multiply/multiply_total.");
+            }
+        }
+    }
+
+    /**
+     * Flags duplicate attribute targets within the same plugin's modifier
+     * list as a non-fatal warning.
+     *
+     * <p>The framework assigns all modifiers from one plugin instance the
+     * same stable modifier id (derived from the instance uuid). Vanilla's
+     * {@code AttributeInstance.addModifier} uses {@code putIfAbsent} keyed
+     * by (attribute, id) and throws {@code IllegalArgumentException} when a
+     * second modifier with the same id is applied to the same attribute.
+     * Without this check a datapack author who declares two modifiers
+     * targeting the same attribute would crash the game at runtime when the
+     * plugin is installed and the gun is refreshed.</p>
+     *
+     * <p>The runtime layer ({@code AttributeModifierService.addPluginModifiers})
+     * also deduplicates defensively, so this warning is advisory: it informs
+     * the author that only the first modifier per attribute will take
+     * effect.</p>
+     *
+     * @param pluginId   the plugin id, used in the warning message
+     * @param definition the definition whose modifiers are checked
+     * @param warnings   the accumulator for warning messages
+     */
+    private static void validateDuplicateAttributes(
+            ResourceLocation pluginId, PluginDefinition definition, List<String> warnings) {
+        Set<String> seen = new HashSet<>();
+        for (PluginModifier modifier : definition.modifiers()) {
+            if (!seen.add(modifier.attribute())) {
+                warnings.add("Plugin '" + pluginId + "': multiple modifiers target attribute '"
+                        + modifier.attribute() + "'; only the first will take effect "
+                        + "(all modifiers from one plugin instance share a single id).");
             }
         }
     }

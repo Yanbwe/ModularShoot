@@ -33,6 +33,35 @@ import org.yanbwe.modularshoot.plugin.PluginDefinition;
  * is handled by {@link PluginDatapackLoader} and the
  * {@code DatapackErrorHandler} (子任务08).</p>
  *
+ * <h2>Fault tolerance &mdash; per-entry isolation</h2>
+ * <p>设计文档 §数据包 JSON 加载失败的错误处理 requires that "对每条 JSON
+ * 独立 try-catch，任何单条失败都被隔离". This is implemented at two
+ * layers:</p>
+ * <ol>
+ *   <li><b>Vanilla pipeline (runtime datapack loading)</b> &mdash; when the
+ *       framework's six registries are loaded via NeoForge's
+ *       {@code DataPackRegistryEvent}, the vanilla
+ *       {@code RegistryDataLoader.loadContentsFromManager} wraps each entry's
+ *       parse in its own try-catch. A single malformed JSON does not abort
+ *       the remaining entries. (Note: if <em>any</em> entry fails, the
+ *       vanilla pipeline ultimately throws and aborts the whole registry
+ *       load &mdash; see {@link DatapackLoadSummary}'s architecture note for
+ *       details.) The vanilla pipeline uses {@link PluginDefinition#CODEC}
+ *       directly; it does <strong>not</strong> route through
+ *       {@link #parse(JsonElement)}.</li>
+ *   <li><b>Manual / batch parsing (this class)</b> &mdash; {@link #parse}
+ *       throws on failure (via {@code getOrThrow}) because it is a
+ *       single-entry utility. Callers that parse a <em>batch</em> of JSON
+ *       entries outside the vanilla pipeline <strong>must</strong> wrap each
+ *       call in their own try-catch, or use {@link #parseSafe} (returns a
+ *       {@link DataResult} without throwing) or
+ *       {@link #parseAndValidate} (returns a {@link ParseResult} carrying
+ *       either the parsed definition or the error message) to achieve
+ *       per-entry isolation. Failing to do so will let one bad entry abort
+ *       the entire batch, violating the design-document's fault-isolation
+ *       requirement.</li>
+ * </ol>
+ *
  * <h2>Supported fields</h2>
  * <ul>
  *   <li>{@code tags} — tag list for category intersection matching;
@@ -59,6 +88,8 @@ import org.yanbwe.modularshoot.plugin.PluginDefinition;
  *
  * @see PluginDefinition#CODEC
  * @see PluginDatapackLoader
+ * @see #parseSafe(JsonElement) for non-throwing batch use
+ * @see #parseAndValidate(JsonElement) for non-throwing batch use with warnings
  */
 public final class PluginJsonCodec {
     private PluginJsonCodec() {
@@ -83,6 +114,21 @@ public final class PluginJsonCodec {
      * message — satisfying the "item_icon required" constraint at the
      * codec layer. All other fields are optional with codec-level defaults
      * (设计文档 §可选字段缺失时使用框架默认值).</p>
+     *
+     * <h2>Batch parsing &mdash; caller must isolate entries</h2>
+     * <p>This method throws on parse failure (via {@code getOrThrow}). When
+     * parsing a <em>batch</em> of JSON entries outside the vanilla pipeline,
+     * the caller <strong>must</strong> wrap each call in its own try-catch
+     * to achieve per-entry fault isolation (设计文档 §数据包 JSON 加载失败
+     * 的错误处理: "对每条 JSON 独立 try-catch"). Alternatively, use
+     * {@link #parseSafe(JsonElement)} (returns a {@link DataResult}) or
+     * {@link #parseAndValidate(JsonElement)} (returns a {@link ParseResult}
+     * carrying either the parsed definition or the error message) for
+     * non-throwing batch use.</p>
+     * <p>The vanilla datapack pipeline does <strong>not</strong> need this
+     * precaution: {@code RegistryDataLoader} already isolates each entry
+     * with its own try-catch when loading through NeoForge's
+     * {@code DataPackRegistryEvent}.</p>
      *
      * @param json the JSON element representing one plugin entry
      * @return the decoded, immutable {@link PluginDefinition}

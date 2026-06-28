@@ -2,6 +2,7 @@ package org.yanbwe.modularshoot.registry.attribute;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import java.util.Optional;
 import net.minecraft.resources.ResourceLocation;
 
 /**
@@ -42,7 +43,7 @@ public record AttributeMeta(
         ResourceLocation binds,
         double defaultValue,
         String description,
-        String color,
+        Optional<String> color,
         int priority,
         boolean forceShow
 ) {
@@ -51,7 +52,7 @@ public record AttributeMeta(
                     ResourceLocation.CODEC.fieldOf("binds").forGetter(AttributeMeta::binds),
                     Codec.DOUBLE.fieldOf("default_value").forGetter(AttributeMeta::defaultValue),
                     Codec.STRING.optionalFieldOf("description", "").forGetter(AttributeMeta::description),
-                    Codec.STRING.optionalFieldOf("color", "").forGetter(AttributeMeta::color),
+                    Codec.STRING.optionalFieldOf("color").forGetter(AttributeMeta::color),
                     Codec.INT.optionalFieldOf("priority", 0).forGetter(AttributeMeta::priority),
                     Codec.BOOL.optionalFieldOf("force_show", false).forGetter(AttributeMeta::forceShow)
             ).apply(instance, AttributeMeta::new)
@@ -60,13 +61,13 @@ public record AttributeMeta(
     /**
      * Convenience factory for creating an {@link AttributeMeta} with only the
      * required fields. Optional fields are filled with their defaults
-     * (empty description/color, priority {@code 0}, forceShow {@code false}).
+     * (empty description, no color, priority {@code 0}, forceShow {@code false}).
      *
      * @param binds        the registered vanilla attribute id to bind to
      * @param defaultValue the gun base value used when a gun omits this attribute
      * @return a new immutable {@link AttributeMeta} instance
      */
     public static AttributeMeta of(ResourceLocation binds, double defaultValue) {
-        return new AttributeMeta(binds, defaultValue, "", "", 0, false);
+        return new AttributeMeta(binds, defaultValue, "", Optional.empty(), 0, false);
     }
 }

@@ -136,6 +136,10 @@ dependencies {
     // Example project dependency using a sister or child project:
     // implementation project(":myproject")
 
+    // JUnit 5 for unit tests (codec round-trip, data transformation tests)
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
     // For more info:
     // http://www.gradle.org/docs/current/userguide/artifact_dependencies_tutorial.html
     // http://www.gradle.org/docs/current/userguide/dependency_management.html
@@ -189,4 +193,9 @@ idea {
         downloadSources = true
         downloadJavadoc = true
     }
+}
+
+// Run JUnit 5 tests via the JUnit Platform.
+tasks.named('test') {
+    useJUnitPlatform()
 }

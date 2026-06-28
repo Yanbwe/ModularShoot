@@ -123,10 +123,11 @@ public final class TooltipBuilder {
             event.getToolTip().addAll(traitBar);
         }
 
-        // 3. State bar (设计文档 §状态栏; hide_default 过滤).
+        // 3. State bar (设计文档 §状态栏; hide_default 过滤). The "状态:"
+        //    header is added by StateTooltipBuilder itself, consistent with
+        //    the attribute/trait/plugin bars which also self-add their headers.
         List<Component> stateBar = StateTooltipBuilder.buildStateBar(stack, player, registryAccess);
         if (!stateBar.isEmpty()) {
-            event.getToolTip().add(Component.literal("状态:").withStyle(ChatFormatting.GRAY));
             event.getToolTip().addAll(stateBar);
         }
 

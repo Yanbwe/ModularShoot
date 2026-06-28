@@ -89,11 +89,26 @@ public final class TraitCallbacks {
      * Fired when the bullet collides with an entity
      * ({@link TraitHookType#ON_HIT}).
      *
-     * <p>Damage is applied to the entity after all {@code ON_HIT} callbacks
-     * for this hit have completed, so hooks may adjust
-     * {@code hit_damage} or replace the damage type in-flight. Hooks may
-     * also record the hit in the bullet's per-bullet state map for
-     * downstream penetration logic (设计文档 §onHit).</p>
+     * <p>Damage is applied to the entity <em>before</em> the {@code ON_HIT}
+     * callbacks fire, so hooks cannot retroactively adjust
+     * {@code hit_damage} or replace the damage type for the current hit.
+     * The {@code ON_HIT} hook is intended for side effects only (ignite,
+     * knockback, particles, etc.); use the damage post-processor chain
+     * ({@link org.yanbwe.modularshoot.damage.DamageHandlerRegistry}) to
+     * rewrite damage values. Modifying {@code hit_damage} inside an
+     * {@code onHit} callback does, however, propagate to subsequent
+     * penetration targets because they share the same mutable snapshot.
+     * Hooks may also record the hit in the bullet's per-bullet state map
+     * for downstream penetration logic (设计文档 §onHit).</p>
+     *
+     * <p><b>中文说明：</b>伤害在 {@code ON_HIT} 回调触发<em>之前</em>应用到
+     * 实体，因此钩子无法追溯调整当前命中的 {@code hit_damage} 或伤害类型。
+     * {@code ON_HIT} 钩子仅用于副作用（点燃、击退、粒子等）；如需改写伤害
+     * 数值请使用伤害后处理器链
+     * （{@link org.yanbwe.modularshoot.damage.DamageHandlerRegistry}）。
+     * 但在 {@code onHit} 回调中修改 {@code hit_damage} 会传播到后续穿透目标，
+     * 因为它们共享同一个可变快照。钩子也可将命中记录到子弹的 per-bullet
+     * 状态映射中，供下游穿透逻辑使用（设计文档 §onHit）。</p>
      */
     @FunctionalInterface
     public interface TraitHitCallback extends TraitCallback {
@@ -180,7 +195,7 @@ public final class TraitCallbacks {
      * <p><strong>Parameter type contract.</strong> Both parameters are typed
      * {@link Object} so that this common interface does not depend on
      * client-only classes &mdash; referencing
-     * {@code org.yanbwe.modularshoot.client.ClientBulletSnapshot} or
+     * {@code org.yanbwe.modularshoot.network.ClientBulletSnapshot} or
      * {@code org.yanbwe.modularshoot.client.render.BulletRenderObject} here
      * would cause a {@code ClassNotFoundException} on a dedicated server that
      * loads this common module. On the client the actual arguments are always
@@ -214,7 +229,7 @@ public final class TraitCallbacks {
          *                     identity, passed as {@link Object} to avoid a
          *                     common-module dependency on client classes;
          *                     never {@code null} on the client. Cast to
-         *                     {@code org.yanbwe.modularshoot.client.ClientBulletSnapshot}
+         *                     {@code org.yanbwe.modularshoot.network.ClientBulletSnapshot}
          *                     before use.
          * @param renderObject the client-side {@code BulletRenderObject},
          *                     passed as {@link Object} to avoid a

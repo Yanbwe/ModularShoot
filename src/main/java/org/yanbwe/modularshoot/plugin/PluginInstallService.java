@@ -5,12 +5,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 import java.util.UUID;
-import javax.annotation.Nullable;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.common.NeoForge;
+import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.attribute.AttributeModifierService;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
@@ -18,8 +18,6 @@ import org.yanbwe.modularshoot.component.PluginData;
 import org.yanbwe.modularshoot.component.PluginInstance;
 import org.yanbwe.modularshoot.plugin.event.PostPluginInstallEvent;
 import org.yanbwe.modularshoot.plugin.event.PrePluginInstallEvent;
-import org.yanbwe.modularshoot.registry.gun.GunDefinition;
-import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 
 /**
  * Installation pipeline that writes a plugin into a gun's data component
@@ -129,6 +127,14 @@ public final class PluginInstallService {
         }
         ResourceLocation pluginId = pluginData.pluginId();
 
+        // a2. Guard: the target gun must carry a gun_data component. Without it
+        //     the downstream matching service returns an empty candidate list,
+        //     which would surface as the misleading "No matching slot available"
+        //     message. Fail fast with an explicit reason instead (S29 fix).
+        if (!gun.has(ModularShootDataComponents.GUN_DATA.get())) {
+            return InstallResult.failure("Target gun has no gun_data component");
+        }
+
         // b-h. Validate every gate and select the target category.
         SelectionOutcome outcome = validateAndSelect(gun, pluginId, player, registryAccess);
         if (!outcome.result().valid()) {
@@ -162,22 +168,19 @@ public final class PluginInstallService {
     private static SelectionOutcome validateAndSelect(
             ItemStack gun, ResourceLocation pluginId, Player player, RegistryAccess registryAccess) {
         // b. Find matching categories that still have a free slot.
-        List<PluginTypeDefinition> candidates =
+        //    Each candidate carries its registry id alongside the definition,
+        //    so no reverse-lookup is needed after selection.
+        List<PluginMatchingService.TypeMatch> candidates =
                 PluginMatchingService.getMatchingTypes(gun, pluginId, registryAccess);
         // c. No match → fail.
         if (candidates.isEmpty()) {
             return new SelectionOutcome(ValidationResult.error("No matching slot available"), null);
         }
-        // d. Auto-select one category from the candidates.
-        Optional<PluginTypeDefinition> selected =
+        // d. Auto-select one category from the candidates; the selected id
+        //    is returned directly, eliminating the previous reverse-lookup.
+        Optional<ResourceLocation> selectedTypeId =
                 PluginMatchingService.selectPluginType(candidates, randomFrom(player));
-        if (selected.isEmpty()) {
-            return new SelectionOutcome(ValidationResult.error("No matching slot available"), null);
-        }
-        // The definition record does not carry its own registry id, so resolve it
-        // back from the gun's slot configuration by value equality.
-        Optional<ResourceLocation> typeId = resolveTypeId(gun, selected.get(), registryAccess);
-        if (typeId.isEmpty()) {
+        if (selectedTypeId.isEmpty()) {
             return new SelectionOutcome(ValidationResult.error("No matching slot available"), null);
         }
         // e. Look up the plugin definition for the exclusive-group check.
@@ -203,45 +206,7 @@ public final class PluginInstallService {
         if (preEvent.isCanceled()) {
             return new SelectionOutcome(ValidationResult.error("Installation blocked by a listener"), null);
         }
-        return new SelectionOutcome(ValidationResult.success(), typeId.get());
-    }
-
-    /**
-     * Resolves the registry id of a selected category definition by matching it
-     * against the gun's slot configuration.
-     *
-     * <p>{@link PluginTypeDefinition} does not carry its own registry id (the id
-     * is supplied by the registry key, not the record). This helper iterates the
-     * gun definition's slot key set, looks up each category, and returns the
-     * first id whose definition equals the selected one. Because
-     * {@link PluginMatchingService#getMatchingTypes} already filtered to the
-     * gun's matching categories, the selected definition is guaranteed to be
-     * among them.</p>
-     *
-     * @param gun            the target gun item stack
-     * @param selected       the category definition selected by auto-selection
-     * @param registryAccess the runtime registry view
-     * @return the matching category id, or empty when the gun data or gun
-     *         definition is missing
-     */
-    private static Optional<ResourceLocation> resolveTypeId(
-            ItemStack gun, PluginTypeDefinition selected, RegistryAccess registryAccess) {
-        GunData gunData = gun.get(ModularShootDataComponents.GUN_DATA.get());
-        if (gunData == null) {
-            return Optional.empty();
-        }
-        Optional<GunDefinition> gunDef = GunRegistry.getGun(registryAccess, gunData.gunId());
-        if (gunDef.isEmpty()) {
-            return Optional.empty();
-        }
-        for (ResourceLocation typeId : gunDef.get().slots().keySet()) {
-            Optional<PluginTypeDefinition> typeDef =
-                    PluginTypeRegistry.getPluginType(registryAccess, typeId);
-            if (typeDef.isPresent() && typeDef.get().equals(selected)) {
-                return Optional.of(typeId);
-            }
-        }
-        return Optional.empty();
+        return new SelectionOutcome(ValidationResult.success(), selectedTypeId.get());
     }
 
     /**
@@ -257,6 +222,12 @@ public final class PluginInstallService {
      * and the post-install event is fired so listeners observe the final
      * state (设计文档 lines 502-510).</p>
      *
+     * <p>The instance uuid is derived from the player's random source via
+     * {@link #deriveInstanceUuid} rather than {@link UUID#randomUUID()} so
+     * that the client and server sides — which each fire
+     * {@link net.neoforged.neoforge.event.ItemStackedOnOtherEvent}
+     * independently — produce the same uuid (W4 fix).</p>
+     *
      * @param gun            the gun item stack to update (mutated)
      * @param pluginStack    the plugin item stack to consume (shrunk by one)
      * @param pluginId       the installed plugin definition id
@@ -267,8 +238,14 @@ public final class PluginInstallService {
     private static void executeInstall(
             ItemStack gun, ItemStack pluginStack, ResourceLocation pluginId,
             ResourceLocation selectedTypeId, Player player, RegistryAccess registryAccess) {
-        // i. Generate a unique instance id for this installation.
-        UUID instanceUuid = UUID.randomUUID();
+        // i. Generate a unique instance id for this installation. The uuid is
+        //    derived from the player's random source (not UUID.randomUUID())
+        //    so that both the client and server sides — which each fire
+        //    ItemStackedOnOtherEvent independently — produce the same uuid.
+        //    This eliminates the transient mismatch window where the client's
+        //    gun_data would carry a different instance uuid than the server's
+        //    authoritative copy until the server syncs back (W4 fix).
+        UUID instanceUuid = deriveInstanceUuid(player);
         // j. Create the immutable plugin instance (locked defaults to false).
         PluginInstance instance = PluginInstance.create(pluginId, instanceUuid, selectedTypeId);
         // k. Build the new gun data: append the instance, bump the version,
@@ -308,5 +285,31 @@ public final class PluginInstallService {
      */
     private static Random randomFrom(Player player) {
         return new Random(player.getRandom().nextLong());
+    }
+
+    /**
+     * Derives a deterministic instance uuid from the player's random source.
+     *
+     * <p>{@link net.neoforged.neoforge.event.ItemStackedOnOtherEvent} fires
+     * independently on both the client and server sides. Using
+     * {@link UUID#randomUUID()} would produce two different uuids — one per
+     * side — leaving the client's {@code gun_data} with a transiently
+     * mismatched instance uuid until the server's authoritative copy syncs
+     * back via container synchronization. Deriving the uuid from the player's
+     * {@link net.minecraft.util.RandomSource RandomSource} ensures both sides
+     * consume the same random sequence (the player random is shared/synced
+     * for this code path) and therefore produce the <em>same</em> uuid,
+     * eliminating the mismatch window.</p>
+     *
+     * <p>The player random is advanced by exactly two {@code nextLong()}
+     * calls per install. Because both sides execute the identical code path
+     * (including the {@link #randomFrom} seed draw in the selection phase),
+     * the random sequences stay aligned.</p>
+     *
+     * @param player the player whose random source derives the uuid
+     * @return a new uuid built from two longs drawn from the player's random
+     */
+    private static UUID deriveInstanceUuid(Player player) {
+        return new UUID(player.getRandom().nextLong(), player.getRandom().nextLong());
     }
 }

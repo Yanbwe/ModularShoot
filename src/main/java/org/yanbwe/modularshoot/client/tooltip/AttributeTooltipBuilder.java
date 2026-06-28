@@ -261,9 +261,7 @@ public final class AttributeTooltipBuilder {
      */
     private static Component buildLine(AttributeEntry entry) {
         AttributeMeta meta = entry.meta();
-        int nameColor = meta.color().isEmpty()
-                ? 0xFFFFFF
-                : TooltipUtils.parseHexColor(meta.color());
+        int nameColor = meta.color().map(TooltipUtils::parseHexColor).orElse(0xFFFFFF);
         String valueText = TooltipUtils.formatValue(entry.value());
 
         MutableComponent nameComp = resolveAttributeName(meta.binds()).withColor(nameColor);

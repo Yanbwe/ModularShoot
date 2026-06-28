@@ -76,7 +76,11 @@ public final class ShootPacketHandler {
             return;
         }
         if (!checkFireRate(player, gunData.gunId())) {
-            ModularShoot.LOGGER.info("Shoot rejected by fire-rate controller (player={}, gun={}, fireRate={})",
+            // Debug-level: when the client holds the shoot button it sends a
+            // ShootC2SPacket every tick; most are rejected by the fire-rate
+            // controller, so an INFO log here would flood the log (W9). Use
+            // DEBUG so the rejection is visible only when diagnosing issues.
+            ModularShoot.LOGGER.debug("Shoot rejected by fire-rate controller (player={}, gun={}, fireRate={})",
                     player.getName().getString(), gunData.gunId(),
                     player.getAttributeValue(ModularShootAttributes.FIRE_RATE));
             return;

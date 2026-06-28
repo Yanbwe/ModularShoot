@@ -219,11 +219,13 @@ public final class PluginBarTooltipBuilder {
         String name = entry.definition() != null
                 ? entry.definition().name().filter(s -> !s.isEmpty()).orElse(entry.typeId().getPath())
                 : entry.typeId().getPath();
-        MutableComponent nameComp = Component.literal("[" + name + "]");
+        MutableComponent nameComp = Component.literal("[")
+                .append(TooltipUtils.resolveText(name))
+                .append(Component.literal("]"));
         if (entry.definition() != null) {
             Optional<String> color = entry.definition().color();
             if (color.isPresent()) {
-                nameComp = nameComp.withColor(parseHexColor(color.get()));
+                nameComp = nameComp.withColor(TooltipUtils.parseHexColor(color.get()));
             }
         }
         return nameComp.append(Component.literal(
@@ -269,10 +271,10 @@ public final class PluginBarTooltipBuilder {
         }
         PluginDefinition def = defOpt.get();
         String name = def.name().filter(s -> !s.isEmpty()).orElse(plugin.pluginId().getPath());
-        MutableComponent nameComp = Component.literal(name);
+        MutableComponent nameComp = TooltipUtils.resolveText(name);
         Optional<String> color = def.color();
         if (color.isPresent()) {
-            nameComp = nameComp.withColor(parseHexColor(color.get()));
+            nameComp = nameComp.withColor(TooltipUtils.parseHexColor(color.get()));
         }
 
         Component anchor = plugin.locked()
@@ -283,37 +285,20 @@ public final class PluginBarTooltipBuilder {
             Optional<String> detail = def.description().filter(s -> !s.isEmpty())
                     .or(() -> def.brief().filter(s -> !s.isEmpty()));
             detail.ifPresent(d ->
-                    lines.add(Component.literal("   |" + d).withStyle(ChatFormatting.GRAY)));
+                    lines.add(Component.empty()
+                            .append(Component.literal("   |").withStyle(ChatFormatting.GRAY))
+                            .append(TooltipUtils.resolveText(d).withStyle(ChatFormatting.GRAY))));
         } else {
             // Default: 插件名 - brief.
             MutableComponent line = Component.literal("  ").append(anchor).append(nameComp);
             Optional<String> brief = def.brief().filter(s -> !s.isEmpty());
             if (brief.isPresent()) {
                 line = line.append(Component.literal(" - "))
-                        .append(Component.literal(brief.get()).withStyle(ChatFormatting.GRAY));
+                        .append(TooltipUtils.resolveText(brief.get()).withStyle(ChatFormatting.GRAY));
             }
             lines.add(line);
         }
         return lines;
-    }
-
-    /**
-     * Parses a hex colour string to an RGB integer.
-     *
-     * <p>Accepts both {@code "#FFAA00"} and {@code "FFAA00"} formats.
-     * Falls back to white ({@code 0xFFFFFF}) on parse failure so a
-     * malformed colour never crashes the tooltip.</p>
-     *
-     * @param hex the hex colour string
-     * @return the RGB integer value
-     */
-    private static int parseHexColor(String hex) {
-        try {
-            String clean = hex.startsWith("#") ? hex.substring(1) : hex;
-            return Integer.parseInt(clean, 16);
-        } catch (NumberFormatException ex) {
-            return 0xFFFFFF;
-        }
     }
 
     // ------------------------------------------------------------------

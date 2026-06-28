@@ -8,6 +8,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
@@ -177,10 +178,21 @@ public final class CollisionDetector {
      * Detects the nearest non-skipped entity hit along the step
      * (设计文档 §实体碰撞).
      *
-     * <p>Queries all entities in an AABB enclosing the path (inflated by
-     * {@code bullet_size} plus a margin), then ray-clips each candidate's
-     * (inflated) hitbox. This localises the scan to the 3×3-chunk-equivalent
-     * neighbourhood around the step (设计文档 §空间分区).</p>
+     * <p>Queries {@link LivingEntity} instances in an AABB enclosing the path
+     * (inflated by {@code bullet_size} plus a margin), then ray-clips each
+     * candidate's (inflated) hitbox. This localises the scan to the
+     * 3×3-chunk-equivalent neighbourhood around the step
+     * (设计文档 §空间分区).</p>
+     *
+     * <p><b>Entity-type filter (W15 fix).</b> The query is restricted to
+     * {@link LivingEntity} rather than the raw {@link Entity} root class.
+     * The vast majority of combat-relevant targets (players, mobs, armour
+     * stands) extend {@code LivingEntity}, while non-combat entities such as
+     * item frames, experience orbs, dropped items, paintings, boats and
+     * minecarts do not. Filtering at the {@code getEntitiesOfClass} level
+     * avoids both the cost of ray-clipping irrelevant hitboxes and the
+     * gameplay bug of a bullet "hitting" (and being stopped by) a passing
+     * item frame or experience orb.</p>
      *
      * @param level      the server level
      * @param bullet     the bullet record (supplies shooter + dedup set)
@@ -192,7 +204,7 @@ public final class CollisionDetector {
     private static CollisionResult detectEntityCollision(
             Level level, BulletRecord bullet, Vec3 prevPos, Vec3 curPos, double bulletSize) {
         AABB searchAABB = buildSearchAABB(prevPos, curPos, bulletSize);
-        List<Entity> entities = level.getEntitiesOfClass(Entity.class, searchAABB);
+        List<LivingEntity> entities = level.getEntitiesOfClass(LivingEntity.class, searchAABB);
         return findNearestEntity(entities, bullet, prevPos, curPos, bulletSize);
     }
 
@@ -222,7 +234,7 @@ public final class CollisionDetector {
      * (inflated) hitbox, skipping already-penetrated entities and the shooter
      * (设计文档 §穿透去重 — 实体).
      *
-     * @param entities   candidate entities near the path
+     * @param entities   candidate {@link LivingEntity} instances near the path
      * @param bullet     the bullet record (supplies shooter + dedup set)
      * @param prevPos    step start
      * @param curPos     step end
@@ -230,9 +242,9 @@ public final class CollisionDetector {
      * @return the nearest entity hit, or {@link CollisionResult#none()}
      */
     private static CollisionResult findNearestEntity(
-            List<Entity> entities, BulletRecord bullet, Vec3 prevPos, Vec3 curPos, double bulletSize) {
+            List<LivingEntity> entities, BulletRecord bullet, Vec3 prevPos, Vec3 curPos, double bulletSize) {
         CollisionResult nearest = CollisionResult.none();
-        for (Entity entity : entities) {
+        for (LivingEntity entity : entities) {
             if (isSkippableEntity(entity, bullet)) {
                 continue;
             }

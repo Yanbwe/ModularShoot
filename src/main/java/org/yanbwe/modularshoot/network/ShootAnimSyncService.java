@@ -10,6 +10,7 @@ import net.minecraft.world.phys.Vec3;
 
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
@@ -126,6 +127,31 @@ public final class ShootAnimSyncService {
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             mgr.tickPlayer(player);
         }
+    }
+
+    /**
+     * Removes the per-player state entry when a player logs out, preventing
+     * unbounded growth of the {@link #states} map.
+     *
+     * <p>Without this hook every player who ever fires a shot would leave a
+     * residual entry in {@code states} forever, since the timeout counter in
+     * {@link #tickPlayer} only flips {@code isFiring} to {@code false} but
+     * never removes the entry. On a long-running server this causes a
+     * steadily growing memory leak (内存泄漏修复 K12).</p>
+     *
+     * <p>Mirrors the cleanup pattern in
+     * {@link GunSyncService#onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent)}
+     * and
+     * {@link BulletSyncService#onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent)},
+     * both of which remove the disconnecting player's entries from their
+     * respective state maps on the same event.</p>
+     *
+     * @param event the player-logged-out event
+     */
+    @SubscribeEvent
+    public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        UUID playerUuid = event.getEntity().getUUID();
+        getInstance().states.remove(playerUuid);
     }
 
     /**

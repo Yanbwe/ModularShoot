@@ -58,7 +58,7 @@ import org.yanbwe.modularshoot.util.GunResolver;
  * ModularShootAPI.registerPluginValidator((gun, pluginId) -> ValidationResult.success());
  * ModularShootAPI.getGunId(gun);
  * ModularShootAPI.getInstalledPlugins(gun);
- * ModularShootAPI.uninstallPlugin(gun, uuid, player, false, true, registryAccess);
+ * ModularShootAPI.uninstallPlugin(gun, uuid, player, false, true);
  * }</pre>
  *
  * <h2>Parameter validation</h2>
@@ -160,6 +160,52 @@ public final class ModularShootAPI {
      * {@link PluginUninstallService#uninstallPlugin}. See that method for the
      * full validation, event and item-return semantics.</p>
      *
+     * <p>The runtime {@link RegistryAccess} required for modifier refresh and
+     * the degradation check is derived internally from
+     * {@code player.level().registryAccess()}, so the caller does not need to
+     * obtain one explicitly (设计文档 §API 签名 — 无 RegistryAccess 参数).
+     * When the player context may be {@code null} (e.g. the gun is in a chest
+     * or processed by automation), use the
+     * {@link #uninstallPlugin(ItemStack, UUID, Player, boolean, boolean, RegistryAccess)}
+     * overload instead.</p>
+     *
+     * @param gun          the gun item stack to modify (mutated on success);
+     *                     must not be {@code null}
+     * @param instanceUuid the instance uuid of the plugin to remove; must not
+     *                     be {@code null}
+     * @param player       the player context for item return and registry
+     *                     resolution; must not be {@code null}
+     * @param force        {@code true} to ignore the {@code locked} flag
+     * @param returnItems  {@code true} to return the removed plugin as an item
+     *                     stack to {@code player}
+     * @return an {@link UninstallResult} describing the outcome
+     */
+    public static UninstallResult uninstallPlugin(
+            ItemStack gun,
+            UUID instanceUuid,
+            Player player,
+            boolean force,
+            boolean returnItems
+    ) {
+        Objects.requireNonNull(gun, "gun");
+        Objects.requireNonNull(instanceUuid, "instanceUuid");
+        Objects.requireNonNull(player, "player");
+        RegistryAccess registryAccess = player.level().registryAccess();
+        return PluginUninstallService.uninstallPlugin(
+                gun, instanceUuid, player, force, returnItems, registryAccess);
+    }
+
+    /**
+     * Removes a single plugin identified by its instance uuid from a gun stack,
+     * with an explicit {@link RegistryAccess}.
+     *
+     * <p>This overload is retained for callers that already hold a
+     * {@link RegistryAccess} or need a {@code null} player context (e.g. the
+     * gun is in a chest or processed by automation). New callers should prefer
+     * {@link #uninstallPlugin(ItemStack, UUID, Player, boolean, boolean)}
+     * which derives the registry view from the player and matches the design
+     * document signature (设计文档 §API 签名).</p>
+     *
      * @param gun            the gun item stack to modify (mutated on success);
      *                       must not be {@code null}
      * @param instanceUuid   the instance uuid of the plugin to remove; must not
@@ -172,7 +218,10 @@ public final class ModularShootAPI {
      * @param registryAccess the runtime registry view (for modifier refresh);
      *                       must not be {@code null}
      * @return an {@link UninstallResult} describing the outcome
+     * @deprecated Use {@link #uninstallPlugin(ItemStack, UUID, Player, boolean, boolean)}
+     *             instead; this overload will be removed in a future release.
      */
+    @Deprecated
     public static UninstallResult uninstallPlugin(
             ItemStack gun,
             UUID instanceUuid,
@@ -195,6 +244,44 @@ public final class ModularShootAPI {
      * {@link PluginUninstallService#uninstallRandomPlugin}. See that method for
      * the candidate selection and outcome semantics.</p>
      *
+     * <p>The runtime {@link RegistryAccess} is derived internally from
+     * {@code player.level().registryAccess()} (设计文档 §API 签名 — 无
+     * RegistryAccess 参数). When the player context may be {@code null}, use
+     * the
+     * {@link #uninstallRandomPlugin(ItemStack, Player, boolean, boolean, RegistryAccess)}
+     * overload instead.</p>
+     *
+     * @param gun         the gun item stack to modify (mutated on success);
+     *                    must not be {@code null}
+     * @param player      the player context for item return and registry
+     *                    resolution; must not be {@code null}
+     * @param force       {@code true} to ignore the {@code locked} flag
+     * @param returnItems {@code true} to return the removed plugin item
+     * @return an {@link UninstallResult} describing the outcome
+     */
+    public static UninstallResult uninstallRandomPlugin(
+            ItemStack gun,
+            Player player,
+            boolean force,
+            boolean returnItems
+    ) {
+        Objects.requireNonNull(gun, "gun");
+        Objects.requireNonNull(player, "player");
+        RegistryAccess registryAccess = player.level().registryAccess();
+        return PluginUninstallService.uninstallRandomPlugin(
+                gun, player, force, returnItems, registryAccess);
+    }
+
+    /**
+     * Removes one randomly chosen uninstallable plugin from a gun stack, with
+     * an explicit {@link RegistryAccess}.
+     *
+     * <p>This overload is retained for callers that already hold a
+     * {@link RegistryAccess} or need a {@code null} player context. New
+     * callers should prefer
+     * {@link #uninstallRandomPlugin(ItemStack, Player, boolean, boolean)}
+     * which derives the registry view from the player (设计文档 §API 签名).</p>
+     *
      * @param gun            the gun item stack to modify (mutated on success);
      *                       must not be {@code null}
      * @param player         the player context for item return, or {@code null}
@@ -202,7 +289,10 @@ public final class ModularShootAPI {
      * @param returnItems    {@code true} to return the removed plugin item
      * @param registryAccess the runtime registry view; must not be {@code null}
      * @return an {@link UninstallResult} describing the outcome
+     * @deprecated Use {@link #uninstallRandomPlugin(ItemStack, Player, boolean, boolean)}
+     *             instead; this overload will be removed in a future release.
      */
+    @Deprecated
     public static UninstallResult uninstallRandomPlugin(
             ItemStack gun,
             @Nullable Player player,
@@ -224,6 +314,49 @@ public final class ModularShootAPI {
      * {@link PluginUninstallService#uninstallPluginsByType}. See that method
      * for the snapshot and per-uuid removal semantics.</p>
      *
+     * <p>The runtime {@link RegistryAccess} is derived internally from
+     * {@code player.level().registryAccess()} (设计文档 §API 签名 — 无
+     * RegistryAccess 参数). When the player context may be {@code null}, use
+     * the
+     * {@link #uninstallPluginsByType(ItemStack, Player, ResourceLocation, boolean, boolean, RegistryAccess)}
+     * overload instead.</p>
+     *
+     * @param gun          the gun item stack to modify (mutated on success);
+     *                     must not be {@code null}
+     * @param player       the player context for item return and registry
+     *                     resolution; must not be {@code null}
+     * @param pluginTypeId the category id to match against; must not be
+     *                     {@code null}
+     * @param force        {@code true} to ignore the {@code locked} flag
+     * @param returnItems  {@code true} to return each removed plugin item
+     * @return a list of {@link UninstallResult}, one per matching plugin;
+     *         empty when the stack is invalid or no plugin matches
+     */
+    public static List<UninstallResult> uninstallPluginsByType(
+            ItemStack gun,
+            Player player,
+            ResourceLocation pluginTypeId,
+            boolean force,
+            boolean returnItems
+    ) {
+        Objects.requireNonNull(gun, "gun");
+        Objects.requireNonNull(player, "player");
+        Objects.requireNonNull(pluginTypeId, "pluginTypeId");
+        RegistryAccess registryAccess = player.level().registryAccess();
+        return PluginUninstallService.uninstallPluginsByType(
+                gun, player, pluginTypeId, force, returnItems, registryAccess);
+    }
+
+    /**
+     * Removes every plugin whose {@code installedTypeId} matches the given
+     * category id from a gun stack, with an explicit {@link RegistryAccess}.
+     *
+     * <p>This overload is retained for callers that already hold a
+     * {@link RegistryAccess} or need a {@code null} player context. New
+     * callers should prefer
+     * {@link #uninstallPluginsByType(ItemStack, Player, ResourceLocation, boolean, boolean)}
+     * which derives the registry view from the player (设计文档 §API 签名).</p>
+     *
      * @param gun            the gun item stack to modify (mutated on success);
      *                       must not be {@code null}
      * @param player         the player context for item return, or {@code null}
@@ -234,7 +367,10 @@ public final class ModularShootAPI {
      * @param registryAccess the runtime registry view; must not be {@code null}
      * @return a list of {@link UninstallResult}, one per matching plugin;
      *         empty when the stack is invalid or no plugin matches
+     * @deprecated Use {@link #uninstallPluginsByType(ItemStack, Player, ResourceLocation, boolean, boolean)}
+     *             instead; this overload will be removed in a future release.
      */
+    @Deprecated
     public static List<UninstallResult> uninstallPluginsByType(
             ItemStack gun,
             @Nullable Player player,
@@ -257,6 +393,45 @@ public final class ModularShootAPI {
      * {@link PluginUninstallService#uninstallAllPlugins}. See that method for
      * the snapshot and per-uuid removal semantics.</p>
      *
+     * <p>The runtime {@link RegistryAccess} is derived internally from
+     * {@code player.level().registryAccess()} (设计文档 §API 签名 — 无
+     * RegistryAccess 参数). When the player context may be {@code null}, use
+     * the
+     * {@link #uninstallAllPlugins(ItemStack, Player, boolean, boolean, RegistryAccess)}
+     * overload instead.</p>
+     *
+     * @param gun         the gun item stack to modify (mutated on success);
+     *                    must not be {@code null}
+     * @param player      the player context for item return and registry
+     *                    resolution; must not be {@code null}
+     * @param force       {@code true} to ignore the {@code locked} flag
+     * @param returnItems {@code true} to return each removed plugin item
+     * @return a list of {@link UninstallResult}, one per installed plugin;
+     *         empty when the stack is invalid or has no plugins
+     */
+    public static List<UninstallResult> uninstallAllPlugins(
+            ItemStack gun,
+            Player player,
+            boolean force,
+            boolean returnItems
+    ) {
+        Objects.requireNonNull(gun, "gun");
+        Objects.requireNonNull(player, "player");
+        RegistryAccess registryAccess = player.level().registryAccess();
+        return PluginUninstallService.uninstallAllPlugins(
+                gun, player, force, returnItems, registryAccess);
+    }
+
+    /**
+     * Removes every installed plugin from a gun stack, with an explicit
+     * {@link RegistryAccess}.
+     *
+     * <p>This overload is retained for callers that already hold a
+     * {@link RegistryAccess} or need a {@code null} player context. New
+     * callers should prefer
+     * {@link #uninstallAllPlugins(ItemStack, Player, boolean, boolean)}
+     * which derives the registry view from the player (设计文档 §API 签名).</p>
+     *
      * @param gun            the gun item stack to modify (mutated on success);
      *                       must not be {@code null}
      * @param player         the player context for item return, or {@code null}
@@ -265,7 +440,10 @@ public final class ModularShootAPI {
      * @param registryAccess the runtime registry view; must not be {@code null}
      * @return a list of {@link UninstallResult}, one per installed plugin;
      *         empty when the stack is invalid or has no plugins
+     * @deprecated Use {@link #uninstallAllPlugins(ItemStack, Player, boolean, boolean)}
+     *             instead; this overload will be removed in a future release.
      */
+    @Deprecated
     public static List<UninstallResult> uninstallAllPlugins(
             ItemStack gun,
             @Nullable Player player,
@@ -282,18 +460,57 @@ public final class ModularShootAPI {
     // ---- Lock API -------------------------------------------------------
 
     /**
-     * Locks or unlocks a specific installed plugin instance on a gun stack.
+     * Locks or unlocks a specific installed plugin instance on a gun stack,
+     * then refreshes the {@code ATTRIBUTE_MODIFIERS} component.
+     *
+     * <p>Delegates to
+     * {@link PluginLockService#setPluginLocked(ItemStack, UUID, boolean, RegistryAccess)}.
+     * The operation is a no-op when the stack is not a gun, carries no gun
+     * data, the plugin is absent, or the plugin is already in the requested
+     * lock state. This is the preferred overload: it honours the design's
+     * refresh-trigger-point list (设计文档 §组件刷新时机).</p>
+     *
+     * @param gun            the gun item stack to modify (mutated on success);
+     *                       must not be {@code null}
+     * @param instanceUuid   the instance uuid of the plugin to lock/unlock;
+     *                       must not be {@code null}
+     * @param locked         {@code true} to lock, {@code false} to unlock
+     * @param registryAccess the runtime registry view used to refresh
+     *                       attribute modifiers after the update; must not be
+     *                       {@code null}
+     */
+    public static void setPluginLocked(
+            ItemStack gun, UUID instanceUuid, boolean locked, RegistryAccess registryAccess) {
+        Objects.requireNonNull(gun, "gun");
+        Objects.requireNonNull(instanceUuid, "instanceUuid");
+        Objects.requireNonNull(registryAccess, "registryAccess");
+        PluginLockService.setPluginLocked(gun, instanceUuid, locked, registryAccess);
+    }
+
+    /**
+     * Locks or unlocks a specific installed plugin instance on a gun stack
+     * without refreshing the {@code ATTRIBUTE_MODIFIERS} component.
      *
      * <p>Delegates to {@link PluginLockService#setPluginLocked}. The operation
      * is a no-op when the stack is not a gun, carries no gun data, the plugin is
      * absent, or the plugin is already in the requested lock state.</p>
+     *
+     * <p>Because a lock-state change does not alter which modifiers are active,
+     * skipping the refresh is safe in practice. Callers that have a
+     * {@link RegistryAccess} should prefer
+     * {@link #setPluginLocked(ItemStack, UUID, boolean, RegistryAccess)} to
+     * fully honour the design's refresh-trigger-point list.</p>
      *
      * @param gun          the gun item stack to modify (mutated on success);
      *                     must not be {@code null}
      * @param instanceUuid the instance uuid of the plugin to lock/unlock; must
      *                     not be {@code null}
      * @param locked       {@code true} to lock, {@code false} to unlock
+     * @deprecated Use {@link #setPluginLocked(ItemStack, UUID, boolean, RegistryAccess)}
+     *             to ensure the {@code ATTRIBUTE_MODIFIERS} component is
+     *             refreshed after the lock change.
      */
+    @Deprecated
     public static void setPluginLocked(ItemStack gun, UUID instanceUuid, boolean locked) {
         Objects.requireNonNull(gun, "gun");
         Objects.requireNonNull(instanceUuid, "instanceUuid");

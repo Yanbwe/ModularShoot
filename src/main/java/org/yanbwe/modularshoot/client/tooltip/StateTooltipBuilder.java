@@ -62,7 +62,8 @@ public final class StateTooltipBuilder {
      *       and the current value equals the default value.</li>
      *   <li>Sort by {@code display.priority} descending, then by state id
      *       ascending.</li>
-     *   <li>Render each entry as a {@link Component} line.</li>
+     *   <li>Render a grey {@code "状态:"} header followed by one line per
+     *       entry.</li>
      * </ol>
      * </p>
      *
@@ -70,8 +71,9 @@ public final class StateTooltipBuilder {
      * @param viewingPlayer  the player viewing the tooltip (for per-player
      *                       states); may be {@code null} (e.g. main menu)
      * @param registryAccess the runtime registry view for state lookups
-     * @return an ordered list of state-line components; empty when no state
-     *         is displayable or the registry is empty
+     * @return an ordered list of state-bar components starting with the
+     *         grey {@code "状态:"} header; empty when no state is
+     *         displayable or the registry is empty
      */
     public static List<Component> buildStateBar(
             ItemStack gunStack,
@@ -83,7 +85,8 @@ public final class StateTooltipBuilder {
             return List.of();
         }
         visible.sort(StateTooltipBuilder::compareEntries);
-        List<Component> lines = new ArrayList<>(visible.size());
+        List<Component> lines = new ArrayList<>(visible.size() + 1);
+        lines.add(Component.literal("状态:").withStyle(ChatFormatting.GRAY));
         for (StateEntry entry : visible) {
             lines.add(buildLine(entry));
         }
@@ -367,11 +370,11 @@ public final class StateTooltipBuilder {
      */
     private static Component buildLine(StateEntry entry) {
         StateDisplay display = entry.definition().display();
-        int nameColor = parseHexColor(display.color());
+        int nameColor = display.color().map(TooltipUtils::parseHexColor).orElse(0xFFFFFF);
         String valueText = formatValue(entry.value(), entry.definition().valueType(), display.format());
         return Component.empty()
                 .append(Component.literal("  "))
-                .append(Component.literal(display.name()).withColor(nameColor))
+                .append(TooltipUtils.resolveText(display.name()).withColor(nameColor))
                 .append(Component.literal(": "))
                 .append(Component.literal(valueText).withStyle(ChatFormatting.GRAY));
     }
@@ -398,45 +401,43 @@ public final class StateTooltipBuilder {
      * <p>Type-specific formatting:
      * <ul>
      *   <li>{@code int}/{@code long} — {@code String.valueOf}</li>
-     *   <li>{@code double}/{@code float} — one decimal place</li>
+     *   <li>{@code double}/{@code float} — {@link TooltipUtils#formatValue}
+     *       (trims trailing zeros, consistent with attribute values), or
+     *       {@code "-"} when the value is {@code null}</li>
      *   <li>{@code boolean} — {@code "true"}/{@code "false"}</li>
      *   <li>{@code string} — the raw string</li>
      *   <li>{@code uuid} — first 8 characters, or {@code "-"} when null</li>
      * </ul>
      * </p>
      *
-     * @param value the raw value (may be {@code null} for UUID)
+     * <p><b>Defensive null handling (S18 fix).</b> The {@code double} and
+     * {@code float} cases null-check the boxed value before unboxing it
+     * for {@link TooltipUtils#formatValue}, returning the same {@code "-"}
+     * sentinel used by the {@code uuid} case. Although the current
+     * {@link GunState#getDouble} / {@link PlayerState#getDouble} (and
+     * {@code float} counterparts) return primitive {@code double}/
+     * {@code float} — which auto-box to non-null {@code Double}/
+     * {@code Float} — this method receives a generic {@link Object} and
+     * could be fed a {@code null} by a future reader path or a custom
+     * state source. An unchecked unbox of {@code null} would throw
+     * {@link NullPointerException} and crash the entire tooltip. The guard
+     * keeps the render path robust regardless of caller, matching the
+     * existing {@code uuid} null-sentinel pattern (设计文档 §防御性编程).</p>
+     *
+     * @param value the raw value (may be {@code null} for UUID, DOUBLE, or
+     *              FLOAT; rendered as {@code "-"} in those cases)
      * @param type  the declared value type
      * @return the display string
      */
     private static String valueToString(Object value, StateValueType type) {
         return switch (type) {
             case INT, LONG -> String.valueOf(value);
-            case DOUBLE -> String.format("%.1f", (Double) value);
-            case FLOAT -> String.format("%.1f", (Float) value);
+            case DOUBLE -> value != null ? TooltipUtils.formatValue((Double) value) : "-";
+            case FLOAT -> value != null ? TooltipUtils.formatValue((Float) value) : "-";
             case BOOLEAN -> String.valueOf(value);
             case STRING -> String.valueOf(value);
             case UUID -> value != null ? ((UUID) value).toString().substring(0, 8) : "-";
         };
-    }
-
-    /**
-     * Parses a hex colour string to an RGB integer.
-     *
-     * <p>Accepts both {@code "#FFAA00"} and {@code "FFAA00"} formats.
-     * Falls back to white ({@code 0xFFFFFF}) on parse failure so a
-     * malformed colour never crashes the tooltip.</p>
-     *
-     * @param hex the hex colour string
-     * @return the RGB integer value
-     */
-    private static int parseHexColor(String hex) {
-        try {
-            String clean = hex.startsWith("#") ? hex.substring(1) : hex;
-            return Integer.parseInt(clean, 16);
-        } catch (NumberFormatException ex) {
-            return 0xFFFFFF;
-        }
     }
 
     // ------------------------------------------------------------------

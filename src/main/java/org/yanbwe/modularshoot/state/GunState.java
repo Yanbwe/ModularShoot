@@ -422,7 +422,10 @@ public final class GunState {
      * <p>Validation failures and missing {@link GunData} skip the write. The
      * {@link GunData#withStateValue} call is guarded so that no
      * {@link IllegalArgumentException} can escape even on an unexpected
-     * type mismatch.</p>
+     * type mismatch. The post-write throttle flag is raised outside the
+     * guard and is null-checked against {@code gunInstanceUuid} so a
+     * malformed stack never causes an {@link NullPointerException} to
+     * escape the accessor (W27 fix).</p>
      *
      * @param stateId      the state id to write
      * @param requestedType the declared type the accessor expects
@@ -444,14 +447,20 @@ public final class GunState {
         try {
             final GunData newData = gunData.withStateValue(stateId, value, registryAccess);
             gunStack.set(ModularShootDataComponents.GUN_DATA.get(), newData);
-            // Flag the gun for a throttled state sync (设计文档 §同步节流策略).
-            // The next GunSyncTickHandler tick flushes the change to the client,
-            // subject to the 2-tick throttle interval. Critical-moment syncs
-            // (main-hand switch, plugin install/uninstall, login) bypass this
-            // throttle and are handled directly by GunSyncService.
-            GunSyncThrottleManager.getInstance().markDirty(gunData.gunInstanceUuid());
         } catch (IllegalArgumentException ex) {
             StateWarnLogger.warnTypeMismatch(stateId, def.valueType(), value == null ? null : value.getClass());
+            return;
+        }
+        // Flag the gun for a throttled state sync (设计文档 §同步节流策略).
+        // The next GunSyncTickHandler tick flushes the change to the client,
+        // subject to the 2-tick throttle interval. Critical-moment syncs
+        // (main-hand switch, plugin install/uninstall, login) bypass this
+        // throttle and are handled directly by GunSyncService.
+        // Guarded against null gunInstanceUuid so a malformed stack never
+        // causes an NPE to escape the accessor (W27 fix).
+        final UUID gunInstanceUuid = gunData.gunInstanceUuid();
+        if (gunInstanceUuid != null) {
+            GunSyncThrottleManager.getInstance().markDirty(gunInstanceUuid);
         }
     }
 

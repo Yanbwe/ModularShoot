@@ -109,6 +109,22 @@ public final class TraitMergeService {
      * stable and equal-priority plugins retain their relative install
      * order (设计文档 line 668).</p>
      *
+     * <p><b>Defensive double-filtering (S30).</b> The pipeline applies two
+     * filters that, on the surface, appear to reject the same set of plugins:
+     * first {@link PluginDegradationHandler#filterValidPlugins} drops
+     * instances whose {@code pluginId} does not resolve, then the
+     * {@code .filter(definition -> definition != null)} step drops any
+     * {@code null} returned by the subsequent
+     * {@link PluginRegistry#getPlugin(RegistryAccess, ResourceLocation)} call.
+     * The second filter is intentionally retained as <em>defensive
+     * programming</em>: it guards against the registry state changing between
+     * the two lookups (e.g. a datapack reload racing this call), against
+     * future changes to {@code filterValidPlugins}'s contract, and against
+     * any {@link PluginRegistry} implementation that might return
+     * {@code null} instead of {@code Optional.empty()}. The cost is a
+     * redundant registry lookup per plugin, which is negligible for the
+     * small installed-plugin lists this method operates on.</p>
+     *
      * @param plugins        the installed plugin instances in install order
      * @param registryAccess the runtime registry view for plugin lookups
      * @return an immutable list of plugin definitions sorted by priority

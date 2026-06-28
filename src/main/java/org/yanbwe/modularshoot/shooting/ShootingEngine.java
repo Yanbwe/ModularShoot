@@ -174,7 +174,10 @@ public final class ShootingEngine {
         ShootAnimSyncService.getInstance().onShootFired(player);
         // Step 9: PostShootEvent — non-cancelable notification.
         firePostShootEvent(player, gunStack, bulletRecord);
-        ModularShoot.LOGGER.info("Bullet fired: id={}, gun={}, player={}, pos=({},{},{})",
+        // Debug-level: high fire-rate weapons produce many shots per second,
+        // so an INFO log here would cause log spam (W8). Use DEBUG so the
+        // detail is available when diagnosing issues but silent in normal play.
+        ModularShoot.LOGGER.debug("Bullet fired: id={}, gun={}, player={}, pos=({},{},{})",
                 bulletRecord.getBulletId(), gunData.gunId(), player.getName().getString(),
                 bulletRecord.getPosition().x, bulletRecord.getPosition().y, bulletRecord.getPosition().z);
     }

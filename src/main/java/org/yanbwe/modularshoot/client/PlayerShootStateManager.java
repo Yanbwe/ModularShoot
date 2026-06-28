@@ -32,16 +32,24 @@ import org.yanbwe.modularshoot.network.ShootAnimSyncService;
  *       peaks for only a few ticks and decays quickly, so reusing it for
  *       low-fire-rate guns would cause texture flicker between shots).</li>
  *   <li><b>{@code shootAnimTimer}</b> &mdash; a float timer (in ticks) that
- *       drives the Mixin-injected arm-recoil animation. It decays by 1 per
- *       tick and is reset to the peak value whenever the player fires.</li>
+ *       drives the Mixin-injected arm-recoil animation and the
+ *       {@code per_shot} shoot-texture selection mode. It decays by 1 per
+ *       tick and is reset to the peak value only when a shot actually fires
+ *       (for remote players, on {@link ShootAnimS2CPacket} arrival; for the
+ *       local player, when {@link ClientFireRatePredictor} predicts a shot),
+ *       so it pulses per round rather than being held continuously.</li>
  * </ul>
  *
  * <p><b>Local player (zero-delay):</b> the local player's state is maintained
  * directly on the client with zero latency &mdash; {@code isFiring} is
  * derived from the attack-key + main-hand-gun condition every tick (matching
  * {@code ShootC2SPacket}'s send condition), and {@code shootAnimTimer} is
- * reset to the peak the instant the player fires, without waiting for a
- * server round-trip.</p>
+ * reset to the peak only when {@link ClientFireRatePredictor} predicts a shot
+ * should fire this tick (mirroring the server's
+ * {@code FireRateController} gate), without waiting for a server round-trip.
+ * The timer is <em>not</em> reset every tick while the attack key is held, so
+ * it decays between shots and the {@code per_shot} texture mode flashes per
+ * round instead of being held continuously.</p>
  *
  * <p><b>Other players (server-synced):</b> the state of remote players is
  * updated when a {@link ShootAnimS2CPacket} arrives, carrying the server's
@@ -51,9 +59,10 @@ import org.yanbwe.modularshoot.network.ShootAnimSyncService;
  *
  * <p><b>Tick decay:</b> every client tick, all timers are decremented by 1
  * (stopping at 0). The decay runs <em>before</em> the local-player update so
- * that a firing local player's timer is reset to the peak after decay,
- * yielding a stable full-strength animation while firing and a clean decay
- * after release.</p>
+ * that a predicted shot resets the timer to the peak <em>after</em> the decay,
+ * yielding a full-strength pulse on the shot tick and a clean per-shot decay
+ * afterwards &mdash; matching the remote-player cadence driven by
+ * {@link ShootAnimS2CPacket}.</p>
  *
  * <p><b>Registration:</b> registered on the NeoForge game event bus with
  * {@code value = Dist.CLIENT} so the class is only loaded on the physical
@@ -197,10 +206,10 @@ public final class PlayerShootStateManager {
      * Per-client-tick hook: decays all timers, then updates the local
      * player's firing flag and timer.
      *
-     * <p>The decay runs <em>first</em> so that a firing local player's timer
-     * is reset to the peak <em>after</em> the decay &mdash; yielding a stable
-     * full-strength animation while firing and a clean decay once the attack
-     * key is released.</p>
+     * <p>The decay runs <em>first</em> so that a predicted shot resets the
+     * timer to the peak <em>after</em> the decay &mdash; yielding a
+     * full-strength pulse on the shot tick and a clean per-shot decay
+     * afterwards, matching the remote-player cadence.</p>
      *
      * @param event the pre client-tick event (unused beyond its presence)
      */
@@ -216,12 +225,24 @@ public final class PlayerShootStateManager {
     }
 
     /**
-     * Updates the local player's {@code isFiring} flag and, when firing,
-     * resets the animation timer to the peak for zero-delay visual feedback.
+     * Updates the local player's {@code isFiring} flag and, when a shot is
+     * predicted to fire this tick, resets the animation timer to the peak for
+     * zero-delay visual feedback.
      *
      * <p>The firing condition mirrors {@code ClientShootSender}'s
      * {@code ShootC2SPacket} send condition (attack key held + main-hand
-     * gun), so the animation stays in sync with the shoot requests.</p>
+     * gun), so the {@code isFiring} flag stays in sync with the shoot
+     * requests and drives the {@code while_firing} texture mode.</p>
+     *
+     * <p>The animation timer is <em>not</em> reset every tick while firing.
+     * Instead it is reset only when {@link ClientFireRatePredictor} predicts
+     * that a shot should visually fire this tick (mirroring the server's
+     * {@code FireRateController} gate). Between predicted shots the timer
+     * decays normally, so the {@code per_shot} texture mode flashes per round
+     * rather than being held continuously &mdash; matching the remote-player
+     * behaviour driven by {@link ShootAnimS2CPacket}. This also gives the
+     * local player's arm-recoil animation the same per-shot cadence as remote
+     * players, instead of a flat full-strength hold.</p>
      *
      * @param minecraft the client instance (with a non-null player)
      */
@@ -230,7 +251,7 @@ public final class PlayerShootStateManager {
         UUID uuid = player.getUUID();
         boolean firing = minecraft.options.keyAttack.isDown() && isMainHandGun(player);
         setFiring(uuid, firing);
-        if (firing) {
+        if (firing && ClientFireRatePredictor.shouldPredictShoot(player)) {
             setAnimTimer(uuid, ShootAnimSyncService.SHOOT_ANIM_PEAK);
         }
     }

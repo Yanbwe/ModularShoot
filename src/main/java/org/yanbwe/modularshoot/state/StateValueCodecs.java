@@ -32,14 +32,37 @@ import org.yanbwe.modularshoot.registry.ModularShootRegistries;
  * </ul>
  * </p>
  *
- * <p>Decoding skips state ids that are not registered in the
- * {@code modularshoot:states} registry (设计文档 §状态存储系统).</p>
+ * <p><b>Role of the {@code "type"} field (S31).</b> The {@code "type"} field
+ * is <em>write-only</em> during normal operation: {@link #encodeStateMap}
+ * always writes it, but {@link #decodeStateMap} resolves the value type from
+ * the {@code modularshoot:states} registry instead of reading it back. The
+ * field is retained as an <em>encoding fallback / diagnostic aid</em>: it
+ * allows out-of-band inspection of saved state (e.g. via NBT dumps or
+ * external tooling) and provides a recovery path for unregistered entries
+ * whose original type can no longer be inferred from the registry. For
+ * unregistered entries the raw entry tag (including the {@code "type"}
+ * field) is carried forward unchanged so a full
+ * {@code stateMap()}&harr;{@code withStateMap()} round-trip is lossless.</p>
+ *
+ * <p>Decoding preserves state ids that are not registered in the
+ * {@code modularshoot:states} registry by carrying their raw entry
+ * {@link CompoundTag} forward, so a full
+ * {@code stateMap()}&harr;{@code withStateMap()} round-trip is lossless
+ * (设计文档 §状态存储系统).</p>
  *
  * @see StateValueType#codec()
  * @see StateValueType#zeroValue()
  */
 public final class StateValueCodecs {
-    /** NBT key storing the {@link StateValueType} serializedName. */
+    /**
+     * NBT key storing the {@link StateValueType} serializedName.
+     *
+     * <p>This field is <em>write-only</em> during normal decode: the decoder
+     * resolves the type from the {@code modularshoot:states} registry rather
+     * than reading this key. It is retained as an encoding fallback / diagnostic
+     * aid for out-of-band NBT inspection and for lossless round-tripping of
+     * unregistered entries (S31).</p>
+     */
     private static final String TYPE_KEY = "type";
 
     /** NBT key storing the encoded value tag. */
@@ -147,6 +170,18 @@ public final class StateValueCodecs {
      * otherwise it is inferred from the value's runtime class via
      * {@link StateValueType#fromObject(Object)}.</p>
      *
+     * <p>The {@code "type"} field is written here for diagnostic / fallback
+     * purposes but is <em>not</em> read back by {@link #decodeStateMap},
+     * which resolves the type from the registry instead (S31). It is still
+     * valuable for out-of-band NBT inspection and for lossless round-tripping
+     * of unregistered entries.</p>
+     *
+     * <p>Entries whose value is already a {@link CompoundTag} (carried
+     * forward from a prior {@link #decodeStateMap} of an unregistered state
+     * id) are passed through unchanged so the
+     * {@code stateMap()}&harr;{@code withStateMap()} round-trip is lossless
+     * (W26 fix).</p>
+     *
      * @param stateMap       the state id to value mapping
      * @param registryAccess the runtime registry view
      * @return a {@link CompoundTag} containing all encoded entries
@@ -157,6 +192,14 @@ public final class StateValueCodecs {
         for (Map.Entry<ResourceLocation, Object> entry : stateMap.entrySet()) {
             final ResourceLocation stateId = entry.getKey();
             final Object value = entry.getValue();
+            if (value instanceof CompoundTag rawEntry) {
+                // Unregistered entry preserved from a prior decode: pass the
+                // raw entry tag through unchanged so a stateMap()↔withStateMap()
+                // round-trip is lossless (W26 fix). A defensive copy keeps the
+                // result independent of the input map's value.
+                result.put(stateId.toString(), rawEntry.copy());
+                continue;
+            }
             final StateValueType type = resolveTypeForEncode(registryAccess, stateId, value);
             final Tag encoded = encodeValue(type, value, registryAccess);
             final CompoundTag entryTag = new CompoundTag();
@@ -172,28 +215,47 @@ public final class StateValueCodecs {
     /**
      * Decodes a state map from a {@link CompoundTag}.
      *
+     * <p>Registered entries are decoded using the registry's declared type;
+     * a missing {@code "value"} field yields the type's zero value (used for
+     * {@code null} UUID).</p>
+     *
+     * <p>The {@code "type"} field written by {@link #encodeStateMap} is
+     * <em>not</em> read here: the value type is resolved from the
+     * {@code modularshoot:states} registry, which is the authoritative
+     * source. The {@code "type"} field serves only as an encoding fallback /
+     * diagnostic aid (S31). For unregistered entries the raw entry tag
+     * (including the {@code "type"} field) is carried forward unchanged, so
+     * the field is preserved across round-trips even though it is not
+     * consulted for decoding.</p>
+     *
      * <p>Entries whose state id is not registered in the
-     * {@code modularshoot:states} registry are silently skipped (设计文档
-     * §状态存储系统). Registered entries are decoded using the registry's
-     * declared type; a missing {@code "value"} field yields the type's zero
-     * value (used for {@code null} UUID).</p>
+     * {@code modularshoot:states} registry are preserved as their raw entry
+     * {@link CompoundTag} (the {@code {type, value}} compound) rather than
+     * being skipped, so a full {@code stateMap()}&harr;{@code withStateMap()}
+     * round-trip retains them. {@link #encodeStateMap} detects raw
+     * {@link CompoundTag} values and passes them through unchanged (W26
+     * fix).</p>
      *
      * @param tag            the compound tag produced by
      *                       {@link #encodeStateMap}
      * @param registryAccess the runtime registry view
-     * @return a mutable map of state id to decoded value
+     * @return a mutable map of state id to decoded value (or raw entry tag
+     *         for unregistered ids)
      */
     public static Map<ResourceLocation, Object> decodeStateMap(
             CompoundTag tag, RegistryAccess registryAccess) {
         final Map<ResourceLocation, Object> result = new HashMap<>();
         for (String key : tag.getAllKeys()) {
             final ResourceLocation stateId = ResourceLocation.parse(key);
+            final CompoundTag entryTag = tag.getCompound(key);
             final Optional<StateDefinition> definition = lookupState(registryAccess, stateId);
             if (definition.isEmpty()) {
-                continue; // skip unregistered states
+                // Preserve unregistered entries as raw entry tags so a full
+                // stateMap()↔withStateMap() round-trip is lossless (W26 fix).
+                result.put(stateId, entryTag);
+                continue;
             }
             final StateValueType type = definition.get().valueType();
-            final CompoundTag entryTag = tag.getCompound(key);
             final Object value = entryTag.contains(VALUE_KEY)
                     ? decodeValue(type, entryTag.get(VALUE_KEY), registryAccess)
                     : type.zeroValue();

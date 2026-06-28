@@ -85,9 +85,13 @@ public final class BillboardRenderer {
      * @param bufferSource the vertex buffer source for submitting geometry
      * @param partialTick  the frame partial tick (reserved for future
      *                     sub-frame animation; currently unused)
-     * @param cameraPos    the camera world position (reserved for future
-     *                     distance-based effects; orientation is read from
-     *                     the live {@link Camera} instance)
+     * @param cameraPos    the camera world position — <strong>currently
+     *                     unused</strong>. Orientation is read from the live
+     *                     {@link Camera} instance obtained via
+     *                     {@link Minecraft#gameRenderer}. The parameter is
+     *                     retained for API consistency with
+     *                     {@link Model3DRenderer#render} and reserved for
+     *                     future distance-based effects (e.g. LOD scaling).
      */
     public static void render(
             BulletRenderObject renderObject,

@@ -1,7 +1,9 @@
 package org.yanbwe.modularshoot.attribute;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import net.minecraft.core.Holder;
 import net.minecraft.core.RegistryAccess;
@@ -49,7 +51,12 @@ import org.yanbwe.modularshoot.registry.gun.GunRegistry;
  *       vanilla {@link AttributeModifier.Operation}. Every modifier from one
  *       plugin instance shares the stable id derived from that instance's
  *       {@code instanceUuid} so vanilla can match and replace them on
- *       install/uninstall (设计文档 §修饰符 ID 稳定性).</li>
+ *       install/uninstall (设计文档 §修饰符 ID 稳定性). Because all modifiers
+ *       from one instance share a single id, vanilla's
+ *       {@code AttributeInstance.addModifier} would throw if two modifiers
+ *       targeted the same attribute; {@link #addPluginModifiers} therefore
+ *       deduplicates by attribute, keeping only the first modifier per
+ *       attribute per instance.</li>
  * </ul>
  *
  * <p>The combined set is written with {@code slot = MAINHAND} and
@@ -64,7 +71,9 @@ import org.yanbwe.modularshoot.registry.gun.GunRegistry;
  * (attribute, id) pair, and each attribute here is distinct. Each plugin's
  * modifiers use the plugin's {@code instanceUuid} as their id, so vanilla can
  * likewise match and replace them when a plugin is installed or removed
- * (设计文档 §修饰符 ID 稳定性).
+ * (设计文档 §修饰符 ID 稳定性). When a plugin definition declares multiple
+ * modifiers targeting the same attribute, only the first is mounted; see
+ * {@link #addPluginModifiers} for the deduplication rationale.
  */
 public final class AttributeModifierService {
 
@@ -296,6 +305,18 @@ public final class AttributeModifierService {
      * whose definition is missing and modifiers whose target attribute is not
      * registered are silently skipped.</p>
      *
+     * <p><strong>Duplicate-attribute guard (W3 fix).</strong> Because all
+     * modifiers from one plugin instance share a single id, vanilla's
+     * {@code AttributeInstance.addModifier} would throw
+     * {@code IllegalArgumentException} if two modifiers targeted the same
+     * attribute. This method tracks the attributes already seen for each
+     * plugin instance and skips subsequent modifiers targeting a duplicate
+     * attribute, logging a {@code WARN} so the issue is traceable. The
+     * {@code PluginDatapackLoader} also emits a load-time warning for the
+     * same condition, but the runtime guard is required because the
+     * registry is frozen by the time that warning is emitted and cannot
+     * remove the duplicate entries.</p>
+     *
      * <p>The binds-degradation contract is enforced by
      * {@link #resolveAttributeHolder}, which calls
      * {@link BuiltInRegistries#ATTRIBUTE#getHolder(ResourceLocation)} and
@@ -320,14 +341,44 @@ public final class AttributeModifierService {
             if (pluginDef.isEmpty()) {
                 continue;
             }
-            ResourceLocation modifierId = pluginModifierId(instance.instanceUuid());
-            for (PluginModifier mod : pluginDef.get().modifiers()) {
-                resolveAttributeHolder(mod.attribute()).ifPresent(holder -> {
-                    AttributeModifier modifier = new AttributeModifier(
-                            modifierId, mod.value(), mapOperation(mod.operation()));
-                    builder.add(holder, modifier, EquipmentSlotGroup.MAINHAND);
-                });
+            addSinglePluginModifiers(builder, instance, pluginDef.get());
+        }
+    }
+
+    /**
+     * Adds the attribute modifiers declared by a single installed plugin
+     * instance to a builder, skipping duplicate attribute targets.
+     *
+     * <p>Extracted from {@link #addPluginModifiers} so the per-instance loop
+     * body stays under 50 lines. All modifiers from this instance share the
+     * id derived from {@code instance.instanceUuid()}. When the plugin
+     * definition declares multiple modifiers targeting the same attribute,
+     * only the first is mounted; subsequent duplicates are skipped with a
+     * {@code WARN} log to prevent vanilla's
+     * {@code AttributeInstance.addModifier} from throwing
+     * {@code IllegalArgumentException} (W3 fix).</p>
+     *
+     * @param builder    the builder to append entries to
+     * @param instance   the installed plugin instance providing the id
+     * @param pluginDef  the plugin definition supplying declared modifiers
+     */
+    private static void addSinglePluginModifiers(
+            ItemAttributeModifiers.Builder builder, PluginInstance instance, PluginDefinition pluginDef) {
+        ResourceLocation modifierId = pluginModifierId(instance.instanceUuid());
+        Set<String> seenAttributes = new HashSet<>();
+        for (PluginModifier mod : pluginDef.modifiers()) {
+            if (!seenAttributes.add(mod.attribute())) {
+                ModularShoot.LOGGER.warn(
+                        "Plugin '{}' on gun instance {}: duplicate modifier for attribute '{}' "
+                                + "skipped (only the first modifier per attribute takes effect).",
+                        instance.pluginId(), instance.instanceUuid(), mod.attribute());
+                continue;
             }
+            resolveAttributeHolder(mod.attribute()).ifPresent(holder -> {
+                AttributeModifier modifier = new AttributeModifier(
+                        modifierId, mod.value(), mapOperation(mod.operation()));
+                builder.add(holder, modifier, EquipmentSlotGroup.MAINHAND);
+            });
         }
     }
 
@@ -375,7 +426,12 @@ public final class AttributeModifierService {
      * {@code modularshoot:550e8400-e29b-41d4-a716-446655440000}. Vanilla keys
      * modifier identity by the (attribute, id) pair, so all modifiers from one
      * plugin instance can share this single id as long as they target distinct
-     * attributes (设计文档 §修饰符 ID 稳定性).
+     * attributes (设计文档 §修饰符 ID 稳定性). When a plugin definition
+     * declares two modifiers targeting the same attribute, the runtime
+     * deduplication guard in {@link #addSinglePluginModifiers} ensures only
+     * the first is mounted, preventing vanilla's
+     * {@code AttributeInstance.addModifier} from throwing
+     * {@code IllegalArgumentException}.
      *
      * @param instanceUuid the plugin instance's stable uuid
      * @return a {@link ResourceLocation} under the {@code modularshoot} namespace

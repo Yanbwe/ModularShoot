@@ -15,7 +15,7 @@ import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.bullet.BulletManager;
-import org.yanbwe.modularshoot.client.ClientBulletSnapshot;
+import org.yanbwe.modularshoot.network.ClientBulletSnapshot;
 
 /**
  * Client-side render dispatcher that draws all in-flight bullets every frame

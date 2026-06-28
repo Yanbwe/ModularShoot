@@ -149,11 +149,14 @@ public final class GunStateStorage {
      *
      * <p>Delegates to {@link StateValueCodecs#decodeStateMap}. Entries
      * whose state id is not registered in the {@code modularshoot:states}
-     * registry are silently skipped.</p>
+     * registry are preserved as their raw entry {@link CompoundTag} so a
+     * full {@code stateMap()}&harr;{@code withStateMap()} round-trip is
+     * lossless (W26 fix).</p>
      *
      * @param stateTag       the per-gun state compound tag
      * @param registryAccess the runtime registry view
-     * @return a mutable map of state id to decoded value
+     * @return a mutable map of state id to decoded value (or raw entry tag
+     *         for unregistered ids)
      */
     public static Map<ResourceLocation, Object> toMap(
             CompoundTag stateTag, RegistryAccess registryAccess) {

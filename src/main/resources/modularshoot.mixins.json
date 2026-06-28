@@ -5,10 +5,11 @@
   "mixins": [],
   "client": [
     "client.HumanoidModelMixin",
+    "client.ItemRendererMixin",
     "client.LivingEntitySwingMixin"
   ],
   "injectors": {
-    "defaultRequire": 1
+    "defaultRequire": 0
   },
   "overwrites": {
     "requireAnnotations": true

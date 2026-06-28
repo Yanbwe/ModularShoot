@@ -86,7 +86,7 @@ public final class PenetrationHandler {
     public static boolean handleEntityHit(BulletRecord bullet, Entity entity, BulletManager manager) {
         int entityPenetration = (int) bullet.getSnapshot().getStat(ENTITY_PENETRATION_ID);
         if (entityPenetration > 0 && bullet.getPenetratedEntities().size() < entityPenetration) {
-            bullet.getPenetratedEntities().add(entity.getUUID());
+            bullet.addPenetratedEntity(entity.getUUID());
             return false;
         }
         manager.removeBullet(bullet.getBulletId(), RemoveReason.HIT_ENTITY);
@@ -116,7 +116,7 @@ public final class PenetrationHandler {
         BulletHookInvoker.fireOnBlockHit(bullet, pos, face);
         int blockPenetration = (int) bullet.getSnapshot().getStat(BLOCK_PENETRATION_ID);
         if (blockPenetration > 0 && bullet.getPenetratedBlocks().size() < blockPenetration) {
-            bullet.getPenetratedBlocks().add(pos);
+            bullet.addPenetratedBlock(pos);
             return false;
         }
         manager.removeBullet(bullet.getBulletId(), RemoveReason.HIT_BLOCK);

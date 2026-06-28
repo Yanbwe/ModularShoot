@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Set;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
-import org.yanbwe.modularshoot.client.ClientBulletSnapshot;
+import org.yanbwe.modularshoot.network.ClientBulletSnapshot;
 import org.yanbwe.modularshoot.trait.TraitCallbacks;
 import org.yanbwe.modularshoot.trait.TraitHookRegistry;
 import org.yanbwe.modularshoot.trait.TraitHookType;
@@ -20,11 +20,13 @@ import org.yanbwe.modularshoot.trait.TraitHookType;
  * scale, render mode).</p>
  *
  * <p>The dispatcher iterates every trait id that has registered at least one
- * hook (queried via {@link TraitHookRegistry#getRegisteredTraitIds()}),
- * looks up the {@link TraitHookType#ON_VISUAL_TICK} callbacks, and invokes
- * them in registration order. Callbacks are fired unconditionally; each
- * callback is responsible for deciding whether its trait applies to the
- * bullet (设计文档 §特性钩子注册 API).</p>
+ * callback for the {@link TraitHookType#ON_VISUAL_TICK} hook type (queried
+ * via {@link TraitHookRegistry#getTraitIdsForHookType(TraitHookType)}), looks
+ * up the {@link TraitHookType#ON_VISUAL_TICK} callbacks, and invokes them in
+ * registration order. This hook-type-specific iteration avoids querying
+ * trait ids that registered only for other hook types (S4). Callbacks are
+ * fired unconditionally; each callback is responsible for deciding whether
+ * its trait applies to the bullet (设计文档 §特性钩子注册 API).</p>
  *
  * <p><strong>Client-only class.</strong> This class lives in the client
  * package and must only be referenced from client-side code. It passes the
@@ -68,7 +70,7 @@ public final class VisualTickHookDispatcher {
     public static void dispatchVisualTick(
             @Nullable ClientBulletSnapshot snapshot,
             BulletRenderObject renderObject) {
-        Set<ResourceLocation> traitIds = TraitHookRegistry.getRegisteredTraitIds();
+        Set<ResourceLocation> traitIds = TraitHookRegistry.getTraitIdsForHookType(TraitHookType.ON_VISUAL_TICK);
         for (ResourceLocation traitId : traitIds) {
             List<TraitCallbacks.TraitVisualTickCallback> hooks = TraitHookRegistry.getHooks(
                     traitId, TraitHookType.ON_VISUAL_TICK, TraitCallbacks.TraitVisualTickCallback.class);

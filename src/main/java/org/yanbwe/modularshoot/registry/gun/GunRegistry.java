@@ -13,6 +13,7 @@ import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import org.yanbwe.modularshoot.attribute.AttributeModifierService;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.datapack.RegistrationCoordinator;
@@ -52,9 +53,12 @@ import org.yanbwe.modularshoot.registry.ModularShootRegistries;
  * {@code /reload} because they are not part of the per-world datapack
  * registry instance (设计文档 §注册冲突与覆盖).</p>
  *
- * <p>The {@link #createGunStack} factory methods do <strong>not</strong>
- * query the registry, so they are safe to call before a world is loaded
- * (e.g. for creative tabs).</p>
+ * <p>The {@link #createGunStack(ResourceLocation)} factory methods do
+ * <strong>not</strong> query the registry, so they are safe to call before a
+ * world is loaded (e.g. for creative tabs). The
+ * {@link #createGunStack(ResourceLocation, RegistryAccess)} overloads
+ * <em>do</em> query the registry to write the {@code ATTRIBUTE_MODIFIERS}
+ * component, so they require a loaded world.</p>
  *
  * <p>All methods are static utility methods; the class is not instantiable.</p>
  */
@@ -190,6 +194,66 @@ public final class GunRegistry {
 
     /**
      * Creates a gun {@link ItemStack} for the given gun id with a freshly
+     * generated random instance uuid and the {@code ATTRIBUTE_MODIFIERS}
+     * component pre-populated from the resolved gun definition.
+     *
+     * <p>This overload queries the registry to look up the
+     * {@link GunDefinition} and, when found, calls
+     * {@link AttributeModifierService#applyModifiers} so the resulting stack
+     * has non-zero base stats (fire_rate, hit_damage, etc.). When the
+     * definition cannot be resolved (e.g. the id is not yet registered in the
+     * supplied registry view), the stack is created with {@code gun_data} but
+     * <strong>without</strong> the {@code ATTRIBUTE_MODIFIERS} component; the
+     * caller must then call
+     * {@link AttributeModifierService#refreshModifiers} once the definition is
+     * available.</p>
+     *
+     * @param gunId          the gun definition id to bind to the stack
+     * @param registryAccess the runtime registry view used to resolve the
+     *                       gun definition and apply base attribute modifiers
+     * @return a new {@link ItemStack} with {@code gun_data} set and, when the
+     *         definition was found, {@code ATTRIBUTE_MODIFIERS} populated
+     */
+    public static ItemStack createGunStack(ResourceLocation gunId, RegistryAccess registryAccess) {
+        return createGunStack(gunId, UUID.randomUUID(), registryAccess);
+    }
+
+    /**
+     * Creates a gun {@link ItemStack} for the given gun id with a caller
+     * supplied instance uuid and the {@code ATTRIBUTE_MODIFIERS} component
+     * pre-populated from the resolved gun definition.
+     *
+     * <p>Intended for tests or other scenarios that require deterministic
+     * uuids. Prefer
+     * {@link #createGunStack(ResourceLocation, RegistryAccess)} for general
+     * use.</p>
+     *
+     * <p>When the gun definition can be resolved from the supplied
+     * {@link RegistryAccess}, {@link AttributeModifierService#applyModifiers}
+     * is called to write the base attribute modifiers onto the stack. When the
+     * definition is absent the stack is created without the
+     * {@code ATTRIBUTE_MODIFIERS} component; the caller must then call
+     * {@link AttributeModifierService#refreshModifiers} later.</p>
+     *
+     * @param gunId          the gun definition id to bind to the stack
+     * @param instanceUuid   the per-stack instance uuid
+     * @param registryAccess the runtime registry view used to resolve the
+     *                       gun definition and apply base attribute modifiers
+     * @return a new {@link ItemStack} with {@code gun_data} set and, when the
+     *         definition was found, {@code ATTRIBUTE_MODIFIERS} populated
+     */
+    public static ItemStack createGunStack(
+            ResourceLocation gunId, UUID instanceUuid, RegistryAccess registryAccess) {
+        ItemStack stack = createGunStack(gunId, instanceUuid);
+        Optional<GunDefinition> gunDef = getGun(registryAccess, gunId);
+        if (gunDef.isPresent()) {
+            AttributeModifierService.applyModifiers(stack, gunDef.get(), registryAccess);
+        }
+        return stack;
+    }
+
+    /**
+     * Creates a gun {@link ItemStack} for the given gun id with a freshly
      * generated random instance uuid.
      *
      * <p>The stack is backed by the framework {@code modularshoot:gun} item
@@ -197,9 +261,28 @@ public final class GunRegistry {
      * No registry lookup is performed, so this is safe to call before a world
      * is loaded (e.g. for creative tabs).</p>
      *
+     * <p><strong>This method does NOT write the {@code ATTRIBUTE_MODIFIERS}
+     * component.</strong> The resulting stack has the vanilla base of
+     * {@code 0} for every attribute, which means {@code fire_rate = 0} and
+     * the gun cannot fire until modifiers are applied. Callers MUST either:
+     * <ul>
+     *   <li>use {@link #createGunStack(ResourceLocation, RegistryAccess)}
+     *       instead, which populates the component when the definition is
+     *       resolvable; or</li>
+     *   <li>call {@link AttributeModifierService#refreshModifiers} (or
+     *       {@link AttributeModifierService#applyModifiers}) afterwards with
+     *       a valid {@link RegistryAccess}.</li>
+     * </ul>
+     * Failing to do so yields a gun with zero stats (设计文档 §组件刷新时机).</p>
+     *
      * @param gunId the gun definition id to bind to the stack
-     * @return a new {@link ItemStack} with {@code gun_data} set
+     * @return a new {@link ItemStack} with {@code gun_data} set but
+     *         <strong>without</strong> {@code ATTRIBUTE_MODIFIERS}
+     * @deprecated Use {@link #createGunStack(ResourceLocation, RegistryAccess)}
+     *             to obtain a gun stack with attribute modifiers pre-populated,
+     *             avoiding the fire_rate=0 pitfall for third-party callers.
      */
+    @Deprecated
     public static ItemStack createGunStack(ResourceLocation gunId) {
         return createGunStack(gunId, UUID.randomUUID());
     }
@@ -212,10 +295,21 @@ public final class GunRegistry {
      * uuids. Prefer {@link #createGunStack(ResourceLocation)} for general
      * use.</p>
      *
+     * <p><strong>This method does NOT write the {@code ATTRIBUTE_MODIFIERS}
+     * component.</strong> See {@link #createGunStack(ResourceLocation)} for
+     * the full contract and the required follow-up call. Use
+     * {@link #createGunStack(ResourceLocation, UUID, RegistryAccess)} when a
+     * {@link RegistryAccess} is available.</p>
+     *
      * @param gunId       the gun definition id to bind to the stack
      * @param instanceUuid the per-stack instance uuid
-     * @return a new {@link ItemStack} with {@code gun_data} set
+     * @return a new {@link ItemStack} with {@code gun_data} set but
+     *         <strong>without</strong> {@code ATTRIBUTE_MODIFIERS}
+     * @deprecated Use
+     *             {@link #createGunStack(ResourceLocation, UUID, RegistryAccess)}
+     *             to obtain a gun stack with attribute modifiers pre-populated.
      */
+    @Deprecated
     public static ItemStack createGunStack(ResourceLocation gunId, UUID instanceUuid) {
         ItemStack stack = new ItemStack(ModularShootItems.GUN_ITEM.get());
         stack.set(ModularShootDataComponents.GUN_DATA.get(), GunData.create(gunId, instanceUuid));

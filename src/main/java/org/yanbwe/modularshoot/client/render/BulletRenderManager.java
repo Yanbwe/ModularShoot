@@ -15,7 +15,7 @@ import net.neoforged.neoforge.event.level.LevelEvent;
 
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShoot;
-import org.yanbwe.modularshoot.client.ClientBulletSnapshot;
+import org.yanbwe.modularshoot.network.ClientBulletSnapshot;
 import org.yanbwe.modularshoot.network.BulletS2CPacket;
 import org.yanbwe.modularshoot.network.BulletS2CPacket.DeltaBulletEntry;
 import org.yanbwe.modularshoot.network.BulletS2CPacket.FullBulletEntry;
@@ -234,6 +234,10 @@ public final class BulletRenderManager {
     private void updateRenderObjectFull(BulletRenderObject obj, FullBulletEntry entry) {
         obj.updatePosition(new Vec3(entry.posX(), entry.posY(), entry.posZ()));
         obj.setDirection(new Vec3(entry.dirX(), entry.dirY(), entry.dirZ()));
+        obj.setTexture(entry.texture());
+        obj.setModelLocation(entry.modelLocation());
+        obj.setRenderMode(entry.renderMode());
+        obj.setScale(entry.bulletSize());
         snapshots.put(entry.bulletId(), entry.snapshot());
     }
 

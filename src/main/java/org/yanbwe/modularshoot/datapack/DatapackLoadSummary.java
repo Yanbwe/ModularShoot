@@ -11,7 +11,30 @@ import java.util.stream.Collectors;
  * {@code guns} table). After the datapack load phase completes, the caller
  * builds one summary per registry and emits them via
  * {@link #formatAllSummaries(List)} so operators see a single consolidated
- * line per registry (设计文档 line 2383: "共加载 42 个枪械定义，3 个失败").</p>
+ * line per registry (设计文档 §数据包 JSON 加载失败的错误处理:
+ * "共加载 42 个枪械定义，3 个失败").</p>
+ *
+ * <h2>Architecture note &mdash; {@code failed} in the post-reload context</h2>
+ * <p>Under NeoForge's {@code DataPackRegistryEvent} mechanism, JSON parsing
+ * is performed by the vanilla {@code RegistryDataLoader} <em>before</em> the
+ * post-reload listener fires. The vanilla pipeline isolates each entry with
+ * its own try-catch (设计文档 §数据包 JSON 加载失败的错误处理: "对每条 JSON
+ * 独立 try-catch"), so a single parse failure does not abort the remaining
+ * entries. However, when <em>any</em> entry fails to parse,
+ * {@code RegistryDataLoader.load()} throws an {@code IllegalStateException}
+ * ("Failed to load registries due to above errors") and the entire registry
+ * load is aborted &mdash; the post-reload listener never runs for that
+ * registry.</p>
+ *
+ * <p>Consequently, when {@link DatapackReloadListener} does run, every entry
+ * visible in the registry has already been parsed and registered
+ * successfully. The {@code failed} count is therefore always {@code 0} in
+ * this post-reload context. Parse failures are logged by the vanilla
+ * pipeline (not by this framework) and prevent the post-reload summary from
+ * being reached. The design-document phrase "3 个失败" describes the
+ * intended operator-facing summary format; under the NeoForge architecture
+ * the actual failure count is surfaced by the vanilla pipeline's own error
+ * log, not by this summary.</p>
  *
  * <p>This type is null-hostile and immutable: the compact constructor
  * validates its arguments and the record components are primitives plus a
@@ -27,7 +50,9 @@ import java.util.stream.Collectors;
  * @param succeeded      the number of entries that parsed and registered
  *                       successfully
  * @param failed         the number of entries that failed to parse and were
- *                       skipped (not written to the registry)
+ *                       skipped (not written to the registry); always
+ *                       {@code 0} in the post-reload context because the
+ *                       vanilla pipeline aborts on any parse failure
  * @param warnings       the number of entries that registered with a warning
  *                       (reference invalidation or missing resource)
  */

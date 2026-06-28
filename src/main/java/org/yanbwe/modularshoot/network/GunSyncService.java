@@ -3,22 +3,20 @@ package org.yanbwe.modularshoot.network;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.ModularShootAPI;
+import org.yanbwe.modularshoot.attribute.AttributeModifierService;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginInstance;
@@ -51,11 +49,20 @@ import org.yanbwe.modularshoot.shooting.ModifierVersionAntiCheat;
  *       the game bus and syncs immediately so the client sees the new plugin
  *       layout without waiting for the next tick.</li>
  *   <li><b>Player login</b> &mdash; listens to
- *       {@link PlayerEvent.PlayerLoggedInEvent} for a full initial sync.</li>
- *   <li><b>Per-gun state modified by hooks</b> &mdash; hooks call
- *       {@link #markStateDirty(ServerPlayer)} to flag the player; the flag is
- *       flushed on the next {@link LevelTickEvent.Post} so batched state
- *       changes within a single tick produce at most one sync packet.</li>
+ *       {@link PlayerEvent.PlayerLoggedInEvent} for a full initial sync, and
+ *       additionally refreshes the {@code ATTRIBUTE_MODIFIERS} component on
+ *       every gun stack in the player's inventory so already-issued guns pick
+ *       up definition changes that happened while the player was offline
+ *       (设计文档 §惰性刷新路径 K2).</li>
+ *   <li><b>Per-gun state modified by hooks</b> &mdash; hooks write state via
+ *       {@link org.yanbwe.modularshoot.state.GunState} accessors, which flag
+ *       the gun through
+ *       {@link org.yanbwe.modularshoot.state.GunSyncThrottleManager#markDirty}.
+ *       The throttled flush is handled by
+ *       {@link org.yanbwe.modularshoot.state.GunSyncTickHandler} on the next
+ *       server tick, subject to a 2-tick throttle interval, so batched state
+ *       changes within a single tick produce at most one sync packet. This
+ *       service is not involved in that path.</li>
  * </ol>
  *
  * <p><b>Server-only.</b> Every handler guards against
@@ -67,11 +74,12 @@ import org.yanbwe.modularshoot.shooting.ModifierVersionAntiCheat;
  * {@link org.yanbwe.modularshoot.bullet.BulletTickHandler}.</p>
  *
  * <h2>State tracking</h2>
- * <p>The two static maps ({@link #previousMainHandGun} and
- * {@link #dirtyPlayers}) are intentionally static because
- * {@link EventBusSubscriber} classes are never instantiated &mdash; all state
- * must live on the class. Entries are cleaned up on
- * {@link PlayerEvent.PlayerLoggedOutEvent} to prevent unbounded growth.</p>
+ * <p>The static map {@link #previousMainHandGun} is intentionally static
+ * because {@link EventBusSubscriber} classes are never instantiated &mdash;
+ * all state must live on the class. Entries are cleaned up on
+ * {@link PlayerEvent.PlayerLoggedOutEvent} to prevent unbounded growth.
+ * Per-gun throttle state lives in
+ * {@link org.yanbwe.modularshoot.state.GunSyncThrottleManager}, not here.</p>
  *
  * @see GunSyncS2CPacket
  */
@@ -86,12 +94,6 @@ public final class GunSyncService {
      */
     private static final Map<UUID, UUID> previousMainHandGun = new ConcurrentHashMap<>();
 
-    /**
-     * Set of player uuids flagged for a state-dirty sync. Flushed and cleared
-     * every tick in {@link #onLevelTickPost(LevelTickEvent.Post)}.
-     */
-    private static final Set<UUID> dirtyPlayers = ConcurrentHashMap.newKeySet();
-
     private GunSyncService() {
     }
 
@@ -100,16 +102,40 @@ public final class GunSyncService {
     // ------------------------------------------------------------------
 
     /**
-     * Performs a full gun-data sync when a player logs into the server.
+     * Performs a full gun-data sync when a player logs into the server, and
+     * lazily refreshes the {@code ATTRIBUTE_MODIFIERS} component on every gun
+     * stack the player already carries.
+     *
+     * <p>The modifier refresh (设计文档 §惰性刷新路径 K2) ensures that guns
+     * issued before a definition change (e.g. a datapack reload, a plugin
+     * definition edit, or an attribute-meta default update) automatically pick
+     * up the new values on the player's next login, without requiring a
+     * re-issue. Both the main inventory and the offhand slot are scanned;
+     * armor slots are skipped since a gun cannot be equipped there.</p>
+     *
+     * <p>After the sync, {@link #previousMainHandGun} is seeded with the
+     * player's current main-hand gun uuid so that the first
+     * {@link #detectMainHandChange} poll on the next tick does not treat the
+     * login-synced gun as a "new switch" and re-sync it redundantly.</p>
      *
      * @param event the login event
      */
     @SubscribeEvent
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.getEntity().level().isClientSide()) {
+            return;
+        }
         if (!(event.getEntity() instanceof ServerPlayer player)) {
             return;
         }
         syncToPlayer(player);
+        refreshInventoryGunModifiers(player);
+        // Seed the previous-tick tracking so the first PlayerTickEvent.Post
+        // does not re-sync the same gun the login handler just synced.
+        UUID currentGunUuid = readMainHandGunUuid(player);
+        if (currentGunUuid != null) {
+            previousMainHandGun.put(player.getUUID(), currentGunUuid);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -124,7 +150,9 @@ public final class GunSyncService {
      * <p>Only a genuine gun-instance change (different uuid, or gun &harr;
      * non-gun transition) triggers a sync. Same-gun state mutations are
      * ignored here to avoid a packet flood while shooting; those are handled
-     * by scenario 4 ({@link #markStateDirty}).</p>
+     * by the throttled flush path in
+     * {@link org.yanbwe.modularshoot.state.GunSyncTickHandler}, driven by
+     * {@link org.yanbwe.modularshoot.state.GunSyncThrottleManager}.</p>
      *
      * @param event the post-tick event carrying the ticking player
      */
@@ -175,47 +203,12 @@ public final class GunSyncService {
     }
 
     // ------------------------------------------------------------------
-    //  Scenario 4 — per-gun state dirty flush (next-tick batched)
-    // ------------------------------------------------------------------
-
-    /**
-     * Flags a player for a gun-data sync on the next
-     * {@link LevelTickEvent.Post}. Called by state-modifying hooks so that
-     * multiple state writes within the same tick coalesce into a single
-     * outbound packet.
-     *
-     * @param player the player whose main-hand gun state changed; must not be
-     *               {@code null}
-     */
-    public static void markStateDirty(ServerPlayer player) {
-        Objects.requireNonNull(player, "player");
-        dirtyPlayers.add(player.getUUID());
-    }
-
-    /**
-     * Flushes pending state-dirty syncs for every player in the ticking level.
-     *
-     * <p>Fires once per tick per level on both logical sides; guarded to run
-     * only on the authoritative server. Players flagged via
-     * {@link #markStateDirty} are synced and unflagged here.</p>
-     *
-     * @param event the post-level-tick event carrying the ticking level
-     */
-    @SubscribeEvent
-    public static void onLevelTickPost(LevelTickEvent.Post event) {
-        if (event.getLevel().isClientSide()) {
-            return;
-        }
-        flushDirtyPlayers(event.getLevel());
-    }
-
-    // ------------------------------------------------------------------
     //  Cleanup — remove tracking entries on logout
     // ------------------------------------------------------------------
 
     /**
      * Removes per-player tracking entries when a player logs out to prevent
-     * unbounded growth of the static maps.
+     * unbounded growth of the static map.
      *
      * <p>Also cascades cleanup to the fire-rate controller and modifier-version
      * anti-cheat, whose per-player state maps would otherwise retain entries
@@ -227,7 +220,6 @@ public final class GunSyncService {
     public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
         UUID playerUuid = event.getEntity().getUUID();
         previousMainHandGun.remove(playerUuid);
-        dirtyPlayers.remove(playerUuid);
         FireRateController.clearPlayer(playerUuid);
         ModifierVersionAntiCheat.clearPlayer(playerUuid);
     }
@@ -260,6 +252,33 @@ public final class GunSyncService {
         }
         GunSyncS2CPacket packet = buildPacket(gunData);
         PacketDistributor.sendToPlayer(player, packet);
+    }
+
+    /**
+     * Refreshes the {@code ATTRIBUTE_MODIFIERS} component on every gun stack
+     * in the player's main inventory and offhand slot.
+     *
+     * <p>Implements the K2 lazy-refresh path (设计文档 §惰性刷新路径): on
+     * login, each carried gun stack is reconciled with the current gun/plugin
+     * definitions so already-issued guns follow definition changes without a
+     * re-issue. The 36-slot main inventory ({@code getInventory().items}) and
+     * the offhand slot are scanned; armor slots are skipped since a gun cannot
+     * be equipped there. Non-gun stacks are passed over silently.</p>
+     *
+     * @param player the player whose inventory to refresh; must not be
+     *               {@code null}
+     */
+    private static void refreshInventoryGunModifiers(ServerPlayer player) {
+        RegistryAccess registryAccess = player.registryAccess();
+        for (ItemStack stack : player.getInventory().items) {
+            if (ModularShootAPI.isGun(stack)) {
+                AttributeModifierService.refreshModifiers(stack, registryAccess);
+            }
+        }
+        ItemStack offhand = player.getOffhandItem();
+        if (ModularShootAPI.isGun(offhand)) {
+            AttributeModifierService.refreshModifiers(offhand, registryAccess);
+        }
     }
 
     /**
@@ -337,29 +356,5 @@ public final class GunSyncService {
         }
         @Nullable GunData gunData = mainHand.get(ModularShootDataComponents.GUN_DATA.get());
         return gunData == null ? null : gunData.gunInstanceUuid();
-    }
-
-    /**
-     * Flushes the state-dirty flag for every flagged player currently in the
-     * given level, sending a sync packet and clearing the flag.
-     *
-     * <p>Iterates the level's player list and checks membership in
-     * {@link #dirtyPlayers}. This is O(players-in-level) per tick, which is
-     * negligible for typical server populations.</p>
-     *
-     * @param level the server level whose players to flush
-     */
-    private static void flushDirtyPlayers(Level level) {
-        if (dirtyPlayers.isEmpty()) {
-            return;
-        }
-        for (Player player : level.players()) {
-            if (!(player instanceof ServerPlayer serverPlayer)) {
-                continue;
-            }
-            if (dirtyPlayers.remove(serverPlayer.getUUID())) {
-                syncToPlayer(serverPlayer);
-            }
-        }
     }
 }

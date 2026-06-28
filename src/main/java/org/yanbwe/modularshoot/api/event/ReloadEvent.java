@@ -32,6 +32,20 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
  * listener handles the event, the framework performs no action on its
  * own.</p>
  *
+ * <p><b>Stack mutation contract (S19 fix):</b> the gun {@link ItemStack}
+ * carried by this event is a <em>live reference</em> to the player's
+ * main-hand stack, not a defensive copy. {@link ItemStack}s are mutable
+ * objects in Minecraft 1.21.1 (data-component operations such as
+ * {@code set}/{@code remove}/{@code update} modify the stack in place),
+ * and the framework does not copy the stack before posting. Therefore,
+ * once this event has been posted on the event bus, the <b>caller must
+ * not modify the stack afterwards</b> — listeners may have cached the
+ * reference or made decisions based on its component state, and a later
+ * in-place mutation by the caller would silently invalidate those
+ * decisions (设计文档 §防御性编程). Listeners that need a stable
+ * snapshot independent of later caller mutation should
+ * {@link ItemStack#copy()} the stack themselves.</p>
+ *
  * <p>This event is {@linkplain ICancellableEvent cancelable}. Canceling it
  * prevents subsequent handlers in the same bus dispatch from receiving the
  * event, allowing a higher-priority listener to claim the reload action
@@ -49,7 +63,10 @@ public class ReloadEvent extends PlayerEvent implements ICancellableEvent {
     /**
      * @param player the player pressing the reload key; never {@code null}
      * @param gun    the gun {@link ItemStack} in the player's main hand at the
-     *               moment the reload was requested
+     *               moment the reload was requested; a <em>live reference</em>
+     *               — the caller must not mutate this stack after the event
+     *               has been posted (see class-level <b>Stack mutation
+     *               contract</b>)
      */
     public ReloadEvent(Player player, ItemStack gun) {
         super(player);
@@ -73,6 +90,12 @@ public class ReloadEvent extends PlayerEvent implements ICancellableEvent {
     /**
      * Returns the gun item stack in the player's main hand at the moment the
      * reload was requested.
+     *
+     * <p>This is a <em>live reference</em> to the player's main-hand stack,
+     * not a defensive copy (see the class-level <b>Stack mutation
+     * contract</b>). The caller (the server-side reload handler) must not
+     * mutate this stack after the event has been posted; listeners that
+     * need a stable snapshot should {@link ItemStack#copy()} it.</p>
      *
      * @return the gun {@link ItemStack}
      */

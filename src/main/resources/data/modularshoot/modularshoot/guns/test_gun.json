@@ -22,7 +22,7 @@
   },
   "bullet_style": {
     "model": {
-      "3d": "modularshoot:bullet/normol_fazhang"
+      "3d": "modularshoot:models/bullet/normal_fazhang.json"
     },
     "render_mode": "3d"
   }

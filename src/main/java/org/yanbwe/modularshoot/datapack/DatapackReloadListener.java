@@ -12,12 +12,14 @@ import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimplePreparableReloadListener;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
+import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
@@ -42,7 +44,8 @@ import org.yanbwe.modularshoot.registry.gun.GunDefinition;
  *   <li>Calls each {@code DatapackLoader}'s validation method and collects
  *       the results into {@link DatapackLoadSummary} instances.</li>
  *   <li>Formats and logs the per-registry summary.</li>
- *   <li>Delegates creative-tab refresh to {@link ReloadBehaviorHandler}.</li>
+ *   <li>Delegates creative-tab rebuild and online-player gun refresh to
+ *       {@link ReloadBehaviorHandler}.</li>
  * </ol>
  *
  * <h2>Design notes</h2>
@@ -119,8 +122,8 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
     /**
      * Executes the post-reload logic: log, enter DATAPACK phase,
      * validate-and-summarise, check registration conflicts and missing
-     * resources, complete phase, then delegate creative-tab refresh to
-     * {@link ReloadBehaviorHandler}.
+     * resources, complete phase, then delegate creative-tab refresh and
+     * online-player gun refresh to {@link ReloadBehaviorHandler}.
      *
      * @param access the reloaded registry access (all registries loaded and frozen)
      */
@@ -133,7 +136,13 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
         checkRegistrationConflicts(access);
         checkMissingResources(access);
         LoadOrderManager.completePhase(LoadOrderManager.LoadPhase.DATAPACK);
-        ReloadBehaviorHandler.onReloadComplete(access);
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        if (server != null) {
+            ReloadBehaviorHandler.onReloadComplete(access, server);
+        } else {
+            ModularShoot.LOGGER.warn(
+                    "MinecraftServer unavailable after datapack reload — skipping creative-tab and player-inventory refresh.");
+        }
     }
 
     /**
@@ -182,9 +191,27 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
      * Builds a {@link DatapackLoadSummary} from validation results.
      *
      * <p>In the post-reload context all entries are already registered, so
-     * {@code failed} is always {@code 0} (parse failures are handled during
-     * the vanilla pipeline, not here). Entries that did not pass validation
-     * cleanly are counted as warnings.</p>
+     * {@code failed} is always {@code 0}. This is an architectural
+     * consequence of NeoForge's {@code DataPackRegistryEvent} mechanism:
+     * the vanilla {@code RegistryDataLoader} parses every JSON entry
+     * <em>before</em> this listener fires. Each entry is isolated by its
+     * own try-catch inside {@code loadContentsFromManager}, so a single
+     * parse failure does not abort the remaining entries; however, when
+     * <em>any</em> entry fails, {@code RegistryDataLoader.load()} throws
+     * an {@code IllegalStateException} and the entire registry load is
+     * aborted &mdash; this post-reload listener never runs for that
+     * registry. Therefore, when this method <em>is</em> reached, every
+     * visible entry has already been parsed and registered successfully,
+     * and the parse-failure count is necessarily zero.</p>
+     *
+     * <p>Parse failures are logged by the vanilla pipeline itself (via
+     * {@code RegistryDataLoader.logErrors}), not by this framework. The
+     * design-document summary format "共加载 42 个枪械定义，3 个失败"
+     * (设计文档 §数据包 JSON 加载失败的错误处理) describes the
+     * operator-facing intent; under the NeoForge architecture the actual
+     * failure count is surfaced by the vanilla pipeline's error log, which
+     * precedes this summary. Entries that did not pass the framework's
+     * post-load validation cleanly are counted as warnings here.</p>
      *
      * @param name    the human-readable registry name (e.g. "枪械定义")
      * @param total   the total number of entries
@@ -192,7 +219,9 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
      * @param isClean predicate returning {@code true} for entries that passed
      *                validation without warnings
      * @param <T>     the validation result type
-     * @return a summary with {@code failed = 0}
+     * @return a summary with {@code failed = 0} (architectural guarantee:
+     *         parse failures abort the vanilla pipeline before this listener
+     *         runs)
      */
     private static <T> DatapackLoadSummary summarize(
             String name, int total, Collection<T> results, Predicate<T> isClean) {
@@ -285,6 +314,34 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
      * {@link RegistrationCoordinator#attemptDatapackOverride} for each
      * conflict to emit the {@code WARN} log line (设计文档 §容错优先
      * &mdash; collect all conflicts, then report).</p>
+     *
+     * <h2>Semantic note &mdash; return value intentionally ignored</h2>
+     * <p>{@link RegistrationCoordinator#attemptDatapackOverride} returns a
+     * {@code boolean} ({@code true} = datapack registration may proceed,
+     * {@code false} = override denied). The return value is <strong>intentionally
+     * ignored</strong> here. This is a deliberate architectural deviation from
+     * the naive reading of the design rule "Java API takes priority over
+     * datapack" (设计文档 §注册冲突与覆盖):</p>
+     * <ul>
+     *   <li>By the time this post-reload check runs, the vanilla
+     *       {@code RegistryDataLoader} has already written both the
+     *       Java-API entry <em>and</em> the datapack entry into the same
+     *       registry. The vanilla pipeline does not consult
+     *       {@link RegistrationCoordinator} before writing, so the
+     *       datapack entry is physically present in the registry.</li>
+     *   <li>"Datapack registration ignored" is therefore <strong>not</strong>
+     *       implemented by preventing the registry write (that already
+     *       happened). Instead, it is implemented at the <em>query layer</em>:
+     *       runtime lookups consult the Java-API-registered definition first
+     *       (via the Java API Map maintained by the registry classes), so the
+     *       datapack entry is shadowed and never observed by gameplay code.</li>
+     *   <li>The sole purpose of calling {@code attemptDatapackOverride} here
+     *       is to emit the {@code WARN} log line so the operator is informed
+     *       that a datapack attempted to override a Java-API entry. The
+     *       {@code false} return value confirms the denial for logging
+     *       purposes; no further action is needed because the query-layer
+     *       shadowing already enforces the priority rule.</li>
+     * </ul>
      *
      * @param access      the reloaded registry access
      * @param registryKey the registry to check

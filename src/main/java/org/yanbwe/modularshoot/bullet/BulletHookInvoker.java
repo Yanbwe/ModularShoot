@@ -16,11 +16,16 @@ import org.yanbwe.modularshoot.trait.TraitHookType;
  * (设计文档 §特性运行时钩子).
  *
  * <p>Each {@code fire*} method iterates over the set of trait ids that have
- * registered at least one hook (queried via
- * {@link TraitHookRegistry#getRegisteredTraitIds()}), looks up the callbacks
- * for the matching {@link TraitHookType}, and invokes them in registration
- * order. The framework fires registered hooks unconditionally — callbacks
- * are responsible for checking
+ * registered at least one callback for the <em>specific</em> hook type being
+ * fired (queried via
+ * {@link TraitHookRegistry#getTraitIdsForHookType(TraitHookType)}), looks up
+ * the callbacks for the matching {@link TraitHookType}, and invokes them in
+ * registration order. This hook-type-specific iteration avoids querying
+ * trait ids that registered only for other hook types, eliminating wasted
+ * map lookups at high bullet counts (S4).</p>
+ *
+ * <p>The framework fires registered hooks unconditionally — callbacks are
+ * responsible for checking
  * {@link BulletSnapshot#getTrait(ResourceLocation)} to decide whether their
  * trait is active on the bullet, so a single registration serves all bullets
  * (设计文档 §特性钩子注册 API).</p>
@@ -51,7 +56,7 @@ public final class BulletHookInvoker {
      */
     public static void fireOnTick(BulletRecord bullet) {
         BulletSnapshot snapshot = bullet.getSnapshot();
-        Set<ResourceLocation> traitIds = TraitHookRegistry.getRegisteredTraitIds();
+        Set<ResourceLocation> traitIds = TraitHookRegistry.getTraitIdsForHookType(TraitHookType.ON_TICK);
         for (ResourceLocation traitId : traitIds) {
             List<TraitCallbacks.TraitTickCallback> hooks = TraitHookRegistry.getHooks(
                     traitId, TraitHookType.ON_TICK, TraitCallbacks.TraitTickCallback.class);
@@ -73,7 +78,7 @@ public final class BulletHookInvoker {
      */
     public static void fireOnHit(BulletRecord bullet, Entity target) {
         BulletSnapshot snapshot = bullet.getSnapshot();
-        Set<ResourceLocation> traitIds = TraitHookRegistry.getRegisteredTraitIds();
+        Set<ResourceLocation> traitIds = TraitHookRegistry.getTraitIdsForHookType(TraitHookType.ON_HIT);
         for (ResourceLocation traitId : traitIds) {
             List<TraitCallbacks.TraitHitCallback> hooks = TraitHookRegistry.getHooks(
                     traitId, TraitHookType.ON_HIT, TraitCallbacks.TraitHitCallback.class);
@@ -94,7 +99,7 @@ public final class BulletHookInvoker {
      */
     public static void fireOnBlockHit(BulletRecord bullet, BlockPos pos, Direction face) {
         BulletSnapshot snapshot = bullet.getSnapshot();
-        Set<ResourceLocation> traitIds = TraitHookRegistry.getRegisteredTraitIds();
+        Set<ResourceLocation> traitIds = TraitHookRegistry.getTraitIdsForHookType(TraitHookType.ON_BLOCK_HIT);
         for (ResourceLocation traitId : traitIds) {
             List<TraitCallbacks.TraitBlockHitCallback> hooks = TraitHookRegistry.getHooks(
                     traitId, TraitHookType.ON_BLOCK_HIT, TraitCallbacks.TraitBlockHitCallback.class);
@@ -116,7 +121,7 @@ public final class BulletHookInvoker {
      */
     public static void fireOnExpire(BulletRecord bullet) {
         BulletSnapshot snapshot = bullet.getSnapshot();
-        Set<ResourceLocation> traitIds = TraitHookRegistry.getRegisteredTraitIds();
+        Set<ResourceLocation> traitIds = TraitHookRegistry.getTraitIdsForHookType(TraitHookType.ON_EXPIRE);
         for (ResourceLocation traitId : traitIds) {
             List<TraitCallbacks.TraitExpireCallback> hooks = TraitHookRegistry.getHooks(
                     traitId, TraitHookType.ON_EXPIRE, TraitCallbacks.TraitExpireCallback.class);
@@ -138,7 +143,7 @@ public final class BulletHookInvoker {
      */
     public static void fireOnRemove(BulletRecord bullet, RemoveReason reason) {
         BulletSnapshot snapshot = bullet.getSnapshot();
-        Set<ResourceLocation> traitIds = TraitHookRegistry.getRegisteredTraitIds();
+        Set<ResourceLocation> traitIds = TraitHookRegistry.getTraitIdsForHookType(TraitHookType.ON_REMOVE);
         for (ResourceLocation traitId : traitIds) {
             List<TraitCallbacks.TraitRemoveCallback> hooks = TraitHookRegistry.getHooks(
                     traitId, TraitHookType.ON_REMOVE, TraitCallbacks.TraitRemoveCallback.class);

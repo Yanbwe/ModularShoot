@@ -3,6 +3,7 @@ package org.yanbwe.modularshoot.trait;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -70,6 +71,45 @@ public final class TraitHookRegistry {
 
     private static final Map<ResourceLocation, EnumMap<TraitHookType, List<TraitCallbacks.TraitCallback>>> HOOKS =
             new ConcurrentHashMap<>();
+
+    /**
+     * Cached unmodifiable snapshot of {@link #HOOKS}'s key set.
+     *
+     * <p>The bullet engine calls {@link #getRegisteredTraitIds()} once per
+     * hook fire per bullet, which at high bullet counts (e.g. 1000 bullets
+     * per tick) would otherwise allocate a fresh {@code Set.copyOf} on every
+     * call (W10). This cache is refreshed only when a new trait id is
+     * registered (during mod init, single-threaded) and read on the server
+     * tick threads at runtime.</p>
+     *
+     * <p>{@code volatile} guarantees the publication of the latest snapshot
+     * from the init thread to the tick threads: the write happens-before
+     * every subsequent read of the field, and the immutable {@code Set}
+     * itself is safely published once its reference is visible.</p>
+     */
+    private static volatile Set<ResourceLocation> cachedTraitIds = Set.of();
+
+    /**
+     * Cached unmodifiable map from hook type to the set of trait ids that
+     * have registered at least one callback for that hook type (S4).
+     *
+     * <p>The bullet engine fires hooks per hook type (e.g. {@code ON_TICK},
+     * {@code ON_HIT}). Without this index, every {@code fire*} call in
+     * {@link org.yanbwe.modularshoot.bullet.BulletHookInvoker} would iterate
+     * over <em>all</em> registered trait ids and query each one for the
+     * current hook type — most of those lookups return an empty list when a
+     * trait registered only for a different hook type. This index lets the
+     * invoker iterate only the trait ids that actually have callbacks for
+     * the hook type being fired, eliminating wasted map lookups at high
+     * bullet counts.</p>
+     *
+     * <p>Like {@link #cachedTraitIds}, this cache is rebuilt only during
+     * mod init when a new (trait id, hook type) pair is registered
+     * (single-threaded) and read on server tick threads at runtime. The
+     * {@code volatile} modifier guarantees safe publication of the latest
+     * immutable snapshot from the init thread to the tick threads.</p>
+     */
+    private static volatile Map<TraitHookType, Set<ResourceLocation>> cachedTraitIdsByHookType = Map.of();
 
     /**
      * Maps each hook type to the callback interface class that callers must
@@ -183,17 +223,53 @@ public final class TraitHookRegistry {
      * Returns the set of trait ids that have registered at least one hook
      * callback.
      *
-     * <p>The returned set is an unmodifiable copy of the registry's trait-id
-     * key set. The bullet engine iterates this set to dispatch runtime hooks
-     * so that only traits with actual callbacks are queried, avoiding
-     * lookups for every registered trait definition (设计文档
-     * §特性运行时钩子).</p>
+     * <p>The returned set is an unmodifiable <em>cached</em> snapshot of the
+     * registry's trait-id key set, refreshed only when a new trait id is
+     * registered via {@link #register}. The same immutable instance is
+     * returned on every call until the next registration, so callers may
+     * iterate it without allocating (W10). The bullet engine iterates this
+     * set to dispatch runtime hooks so that only traits with actual
+     * callbacks are queried, avoiding lookups for every registered trait
+     * definition (设计文档 §特性运行时钩子).</p>
      *
-     * @return an unmodifiable set of trait ids with at least one registered
-     *         hook; empty when no hooks have been registered
+     * <p>The returned set must not be modified by callers; it is shared
+     * across all invocations.</p>
+     *
+     * @return an unmodifiable, cached set of trait ids with at least one
+     *         registered hook; empty when no hooks have been registered
      */
     public static Set<ResourceLocation> getRegisteredTraitIds() {
-        return Set.copyOf(HOOKS.keySet());
+        return cachedTraitIds;
+    }
+
+    /**
+     * Returns the set of trait ids that have registered at least one
+     * callback for the given hook type (S4).
+     *
+     * <p>This is a cached, hook-type-specific view of the registry, refreshed
+     * only when a new (trait id, hook type) pair is registered via
+     * {@link #register}. The bullet engine uses it to iterate only the trait
+     * ids that have callbacks for the hook type being fired, avoiding wasted
+     * map lookups for traits that registered only for other hook types
+     * (设计文档 §特性运行时钩子).</p>
+     *
+     * <p>The returned set is an unmodifiable cached snapshot; the same
+     * immutable instance is returned on every call until the next
+     * registration that introduces a new (trait id, hook type) pair. Callers
+     * may iterate it without allocating.</p>
+     *
+     * <p>The returned set must not be modified by callers; it is shared
+     * across all invocations.</p>
+     *
+     * @param type the hook type to query; must not be {@code null}
+     * @return an unmodifiable, cached set of trait ids with at least one
+     *         registered callback for {@code type}; empty when none
+     *         registered
+     */
+    public static Set<ResourceLocation> getTraitIdsForHookType(TraitHookType type) {
+        Objects.requireNonNull(type, "type");
+        Set<ResourceLocation> ids = cachedTraitIdsByHookType.get(type);
+        return ids == null ? Set.of() : ids;
     }
 
     /**
@@ -242,8 +318,45 @@ public final class TraitHookRegistry {
      */
     private static void addHook(
             ResourceLocation traitId, TraitHookType type, TraitCallbacks.TraitCallback callback) {
-        HOOKS.computeIfAbsent(traitId, k -> new EnumMap<>(TraitHookType.class))
-                .computeIfAbsent(type, k -> new ArrayList<>())
+        // Detect whether this registration introduces a new trait id to the
+        // key set, and/or a new hook type for an existing trait id.
+        // Registration is single-threaded during mod init (per the class
+        // thread-safety contract), so the contains/computeIfAbsent pair is
+        // free of races. When a new trait id appears, the cached key-set
+        // snapshot is rebuilt so getRegisteredTraitIds() returns an
+        // up-to-date view without per-call allocation (W10). When a new
+        // (trait id, hook type) pair appears, the hook-type index is rebuilt
+        // so getTraitIdsForHookType() returns an up-to-date view (S4).
+        boolean newTrait = !HOOKS.containsKey(traitId);
+        EnumMap<TraitHookType, List<TraitCallbacks.TraitCallback>> traitHooks =
+                HOOKS.computeIfAbsent(traitId, k -> new EnumMap<>(TraitHookType.class));
+        boolean newHookType = !traitHooks.containsKey(type);
+        traitHooks.computeIfAbsent(type, k -> new ArrayList<>())
                 .add(callback);
+        if (newTrait) {
+            cachedTraitIds = Set.copyOf(HOOKS.keySet());
+        }
+        if (newHookType) {
+            rebuildHookTypeIndex();
+        }
+    }
+
+    /**
+     * Rebuilds the cached {@link #cachedTraitIdsByHookType} index from the
+     * current state of {@link #HOOKS}.
+     *
+     * <p>Called only when a new (trait id, hook type) pair is registered
+     * (during mod init, single-threaded). Produces an immutable map of
+     * immutable sets so that the {@code volatile} field publishes a safely
+     * reusable snapshot to the server tick threads (S4).</p>
+     */
+    private static void rebuildHookTypeIndex() {
+        Map<TraitHookType, Set<ResourceLocation>> index = new EnumMap<>(TraitHookType.class);
+        HOOKS.forEach((traitId, traitHooks) ->
+                traitHooks.keySet().forEach(type ->
+                        index.computeIfAbsent(type, k -> new LinkedHashSet<>()).add(traitId)));
+        Map<TraitHookType, Set<ResourceLocation>> immutable = new EnumMap<>(TraitHookType.class);
+        index.forEach((type, ids) -> immutable.put(type, Set.copyOf(ids)));
+        cachedTraitIdsByHookType = Map.copyOf(immutable);
     }
 }

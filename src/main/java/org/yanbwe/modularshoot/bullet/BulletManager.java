@@ -17,6 +17,7 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.client.render.BulletRenderManager;
+import org.yanbwe.modularshoot.network.BulletSyncService;
 import org.yanbwe.modularshoot.trait.RemoveReason;
 
 /**
@@ -102,6 +103,32 @@ public final class BulletManager {
                 MANAGERS.put(level, mgr);
             }
             return mgr;
+        }
+    }
+
+    /**
+     * Returns the already-existing {@code BulletManager} for the given
+     * dimension, or {@code null} if no manager has been created for that
+     * dimension yet.
+     *
+     * <p>Unlike {@link #get(Level)}, this method never creates a new
+     * instance. It is intended for lookups that must not have the side effect
+     * of instantiating a manager — most notably dimension-unload handling,
+     * where creating a manager for an already-unloading dimension would be
+     * wasteful and semantically wrong (the manager would be immediately
+     * discarded by the {@link WeakHashMap} once the {@link Level} is
+     * released).</p>
+     *
+     * <p>Thread-safe: the lookup is guarded by the same per-dimension map
+     * lock as {@link #get(Level)}.</p>
+     *
+     * @param level the dimension to look up
+     * @return the existing manager for that dimension, or {@code null}
+     */
+    @Nullable
+    public static BulletManager getExisting(Level level) {
+        synchronized (MANAGERS) {
+            return MANAGERS.get(level);
         }
     }
 
@@ -198,7 +225,10 @@ public final class BulletManager {
      *
      * <p>The {@code level} parameter is retained for API consistency with the
      * design document; the manager is already bound to a dimension, so it is
-     * not used in the registration logic. Callers must ensure the passed
+     * not used in the registration logic. It is, however, passed to
+     * {@link BulletSyncService#markBulletCreated} so the tick-end sync
+     * includes this bullet even if it is removed by collision in the same
+     * Pre step (设计文档 §短寿命子弹保证). Callers must ensure the passed
      * level matches this manager's dimension.</p>
      *
      * @param level     the dimension to fire into (must match this manager's dimension)
@@ -217,6 +247,15 @@ public final class BulletManager {
         int bulletId = nextBulletId();
         BulletRecord bullet = new BulletRecord(snapshot, shooter, position, direction, bulletId);
         addBullet(bullet);
+        // Mark the new bullet as created this tick so that the tick-end sync
+        // includes it in the newBullets bucket — even if the bullet is removed
+        // by collision before the Post tick event fires (设计文档 §短寿命子弹保证).
+        // Server-only guard: BulletSyncService is server-side and the
+        // created-this-tick list is only drained from the server's
+        // LevelTickEvent.Post handler, so marking on the client would leak.
+        if (!level.isClientSide()) {
+            BulletSyncService.markBulletCreated(level, bullet);
+        }
         return bullet;
     }
 
@@ -244,6 +283,52 @@ public final class BulletManager {
         }
         BulletHookInvoker.fireOnRemove(bullet, reason);
         removeFromChunkBucket(bullet);
+    }
+
+    /**
+     * Evicts every bullet currently tracked by this manager, firing the
+     * {@code ON_REMOVE} hook for each with the supplied reason
+     * (设计文档 §维度卸载移除).
+     *
+     * <p>Used primarily on dimension unload (with
+     * {@link RemoveReason#DIMENSION_UNLOAD}) to ensure every bullet's
+     * {@code ON_REMOVE} cleanup callbacks run before the manager is
+     * garbage-collected along with its {@link Level}. Without this explicit
+     * eviction the {@code WeakHashMap} would silently reclaim the manager
+     * and the {@code ON_REMOVE} hook would never fire for the
+     * dimension-unload reason, leaking any resources held by listeners
+     * (particle systems, external mod state records, etc.).</p>
+     *
+     * <p>Iterates over a defensive snapshot from {@link #getAllBullets()}, so
+     * removals during iteration are safe (each {@link #removeBullet} call
+     * mutates the underlying map, but the snapshot is an independent copy —
+     * see iteration-safety notes in {@link BulletTickHandler}).</p>
+     *
+     * @param reason the reason passed to each bullet's {@code ON_REMOVE} hook
+     */
+    public void evictAll(RemoveReason reason) {
+        Collection<BulletRecord> bullets = getAllBullets();
+        for (BulletRecord bullet : bullets) {
+            removeBullet(bullet.getBulletId(), reason);
+        }
+    }
+
+    /**
+     * Removes every bullet currently tracked by this manager, firing the
+     * {@code ON_REMOVE} hook for each with {@link RemoveReason#MANUAL}
+     * (设计文档 §MANUAL 原因 — 管理员命令、清理 API).
+     *
+     * <p>This is the public batch-cleanup API intended for administrative
+     * commands and scripted clear-all operations. It delegates to
+     * {@link #evictAll(RemoveReason)} with {@code MANUAL} so that every
+     * bullet's {@code ON_REMOVE} cleanup callbacks run before eviction,
+     * preventing resource leaks in listeners (S5).</p>
+     *
+     * <p>This reason is never produced by the normal flight simulation path;
+     * it is reserved for explicit API or command-driven removal.</p>
+     */
+    public void clearAll() {
+        evictAll(RemoveReason.MANUAL);
     }
 
     /**

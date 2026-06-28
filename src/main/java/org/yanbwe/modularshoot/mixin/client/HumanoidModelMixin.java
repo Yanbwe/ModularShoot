@@ -14,6 +14,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.client.PlayerShootStateManager;
 import org.yanbwe.modularshoot.network.ShootAnimSyncService;
 
@@ -78,8 +79,15 @@ public abstract class HumanoidModelMixin {
 
     /**
      * Runs at the tail of {@code HumanoidModel.setupAnim}: when the rendered
-     * entity is a player with a positive shoot-animation timer, overrides
-     * both arms to the crossbow-draw pose. Otherwise does nothing.
+     * entity is a player with a positive shoot-animation timer <em>and</em>
+     * holding a framework gun in their main hand, overrides both arms to the
+     * crossbow-draw pose. Otherwise does nothing.
+     *
+     * <p>The main-hand gun guard (W22) ensures the crossbow pose is only
+     * applied while the player is actually holding a gun. Without this guard,
+     * switching to a non-gun item while the timer is still decaying would
+     * leave the vanilla crossbow-draw pose applied to a non-shooting
+     * animation, which looks broken.</p>
      *
      * @param entity          the living entity being animated (erased generic {@code T})
      * @param limbSwing       vanilla limb-swing phase (unused)
@@ -98,6 +106,9 @@ public abstract class HumanoidModelMixin {
         float timer = PlayerShootStateManager.getInstance().getAnimTimer(player.getUUID());
         if (timer <= 0.0f) {
             return; // timer == 0: do not interfere, keep vanilla animation
+        }
+        if (!ModularShootAPI.isGun(player.getMainHandItem())) {
+            return; // main hand is not a gun: do not apply crossbow draw pose
         }
         applyCrossbowDrawPose(player, timer);
     }

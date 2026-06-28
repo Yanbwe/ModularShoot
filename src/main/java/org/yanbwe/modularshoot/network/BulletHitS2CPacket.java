@@ -22,7 +22,7 @@ import net.minecraft.resources.ResourceLocation;
  *   <li>{@code double} — hit x</li>
  *   <li>{@code double} — hit y</li>
  *   <li>{@code double} — hit z</li>
- *   <li>{@code int} — {@link HitType} ordinal</li>
+ *   <li>{@code String} (UTF) — {@link HitType} enum name</li>
  *   <li>{@code int} — hit entity id ({@code -1} when not an entity hit)</li>
  * </ol>
  *
@@ -52,11 +52,11 @@ public record BulletHitS2CPacket(
      * Kind of hit a bullet made, used by the client to select the correct
      * impact effect.
      *
-     * <p>Encoded on the wire as its {@link Enum#ordinal() ordinal} via
-     * {@link RegistryFriendlyByteBuf#writeInt(int)}; decoded back with
-     * {@link HitType#values()} indexing. The ordinal order is part of the
-     * wire contract — do not reorder these constants without bumping the
-     * protocol version in {@link ModularShootPayloads#PROTOCOL_VERSION}.</p>
+     * <p>Encoded on the wire as its {@link Enum#name() enum name} via
+     * {@link RegistryFriendlyByteBuf#writeUtf(String)}; decoded back with
+     * {@link #valueOf(String)}. Name-based encoding is robust against enum
+     * constant reordering — adding, removing, or reordering constants does
+     * not break the wire protocol, unlike ordinal-based encoding.</p>
      */
     public enum HitType {
         /** The bullet struck an entity (damage applied server-side). */
@@ -97,7 +97,7 @@ public record BulletHitS2CPacket(
         buf.writeDouble(packet.hitX);
         buf.writeDouble(packet.hitY);
         buf.writeDouble(packet.hitZ);
-        buf.writeInt(packet.hitType.ordinal());
+        buf.writeUtf(packet.hitType.name());
         buf.writeInt(packet.hitEntityId);
     }
 
@@ -113,7 +113,7 @@ public record BulletHitS2CPacket(
         double hitX = buf.readDouble();
         double hitY = buf.readDouble();
         double hitZ = buf.readDouble();
-        HitType hitType = HitType.values()[buf.readInt()];
+        HitType hitType = HitType.valueOf(buf.readUtf());
         int hitEntityId = buf.readInt();
         return new BulletHitS2CPacket(bulletId, hitX, hitY, hitZ, hitType, hitEntityId);
     }

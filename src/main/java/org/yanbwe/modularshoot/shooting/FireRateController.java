@@ -92,8 +92,21 @@ public final class FireRateController {
      * <p>The minimum of {@code 1} tick ensures that even very high fire rates
      * cannot fire more than once per tick. {@link Math#round(double)} returns
      * a {@code long} which is narrowed to {@code int} after the {@code max}
-     * clamp; the result always fits because {@code fireRate} is positive and
-     * the attribute is clamped to {@code [0, 1024]}.</p>
+     * clamp; the result always fits because {@code fireRate} is positive.</p>
+     *
+     * <p><b>Attribute range vs. effective fire rate (W18 fix).</b> The
+     * {@code fire_rate} attribute is registered in
+     * {@link org.yanbwe.modularshoot.attribute.ModularShootAttributes} with a
+     * {@link net.minecraft.world.entity.ai.attributes.RangedAttribute} clamp
+     * of {@code [0, 1024]} &mdash; that is the range the attribute value may
+     * hold after modifier aggregation. The <em>effective</em> fire rate,
+     * however, is bounded by the server tick rate of 20 ticks/s: any
+     * {@code fire_rate > 20} yields {@code round(20 / fireRate) = 0}, which the
+     * {@code max(1, ...)} clamp raises to a 1-tick interval, i.e. at most 20
+     * shots/s in practice (设计文档 §属性表: "实际参与计算的值 clamp 到
+     * (0, 20]"). A {@code fire_rate <= 0} is rejected earlier in
+     * {@link #canShoot}. This method therefore only ever sees positive values
+     * and always returns a well-defined {@code >= 1} interval.</p>
      *
      * @param fireRate the fire-rate attribute value (shots per second); must be {@code > 0}
      * @return the minimum number of ticks between two shots

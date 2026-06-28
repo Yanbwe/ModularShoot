@@ -69,6 +69,22 @@ public final class PluginMatchingService {
     }
 
     /**
+     * An immutable pair of a category's registry id and its
+     * {@link PluginTypeDefinition}, produced by {@link #getMatchingTypes} and
+     * consumed by {@link #selectPluginType}.
+     *
+     * <p>Carrying the id alongside the definition eliminates the reverse-lookup
+     * step that was previously needed to recover the registry id from the
+     * selected definition (the definition record itself does not carry its
+     * id — it is supplied by the registry key).</p>
+     *
+     * @param id         the category's registry id
+     * @param definition the category's definition record
+     */
+    public record TypeMatch(ResourceLocation id, PluginTypeDefinition definition) {
+    }
+
+    /**
      * Determines whether two tag sets share at least one tag (set intersection).
      *
      * <p>This is the core matching predicate: a plugin may install into a
@@ -89,7 +105,7 @@ public final class PluginMatchingService {
 
     /**
      * Selects the best category from a list of matching candidates using the
-     * three-level auto-selection algorithm.
+     * three-level auto-selection algorithm and returns its registry id.
      *
      * <p>Ordering (设计文档 lines 481-485):
      * <ol>
@@ -106,31 +122,33 @@ public final class PluginMatchingService {
      * {@link Random}. When the best candidate is unique the fallback group has
      * exactly one element and the random draw is a no-op.</p>
      *
-     * @param candidates the matching categories (must already be filtered to
-     *                   those with a free slot); may be empty
+     * @param candidates the matching categories paired with their registry ids
+     *                   (must already be filtered to those with a free slot);
+     *                   may be empty
      * @param random     the source of randomness for the tertiary fallback;
      *                   only consulted when a tie exists
-     * @return the selected {@link PluginTypeDefinition}, or
+     * @return the registry id of the selected category, or
      *         {@code Optional.empty()} when {@code candidates} is empty
      */
-    public static Optional<PluginTypeDefinition> selectPluginType(List<PluginTypeDefinition> candidates, Random random) {
+    public static Optional<ResourceLocation> selectPluginType(List<TypeMatch> candidates, Random random) {
         if (candidates.isEmpty()) {
             return Optional.empty();
         }
-        List<PluginTypeDefinition> sorted = candidates.stream()
-                .sorted(Comparator.comparingInt((PluginTypeDefinition t) -> t.tags().size())
-                        .thenComparing(PluginTypeDefinition::priority, Comparator.reverseOrder()))
+        List<TypeMatch> sorted = candidates.stream()
+                .sorted(Comparator.comparingInt((TypeMatch t) -> t.definition().tags().size())
+                        .thenComparing(t -> t.definition().priority(), Comparator.reverseOrder()))
                 .toList();
-        PluginTypeDefinition first = sorted.get(0);
-        List<PluginTypeDefinition> tied = sorted.stream()
-                .filter(t -> t.tags().size() == first.tags().size() && t.priority() == first.priority())
+        TypeMatch first = sorted.get(0);
+        List<TypeMatch> tied = sorted.stream()
+                .filter(t -> t.definition().tags().size() == first.definition().tags().size()
+                        && t.definition().priority() == first.definition().priority())
                 .toList();
-        return Optional.of(tied.get(random.nextInt(tied.size())));
+        return Optional.of(tied.get(random.nextInt(tied.size())).id());
     }
 
     /**
      * Returns the categories on a gun that match a plugin by tag intersection
-     * and still have at least one free slot.
+     * and still have at least one free slot, each paired with its registry id.
      *
      * <p>Resolution steps:
      * <ol>
@@ -144,7 +162,8 @@ public final class PluginMatchingService {
      *   <li>For every category id in {@link GunDefinition#slots()} key set,
      *       look up the {@link PluginTypeDefinition} and keep it when
      *       {@link #tagsIntersect(Set, Set)} is {@code true} <em>and</em> the
-     *       category has a free slot.</li>
+     *       category has a free slot. Each match is wrapped in a
+     *       {@link TypeMatch} carrying both the id and the definition.</li>
      * </ol>
      *
      * <p>Free slot count for a category {@code typeId} is
@@ -156,11 +175,12 @@ public final class PluginMatchingService {
      * @param gun           the gun item stack to inspect
      * @param pluginId      the plugin definition id to match against
      * @param registryAccess the runtime registry view (from a loaded world)
-     * @return an unmodifiable-style list of matching categories with free
-     *         slots; empty when the stack is not a gun, the gun/plugin
-     *         definition is missing, or no category matches
+     * @return an unmodifiable-style list of {@link TypeMatch} pairs (id +
+     *         definition) for matching categories with free slots; empty when
+     *         the stack is not a gun, the gun/plugin definition is missing, or
+     *         no category matches
      */
-    public static List<PluginTypeDefinition> getMatchingTypes(ItemStack gun, ResourceLocation pluginId, RegistryAccess registryAccess) {
+    public static List<TypeMatch> getMatchingTypes(ItemStack gun, ResourceLocation pluginId, RegistryAccess registryAccess) {
         GunData gunData = gun.get(ModularShootDataComponents.GUN_DATA.get());
         if (gunData == null) {
             return List.of();
@@ -175,7 +195,7 @@ public final class PluginMatchingService {
         }
         Set<ResourceLocation> pluginTags = new HashSet<>(pluginDef.get().tags());
         List<PluginInstance> installed = gunData.installedPlugins();
-        List<PluginTypeDefinition> result = new ArrayList<>();
+        List<TypeMatch> result = new ArrayList<>();
         for (ResourceLocation typeId : gunDef.get().slots().keySet()) {
             Optional<PluginTypeDefinition> typeDef = PluginTypeRegistry.getPluginType(registryAccess, typeId);
             if (typeDef.isEmpty()) {
@@ -183,7 +203,7 @@ public final class PluginMatchingService {
             }
             Set<ResourceLocation> typeTags = new HashSet<>(typeDef.get().tags());
             if (tagsIntersect(pluginTags, typeTags) && hasFreeSlot(gunDef.get(), installed, typeId)) {
-                result.add(typeDef.get());
+                result.add(new TypeMatch(typeId, typeDef.get()));
             }
         }
         return result;
