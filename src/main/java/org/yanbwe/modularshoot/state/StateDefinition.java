@@ -2,6 +2,8 @@ package org.yanbwe.modularshoot.state;
 
 import com.mojang.datafixers.util.Either;
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.DynamicOps;
 import com.mojang.serialization.Encoder;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import java.util.Optional;
@@ -134,9 +136,12 @@ public record StateDefinition(
      * @return an encoder that writes each value with its matching codec
      */
     private static Encoder<Object> buildDispatchEncoder() {
-        return (value, ops, prefix) -> {
-            final Codec<Object> codec = StateValueType.fromObject(value).codec();
-            return codec.encode(value, ops, prefix);
+        return new Encoder<>() {
+            @Override
+            public <T> DataResult<T> encode(Object value, DynamicOps<T> ops, T prefix) {
+                final Codec<Object> codec = StateValueType.fromObject(value).codec();
+                return codec.encode(value, ops, prefix);
+            }
         };
     }
 
