@@ -109,18 +109,85 @@ public record StateDefinition(
      * {@code DOUBLE} before {@code FLOAT} before {@code BOOLEAN} before
      * {@code STRING} before {@code UUID}.</p>
      *
+     * <p>{@code INT} and {@code LONG} use the strict variants
+     * ({@link #strictIntCodec()} / {@link #strictLongCodec()}) instead of
+     * {@link Codec#INT} / {@link Codec#LONG}: the vanilla integer codecs
+     * decode any JSON number via {@code Number#intValue()} truncation
+     * (Gson {@code getAsInt}), so {@code 3.14} would "succeed" as
+     * {@code 3}, {@code 1234567890123} as {@code 1912276171} (int
+     * overflow), and {@code 2.5} as {@code 2} — silently destroying
+     * fractional and out-of-range values before DOUBLE/LONG/FLOAT are ever
+     * tried. The strict variants reject fractional and out-of-range
+     * numbers so the chain falls through to the correct codec.</p>
+     *
      * @return a codec (used as a decoder) that accepts any of the seven
      *         supported types
      */
     private static Codec<Object> buildDecodeChain() {
-        Codec<Object> chain = wrapAsObject(Codec.INT);
-        chain = eitherOf(chain, wrapAsObject(Codec.LONG));
+        Codec<Object> chain = strictIntCodec();
+        chain = eitherOf(chain, strictLongCodec());
         chain = eitherOf(chain, wrapAsObject(Codec.DOUBLE));
         chain = eitherOf(chain, wrapAsObject(Codec.FLOAT));
         chain = eitherOf(chain, wrapAsObject(Codec.BOOL));
         chain = eitherOf(chain, wrapAsObject(Codec.STRING));
         chain = eitherOf(chain, wrapAsObject(UUIDUtil.CODEC));
         return chain;
+    }
+
+    /**
+     * Strict integer codec for the decode chain.
+     *
+     * <p>Only accepts numbers without a fractional part that fit in an
+     * {@code int}; anything else fails so the chain can fall through to
+     * LONG/DOUBLE. Encode is never used (the dispatch encoder handles
+     * encoding).</p>
+     *
+     * @return a codec that decodes JSON numbers as {@code Integer} iff they
+     *         are integral and in range
+     */
+    private static Codec<Object> strictIntCodec() {
+        return wrapAsObject(
+                Codec.DOUBLE.flatXmap(
+                        value -> {
+                            if (!isInteger(value) || value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
+                                return DataResult.error(() -> "Not a valid int: " + value);
+                            }
+                            return DataResult.success((int) (double) value);
+                        },
+                        value -> DataResult.error(() -> "Encode is handled by the dispatch encoder")));
+    }
+
+    /**
+     * Strict long codec for the decode chain.
+     *
+     * <p>Only accepts numbers without a fractional part that fit in a
+     * {@code long}; anything else fails so the chain can fall through to
+     * DOUBLE. Encode is never used (the dispatch encoder handles
+     * encoding).</p>
+     *
+     * @return a codec that decodes JSON numbers as {@code Long} iff they
+     *         are integral and in range
+     */
+    private static Codec<Object> strictLongCodec() {
+        return wrapAsObject(
+                Codec.DOUBLE.flatXmap(
+                        value -> {
+                            if (!isInteger(value) || value < Long.MIN_VALUE || value > Long.MAX_VALUE) {
+                                return DataResult.error(() -> "Not a valid long: " + value);
+                            }
+                            return DataResult.success((long) (double) value);
+                        },
+                        value -> DataResult.error(() -> "Encode is handled by the dispatch encoder")));
+    }
+
+    /**
+     * Checks whether the given number has no fractional part.
+     *
+     * @param value the value to check
+     * @return {@code true} if {@code value} is finite and integral
+     */
+    private static boolean isInteger(double value) {
+        return !Double.isNaN(value) && !Double.isInfinite(value) && value == Math.rint(value);
     }
 
     /**
