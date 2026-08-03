@@ -34,8 +34,14 @@ import org.yanbwe.modularshoot.registry.Trait;
  *   <li>{@code color} — optional hex colour code</li>
  *   <li>{@code brief} — optional one-line short description</li>
  *   <li>{@code force_show} — optional tooltip flag, defaults to {@code false}</li>
- *   <li>{@code priority} — optional display priority, defaults to {@code 0}</li>
- * </ul>
+*   <li>{@code priority} — optional display priority, defaults to {@code 0}</li>
+*   <li>{@code visual_modifiers} — optional, list of visual modifiers that
+*       stack into a bullet's composed style when this trait is active
+*       (设计规格 §3 Trait.visualModifiers). Defaults to {@code empty}.
+*       Unrecognised {@code "type"} keys decode to an
+*       {@link org.yanbwe.modularshoot.registry.gun.UnsupportedModifier}
+*       sentinel rather than failing the whole list (spec §5).</li>
+* </ul>
  *
  * @see Trait#CODEC
  * @see TraitDatapackLoader
