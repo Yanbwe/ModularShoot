@@ -6,9 +6,13 @@ import com.mojang.serialization.DataResult;
 import com.mojang.serialization.DynamicOps;
 import com.mojang.serialization.Encoder;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.core.UUIDUtil;
+import net.minecraft.resources.ResourceLocation;
+import org.yanbwe.modularshoot.bullet.StateConditionEvaluator;
+import org.yanbwe.modularshoot.registry.gun.Modifier;
 
 /**
  * Immutable definition of a state entry in the {@code modularshoot:states}
@@ -31,25 +35,47 @@ import net.minecraft.core.UUIDUtil;
  *       {@code null}).</li>
  *   <li>{@code display} — display metadata (name, colour, format,
  *       priority, hide_default).</li>
+ *   <li>{@code visual_modifiers} — optional list of conditional visual
+ *       modifier batches; each entry pairs an enable condition (which state
+ *       to test, optional explicit domain, the op and the typed threshold)
+ *       with the modifiers to apply when the condition holds at bullet
+ *       creation time. Default empty (设计规格 §3.5).</li>
  * </ul>
  *
  * <p>The {@code value_type} field is always written. The
  * {@code default_value} field is optional; when absent, the zero value for
  * the declared {@code value_type} is used.</p>
  *
- * @param domain       ownership domain of the state
- * @param valueType    declared value type; must match the runtime type of
- *                     {@code defaultValue}
- * @param defaultValue initial value for guns/players/bullets that have no
- *                     stored value yet; type must match {@code valueType}
- * @param display      tooltip display metadata
+ * @param domain          ownership domain of the state
+ * @param valueType       declared value type; must match the runtime type of
+ *                        {@code defaultValue}
+ * @param defaultValue    initial value for guns/players/bullets that have no
+ *                        stored value yet; type must match {@code valueType}
+ * @param display         tooltip display metadata
+ * @param visualModifiers conditional visual modifier batches enabled when
+ *                        their condition holds at bullet creation time;
+ *                        empty when none. The compact constructor copies
+ *                        the list into an immutable one, substituting
+ *                        empty when passed {@code null}.
  */
 public record StateDefinition(
         StateDomain domain,
         StateValueType valueType,
         Object defaultValue,
-        StateDisplay display
+        StateDisplay display,
+        List<StateVisualModifier> visualModifiers
 ) {
+    /**
+     * Compact constructor: substitute an empty list for a {@code null}
+     * {@code visualModifiers} argument and copy the list into an immutable
+     * snapshot so callers cannot mutate the record's internal state after
+     * construction (设计规格 §3.4: aggregated style values frozen at
+     * creation time).
+     */
+    public StateDefinition {
+        visualModifiers = visualModifiers == null ? List.of() : List.copyOf(visualModifiers);
+    }
+
     /**
      * Codec that serializes a typed value as a JSON primitive, preserving
      * the exact Java type. Used for the {@code default_value} field.
@@ -218,9 +244,12 @@ public record StateDefinition(
                     StateValueType.CODEC.fieldOf("value_type").forGetter(StateDefinition::valueType),
                     TYPED_VALUE_CODEC.optionalFieldOf("default_value")
                             .forGetter(def -> Optional.ofNullable(def.defaultValue())),
-                    StateDisplay.CODEC.fieldOf("display").forGetter(StateDefinition::display)
-            ).apply(instance, (domain, valueType, defaultValueOpt, display) ->
-                    new StateDefinition(domain, valueType, defaultValueOpt.orElseGet(valueType::zeroValue), display))
+                    StateDisplay.CODEC.fieldOf("display").forGetter(StateDefinition::display),
+                    StateVisualModifier.CODEC.listOf().optionalFieldOf("visual_modifiers", List.of())
+                            .forGetter(StateDefinition::visualModifiers)
+            ).apply(instance, (domain, valueType, defaultValueOpt, display, visualModifiers) ->
+                    new StateDefinition(domain, valueType, defaultValueOpt.orElseGet(valueType::zeroValue),
+                            display, visualModifiers))
     );
 
     /**
@@ -234,6 +263,95 @@ public record StateDefinition(
      *         {@code valueType}
      */
     public static StateDefinition of(StateDomain domain, StateValueType valueType, StateDisplay display) {
-        return new StateDefinition(domain, valueType, valueType.zeroValue(), display);
+        return new StateDefinition(domain, valueType, valueType.zeroValue(), display, List.of());
+    }
+
+    /**
+     * One conditional binding: an enable condition plus the modifiers to
+     * apply when the condition holds at bullet creation time
+     * (设计规格 §3.5). The modifiers list is copied into an immutable
+     * snapshot by the compact constructor.
+     *
+     * <p>JSON shape:
+     * <pre>{@code
+     * {
+     *   "condition": {
+     *     "state": "modularshoot:killstreak",
+     *     "domain": "bullet",      // optional; caller resolves when omitted
+     *     "op": ">=",
+     *     "value": 3                // typed threshold (number / boolean / string)
+     *   },
+     *   "modifiers": [
+     *     { "type": "tint",  "color": [1.0, 0.2, 0.2] },
+     *     { "type": "scale", "value": 1.2 }
+     *   ]
+     * }
+     * }</pre>
+     *
+     * <p>The modifiers list uses {@link Modifier#LIST_CODEC} so a single
+     * unrecognised {@code "type"} key decodes to an
+     * {@link org.yanbwe.modularshoot.registry.gun.UnsupportedModifier}
+     * sentinel rather than failing the whole batch (spec §5).</p>
+     *
+     * @param condition the enable condition (never {@code null})
+     * @param modifiers the modifiers applied when the condition holds;
+     *                  empty when none. {@code null} is normalised to empty.
+     */
+    public record StateVisualModifier(VisualCondition condition, List<Modifier> modifiers) {
+
+        public StateVisualModifier {
+            modifiers = modifiers == null ? List.of() : List.copyOf(modifiers);
+        }
+
+        public static final Codec<StateVisualModifier> CODEC = RecordCodecBuilder.create(
+                instance -> instance.group(
+                        VisualCondition.CODEC.fieldOf("condition").forGetter(StateVisualModifier::condition),
+                        Modifier.LIST_CODEC.fieldOf("modifiers").forGetter(StateVisualModifier::modifiers)
+                ).apply(instance, StateVisualModifier::new));
+    }
+
+    /**
+     * Single enabling condition for a {@link StateVisualModifier}: which
+     * state to test, an optional explicit domain (caller resolves source
+     * when omitted), the comparison op and the typed threshold value
+     * (设计规格 §3.5).
+     *
+     * <p>When {@link #domain} is absent, {@link
+     * org.yanbwe.modularshoot.bullet.VisualCompositionService} resolves the
+     * source by trying per-bullet state first, then per-gun state (spec
+     * §3.5 domain resolution). When present, only the explicitly-named
+     * domain is consulted (e.g. {@code "bullet"} reads from the
+     * {@link org.yanbwe.modularshoot.bullet.BulletSnapshot} state map;
+     * {@code "gun"} from the {@link org.yanbwe.modularshoot.component.GunData}
+     * state map); {@code "player"} is unsupported and the caller skips +
+     * warns.</p>
+     *
+     * <p>The threshold {@link #value} is a typed JSON primitive: a number
+     * (for INT/LONG/DOUBLE/FLOAT states), a boolean (for BOOLEAN) or a
+     * string (for STRING). UUID thresholds are not supported (the caller
+     * skips + warns per spec §5).</p>
+     *
+     * @param state  the state id to test, never {@code null}
+     * @param domain optional explicit domain; empty when caller resolves
+     * @param op     the comparison operator, never {@code null}
+     * @param value  the typed threshold value; may be {@code null} only on
+     *               decode when the field is absent (the codec substitutes
+     *               {@code null}; {@link StateConditionEvaluator#eval}
+     *               returns {@code false} for {@code null} thresholds)
+     */
+    public record VisualCondition(
+            ResourceLocation state,
+            Optional<StateDomain> domain,
+            StateConditionEvaluator.Op op,
+            Object value) {
+
+        public static final Codec<VisualCondition> CODEC = RecordCodecBuilder.create(
+                instance -> instance.group(
+                        ResourceLocation.CODEC.fieldOf("state").forGetter(VisualCondition::state),
+                        StateDomain.CODEC.optionalFieldOf("domain").forGetter(VisualCondition::domain),
+                        StateConditionEvaluator.Op.CODEC.fieldOf("op").forGetter(VisualCondition::op),
+                        TYPED_VALUE_CODEC.optionalFieldOf("value").forGetter(vc -> Optional.ofNullable(vc.value()))
+                ).apply(instance, (state, domain, op, valueOpt) ->
+                        new VisualCondition(state, domain, op, valueOpt.orElse(null))));
     }
 }

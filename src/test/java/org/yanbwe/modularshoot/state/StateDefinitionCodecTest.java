@@ -3,9 +3,14 @@ package org.yanbwe.modularshoot.state;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.serialization.JsonOps;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import net.minecraft.resources.ResourceLocation;
 import org.junit.jupiter.api.Test;
+import org.yanbwe.modularshoot.bullet.StateConditionEvaluator;
+import org.yanbwe.modularshoot.registry.gun.Modifier;
+import org.yanbwe.modularshoot.registry.gun.ScaleModifier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -41,7 +46,7 @@ class StateDefinitionCodecTest {
      * @return a new {@link StateDefinition}
      */
     private static StateDefinition define(StateValueType type, Object defaultValue) {
-        return new StateDefinition(StateDomain.GUN, type, defaultValue, DISPLAY);
+        return new StateDefinition(StateDomain.GUN, type, defaultValue, DISPLAY, List.of());
     }
 
     /**
@@ -247,5 +252,42 @@ class StateDefinitionCodecTest {
         json.remove("default_value");
         StateDefinition decoded = decode(json);
         assertEquals(0, decoded.defaultValue());
+    }
+
+    // --- visual_modifiers field (设计规格 §3.5) ---
+
+    @Test
+    void visualModifiersDefaultsToEmptyWhenAbsent() {
+        StateDefinition def = define(StateValueType.INT, 42);
+        StateDefinition decoded = roundtrip(def);
+        assertTrue(decoded.visualModifiers().isEmpty(),
+                "visual_modifiers should default to empty when omitted");
+    }
+
+    @Test
+    void visualModifiersRoundtripPreservesEntries() {
+        StateDefinition def = new StateDefinition(
+                StateDomain.BULLET,
+                StateValueType.INT,
+                0,
+                DISPLAY,
+                List.of(new StateDefinition.StateVisualModifier(
+                        new StateDefinition.VisualCondition(
+                                ResourceLocation.fromNamespaceAndPath("modularshoot", "killstreak"),
+                                Optional.empty(), // domain omitted → caller resolves
+                                StateConditionEvaluator.Op.GE,
+                                3),
+                        List.of(new ScaleModifier(1.2f)))));
+        StateDefinition decoded = roundtrip(def);
+        assertEquals(1, decoded.visualModifiers().size());
+        StateDefinition.StateVisualModifier svm = decoded.visualModifiers().get(0);
+        assertEquals(ResourceLocation.fromNamespaceAndPath("modularshoot", "killstreak"),
+                svm.condition().state());
+        assertTrue(svm.condition().domain().isEmpty());
+        assertEquals(StateConditionEvaluator.Op.GE, svm.condition().op());
+        assertEquals(3, ((Number) svm.condition().value()).intValue());
+        assertEquals(1, svm.modifiers().size());
+        assertInstanceOf(ScaleModifier.class, svm.modifiers().get(0));
+        assertEquals(1.2f, ((ScaleModifier) svm.modifiers().get(0)).value(), 1e-6);
     }
 }
