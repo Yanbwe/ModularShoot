@@ -237,21 +237,28 @@ public final class GunDatapackLoader {
     }
 
     /**
-     * Checks that bullet_style (if present) has a non-empty model map.
+     * Checks that bullet_style (if present) declares at least one of a base
+     * appearance or a non-empty modifiers list (设计规格 §3.1 new structure).
+     * A {@code bullet_style} object present but empty (no {@code base} and no
+     * {@code modifiers}) is the degenerate case the framework's compose-time
+     * fallback would silently paper over; this check surfaces it as a
+     * datapack author warning so the empty object is not mistaken for a
+     * deliberate override.
      *
      * @param gunId the gun id for the warning message
      * @param gun   the gun definition to check
-     * @return a warning message if bullet_style.model is empty, empty
-     *         otherwise
+     * @return a warning message if {@code bullet_style} is present but both
+     *         {@code base} and {@code modifiers} are empty, empty otherwise
      */
     private static Optional<String> checkBulletStyle(
             ResourceLocation gunId, GunDefinition gun) {
         if (gun.bulletStyle().isEmpty()) {
             return Optional.empty();
         }
-        if (gun.bulletStyle().get().model().isEmpty()) {
+        BulletStyle style = gun.bulletStyle().get();
+        if (style.base().isEmpty() && style.modifiers().isEmpty()) {
             return Optional.of(buildWarning(gunId, "bullet_style",
-                    "model map is empty"));
+                    "both base and modifiers are empty"));
         }
         return Optional.empty();
     }
