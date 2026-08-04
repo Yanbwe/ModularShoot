@@ -1,7 +1,7 @@
 {
   "name": "§a示例枪械",
-  "texture": "modularshoot:textures/gun/example_gun.png",
-  "shoot_texture": "modularshoot:textures/gun/example_gun_shoot.png",
+  "texture": "modularshoot:textures/gun/test_gun.png",
+  "shoot_texture": "modularshoot:textures/gun/test_gun.png",
   "shoot_texture_mode": "while_firing",
   "texture_scale": "auto",
   "stats": {
@@ -19,17 +19,29 @@
     "modularshoot:example_trait": true
   },
   "slots": {
-    "modularshoot:barrel": 1,
+    "modularshoot:example_type": 1,
     "modularshoot:accessory": 2
   },
   "sounds": {
-    "shoot": "modularshoot:gun.example_gun.shoot",
-    "reload": "modularshoot:gun.example_gun.reload"
+    "shoot": "modularshoot:gun.example_gun.shoot"
   },
   "bullet_style": {
-    "model": {
-      "billboard": "modularshoot:textures/bullet/example_bullet.png"
+    "base": {
+      "render_mode": "billboard",
+      "texture": "modularshoot:textures/bullet/test_bullet_plain.png"
     },
-    "render_mode": "billboard"
+    "modifiers": [
+      { "type": "scale", "value": 1.0 },
+      {
+        "type": "attach_layer",
+        "render_mode": "billboard",
+        "texture": "modularshoot:textures/bullet/test_layer_fire.png",
+        "follow_rotation": true,
+        "follow_scale": true,
+        "offset": [0.0, 0.0, 0.0],
+        "scale": 1.0,
+        "tint": [1.0, 1.0, 1.0, 1.0]
+      }
+    ]
   }
 }
