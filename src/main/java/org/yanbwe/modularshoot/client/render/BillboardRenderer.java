@@ -10,6 +10,7 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3f;
+import org.joml.Vector4f;
 
 /**
  * Renders a billboard (camera-facing quad) for a single in-flight bullet
@@ -55,16 +56,10 @@ import org.joml.Vector3f;
 public final class BillboardRenderer {
 
     /** Half-size factor: the quad spans {@code scale} blocks (± scale &middot; 0.5). */
-    private static final float HALF_SIZE_FACTOR = 0.5f;
+    public static final float HALF_SIZE_FACTOR = 0.5f;
 
     /** Full-brightness light value (block 240, sky 240) written to every vertex. */
     private static final int FULL_BRIGHTNESS = 15728880;
-
-    /** White, fully opaque vertex color — lets the texture supply all color. */
-    private static final int COLOR_R = 255;
-    private static final int COLOR_G = 255;
-    private static final int COLOR_B = 255;
-    private static final int COLOR_A = 255;
 
     /** No overlay (UV1) — the bullet has no hurt/damage flash. */
     private static final int NO_OVERLAY = 0;
@@ -103,7 +98,41 @@ public final class BillboardRenderer {
         if (texture == null) {
             return;
         }
+        // Base draw: scale from renderObject, tint from composedTint
+        // (null = white identity sentinel, 设计规格 §4.5).
+        float halfSize = renderObject.getScale() * HALF_SIZE_FACTOR;
+        Vector4f tint = renderObject.getComposedTint() != null
+                ? renderObject.getComposedTint() : new Vector4f(1.0f, 1.0f, 1.0f, 1.0f);
+        drawBillboard(texture, halfSize, tint, poseStack, bufferSource, partialTick, cameraPos);
+    }
 
+    /**
+     * Draws a camera-facing quad with the given texture, half-size and tint.
+     *
+     * <p>Shared by the base bullet draw (via {@link #render}) and by each
+     * {@code attach_layer} draw in
+     * {@link BulletRenderDispatcher#renderByMode} — the dispatcher pushes its
+     * own pose for offset/follow transforms before calling this method, so a
+     * layer renders at the layer's own local origin (设计规格 §4.5).</p>
+     *
+     * @param texture      the billboard texture path, never {@code null}
+     * @param halfSize     the quad half-size in blocks (already scale-applied)
+     * @param tint         the vertex tint (each channel in [0,1]); the quad
+     *                     multiplies the texture's colour by this tint
+     * @param poseStack    the camera-space pose stack, already translated to
+     *                     the draw origin (bullet position or layer offset)
+     * @param bufferSource the vertex buffer source for submitting geometry
+     * @param partialTick  the frame partial tick (reserved; unused)
+     * @param cameraPos    the camera world position (reserved; unused)
+     */
+    public static void drawBillboard(
+            ResourceLocation texture,
+            float halfSize,
+            Vector4f tint,
+            PoseStack poseStack,
+            MultiBufferSource bufferSource,
+            float partialTick,
+            Vec3 cameraPos) {
         RenderType renderType = BulletRenderType.billboard(texture);
         VertexConsumer vertexConsumer = bufferSource.getBuffer(renderType);
 
@@ -111,8 +140,6 @@ public final class BillboardRenderer {
         Vector3f left = camera.getLeftVector();
         Vector3f up = camera.getUpVector();
         Vector3f look = camera.getLookVector();
-
-        float halfSize = renderObject.getScale() * HALF_SIZE_FACTOR;
 
         // right = -left (world-space). Precompute right * halfSize components.
         float rx = -left.x() * halfSize;
@@ -128,13 +155,19 @@ public final class BillboardRenderer {
         float ny = -look.y();
         float nz = -look.z();
 
+        // Clamp tint channels to [0,1] then convert to 0-255 vertex colour.
+        int r = (int) (Math.max(0.0f, Math.min(1.0f, tint.x)) * 255.0f);
+        int g = (int) (Math.max(0.0f, Math.min(1.0f, tint.y)) * 255.0f);
+        int b = (int) (Math.max(0.0f, Math.min(1.0f, tint.z)) * 255.0f);
+        int a = (int) (Math.max(0.0f, Math.min(1.0f, tint.w)) * 255.0f);
+
         PoseStack.Pose pose = poseStack.last();
 
         // Quad winding: bottom-left → bottom-right → top-right → top-left
-        putVertex(vertexConsumer, pose, -rx - ux, -ry - uy, -rz - uz, 0.0f, 1.0f, nx, ny, nz);
-        putVertex(vertexConsumer, pose,  rx - ux,  ry - uy,  rz - uz, 1.0f, 1.0f, nx, ny, nz);
-        putVertex(vertexConsumer, pose,  rx + ux,  ry + uy,  rz + uz, 1.0f, 0.0f, nx, ny, nz);
-        putVertex(vertexConsumer, pose, -rx + ux, -ry + uy, -rz + uz, 0.0f, 0.0f, nx, ny, nz);
+        putVertex(vertexConsumer, pose, -rx - ux, -ry - uy, -rz - uz, 0.0f, 1.0f, nx, ny, nz, r, g, b, a);
+        putVertex(vertexConsumer, pose,  rx - ux,  ry - uy,  rz - uz, 1.0f, 1.0f, nx, ny, nz, r, g, b, a);
+        putVertex(vertexConsumer, pose,  rx + ux,  ry + uy,  rz + uz, 1.0f, 0.0f, nx, ny, nz, r, g, b, a);
+        putVertex(vertexConsumer, pose, -rx + ux, -ry + uy, -rz + uz, 0.0f, 0.0f, nx, ny, nz, r, g, b, a);
     }
 
     /**
@@ -156,15 +189,20 @@ public final class BillboardRenderer {
      * @param nx       world-space normal x (faces the camera)
      * @param ny       world-space normal y
      * @param nz       world-space normal z
+     * @param r        vertex red channel (0-255)
+     * @param g        vertex green channel (0-255)
+     * @param b        vertex blue channel (0-255)
+     * @param a        vertex alpha channel (0-255)
      */
     private static void putVertex(
             VertexConsumer consumer,
             PoseStack.Pose pose,
             float x, float y, float z,
             float u, float v,
-            float nx, float ny, float nz) {
+            float nx, float ny, float nz,
+            int r, int g, int b, int a) {
         consumer.addVertex(pose, x, y, z)
-                .setColor(COLOR_R, COLOR_G, COLOR_B, COLOR_A)
+                .setColor(r, g, b, a)
                 .setUv(u, v)
                 .setOverlay(NO_OVERLAY)
                 .setLight(FULL_BRIGHTNESS)

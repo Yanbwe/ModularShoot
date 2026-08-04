@@ -23,6 +23,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Vector4f;
 
 /**
  * Renders a bullet as a vanilla static JSON model, oriented along its flight
@@ -174,9 +175,14 @@ public final class Model3DRenderer {
             return;
         }
 
+        // Composed tint (null = white identity sentinel) multiplied into the
+        // model's vertex colour (设计规格 §4.5).
+        Vector4f tint = renderObject.getComposedTint() != null
+                ? renderObject.getComposedTint() : new Vector4f(1.0f, 1.0f, 1.0f, 1.0f);
+
         poseStack.pushPose();
         applyTransforms(poseStack, renderObject.getDirection(), renderObject.getScale());
-        drawModel(bakedModel, poseStack, bufferSource, computeLight(renderObject.getPosition()));
+        drawModel(bakedModel, poseStack, bufferSource, computeLight(renderObject.getPosition()), tint);
         poseStack.popPose();
     }
 
@@ -307,12 +313,18 @@ public final class Model3DRenderer {
      * @param poseStack    the pose stack (already transformed)
      * @param bufferSource the buffer source
      * @param light        the packed light value
+     * @param tint         the vertex tint (each channel in [0,1]); the model's
+     *                     texture colour is multiplied by this tint. The red,
+     *                     green and blue channels are passed to
+     *                     {@link ModelBlockRenderer#renderModel}; alpha is
+     *                     handled by the render type's blend mode.
      */
     private static void drawModel(
             BakedModel bakedModel,
             PoseStack poseStack,
             MultiBufferSource bufferSource,
-            int light) {
+            int light,
+            Vector4f tint) {
         ModelBlockRenderer modelRenderer = Minecraft.getInstance().getBlockRenderer().getModelRenderer();
         VertexConsumer vertexConsumer = bufferSource.getBuffer(RENDER_TYPE);
         modelRenderer.renderModel(
@@ -320,7 +332,9 @@ public final class Model3DRenderer {
                 vertexConsumer,
                 null,
                 bakedModel,
-                1.0F, 1.0F, 1.0F,
+                Math.max(0.0F, Math.min(1.0F, tint.x)),
+                Math.max(0.0F, Math.min(1.0F, tint.y)),
+                Math.max(0.0F, Math.min(1.0F, tint.z)),
                 light,
                 OverlayTexture.NO_OVERLAY);
     }

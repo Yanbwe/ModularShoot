@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 import net.minecraft.world.phys.Vec3;
+import org.joml.Vector4f;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -197,8 +198,9 @@ public final class BulletRenderManager {
      * Creates a new {@link BulletRenderObject} from a full-data entry and
      * registers it in the map.
      *
-     * <p>The {@code bulletSize} from the entry is used as the initial visual
-     * scale.</p>
+     * <p>The {@code renderScale} from the entry is used as the initial visual
+     * scale; the composed tint and attach_layer list are carried over from the
+     * wire (设计规格 §4.5).</p>
      *
      * @param entry the full-data entry describing the new bullet
      */
@@ -212,9 +214,33 @@ public final class BulletRenderManager {
                 entry.texture(),
                 entry.modelLocation(),
                 entry.renderMode(),
-                entry.renderScale());
+                entry.renderScale(),
+                entry.composedTint(),
+                entry.layers().stream()
+                        .map(l -> new BulletRenderObject.LayerData(
+                                l.renderMode(), l.texture(), l.model(),
+                                l.followRotation(), l.followScale(),
+                                l.offsetX(), l.offsetY(), l.offsetZ(),
+                                l.scale(),
+                                // null sentinel on the wire (white identity) stays
+                                // null on the client (renderer rebuilds white).
+                                isLayerTintWhite(l) ? null : new Vector4f(
+                                        l.tintR(), l.tintG(), l.tintB(), l.tintA())))
+                        .toList());
         renderObjects.put(entry.bulletId(), obj);
         snapshots.put(entry.bulletId(), entry.snapshot());
+    }
+
+    /**
+     * Returns whether a wire layer's tint channels are the white identity
+     * {@code (1,1,1,1)} — the condition under which the client keeps a
+     * {@code null} sentinel instead of allocating a Vector4f.
+     *
+     * @param l the wire layer entry to test
+     * @return {@code true} if the layer tint equals white identity
+     */
+    private static boolean isLayerTintWhite(BulletS2CPacket.FullBulletEntry.LayerEntryFull l) {
+        return l.tintR() == 1.0f && l.tintG() == 1.0f && l.tintB() == 1.0f && l.tintA() == 1.0f;
     }
 
     /**
@@ -238,6 +264,16 @@ public final class BulletRenderManager {
         obj.setModelLocation(entry.modelLocation());
         obj.setRenderMode(entry.renderMode());
         obj.setScale(entry.renderScale());
+        obj.setComposedTint(entry.composedTint());
+        obj.setLayers(entry.layers().stream()
+                .map(l -> new BulletRenderObject.LayerData(
+                        l.renderMode(), l.texture(), l.model(),
+                        l.followRotation(), l.followScale(),
+                        l.offsetX(), l.offsetY(), l.offsetZ(),
+                        l.scale(),
+                        isLayerTintWhite(l) ? null : new Vector4f(
+                                l.tintR(), l.tintG(), l.tintB(), l.tintA())))
+                .toList());
         snapshots.put(entry.bulletId(), entry.snapshot());
     }
 

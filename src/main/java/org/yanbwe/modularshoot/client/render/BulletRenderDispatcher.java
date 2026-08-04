@@ -12,6 +12,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import org.joml.Vector4f;
 
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.bullet.BulletManager;
@@ -187,10 +188,42 @@ public final class BulletRenderDispatcher {
         poseStack.pushPose();
         poseStack.translate(offsetX, offsetY, offsetZ);
 
+        // 1. Base draw: renderScale × composedTint applied by the renderers.
         if (BulletRenderObject.RENDER_MODE_BILLBOARD.equals(renderMode)) {
             BillboardRenderer.render(renderObject, poseStack, bufferSource, partialTick, cameraPos);
         } else if (BulletRenderObject.RENDER_MODE_3D.equals(renderMode)) {
             Model3DRenderer.render(renderObject, poseStack, bufferSource, partialTick, cameraPos);
+        }
+
+        // 2. attach_layer draws: each layer pushes its own pose per follow
+        // params (设计规格 §4.5). v1 supports billboard layers fully; a 3d
+        // layer is a no-op with a DEBUG log (explicit scope decision — see
+        // the task-10 note in the implementation plan).
+        for (BulletRenderObject.LayerData layer : renderObject.getLayers()) {
+            poseStack.pushPose();
+            // offset relative to the base center
+            poseStack.translate(layer.offsetX(), layer.offsetY(), layer.offsetZ());
+            // follow_scale: inherit the base renderScale; layer.scale on top
+            float effectiveScale = layer.followScale()
+                    ? renderObject.getScale() * layer.scale() : layer.scale();
+            // tint: null = white identity sentinel
+            Vector4f layerTint = layer.tint() != null
+                    ? layer.tint() : new Vector4f(1.0f, 1.0f, 1.0f, 1.0f);
+            if (BulletRenderObject.RENDER_MODE_BILLBOARD.equals(layer.renderMode())
+                    && layer.texture() != null) {
+                BillboardRenderer.drawBillboard(
+                        layer.texture(),
+                        effectiveScale * BillboardRenderer.HALF_SIZE_FACTOR,
+                        layerTint,
+                        poseStack, bufferSource, partialTick, cameraPos);
+            } else if (BulletRenderObject.RENDER_MODE_3D.equals(layer.renderMode())) {
+                // v1 scope: 3d attach_layer is not drawn (documented
+                // limitation; billboard layers cover the common
+                // trail/aura use cases).
+                ModularShoot.LOGGER.debug(
+                        "3d attach_layer skipped in v1 (layer model={})", layer.model());
+            }
+            poseStack.popPose();
         }
 
         poseStack.popPose();

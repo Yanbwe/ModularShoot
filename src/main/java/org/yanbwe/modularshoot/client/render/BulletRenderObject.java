@@ -1,8 +1,10 @@
 package org.yanbwe.modularshoot.client.render;
 
+import java.util.List;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Vector4f;
 import org.yanbwe.modularshoot.registry.gun.BulletStyle;
 
 /**
@@ -41,10 +43,10 @@ import org.yanbwe.modularshoot.registry.gun.BulletStyle;
  */
 public final class BulletRenderObject {
 
-    /** Render-mode tag for the billboard (camera-facing quad) pipeline. */
+    /** Render-mode tag for the billboard pipeline. */
     public static final String RENDER_MODE_BILLBOARD = BulletStyle.RenderMode.BILLBOARD.getSerializedName();
 
-    /** Render-mode tag for the 3d (vanilla static JSON model) pipeline. */
+    /** Render-mode tag for the 3d model pipeline. */
     public static final String RENDER_MODE_3D = BulletStyle.RenderMode.THREE_D.getSerializedName();
 
     private final int bulletId;
@@ -55,6 +57,15 @@ public final class BulletRenderObject {
     @Nullable private ResourceLocation modelLocation;
     private String renderMode;
     private float scale;
+    /**
+     * Composed tint (channel-wise product of all TintModifiers), or
+     * {@code null} as the client-side sentinel for the white identity
+     * {@code (1,1,1,1)} (设计规格 §4.5 — the wire already collapses white to
+     * a null sentinel; the renderer rebuilds white when null).
+     */
+    @Nullable private Vector4f composedTint;
+    /** Additive attach_layer data in source order; empty when none. */
+    private List<LayerData> layers = List.of();
 
     /**
      * @param bulletId      unique-per-dimension bullet id, matching the server BulletRecord
@@ -72,7 +83,9 @@ public final class BulletRenderObject {
             @Nullable ResourceLocation texture,
             @Nullable ResourceLocation modelLocation,
             String renderMode,
-            float scale) {
+            float scale,
+            @Nullable Vector4f composedTint,
+            List<LayerData> layers) {
         this.bulletId = bulletId;
         this.position = position;
         this.prevPosition = position;
@@ -81,6 +94,8 @@ public final class BulletRenderObject {
         this.modelLocation = modelLocation;
         this.renderMode = renderMode;
         this.scale = scale;
+        this.composedTint = composedTint;
+        this.layers = layers == null ? List.of() : List.copyOf(layers);
     }
 
     /** Returns the immutable bullet id correlating with the server BulletRecord. */
@@ -176,5 +191,62 @@ public final class BulletRenderObject {
     /** Sets the visual scale multiplier applied at draw time. */
     public void setScale(float scale) {
         this.scale = scale;
+    }
+
+    /**
+     * Returns the composed tint, or {@code null} as the white-identity
+     * sentinel (设计规格 §4.5). Renderers multiply their vertex colour by this
+     * tint; {@code null} behaves as {@code (1,1,1,1)}.
+     *
+     * @return the composed tint, or {@code null} for white identity
+     */
+    @Nullable
+    public Vector4f getComposedTint() {
+        return composedTint;
+    }
+
+    /** Sets the composed tint; {@code null} = white identity sentinel. */
+    public void setComposedTint(@Nullable Vector4f composedTint) {
+        this.composedTint = composedTint;
+    }
+
+    /** Returns the additive attach_layer list in source order (never {@code null}). */
+    public List<LayerData> getLayers() {
+        return layers;
+    }
+
+    /** Replaces the additive attach_layer list (copied defensively). */
+    public void setLayers(List<LayerData> layers) {
+        this.layers = layers == null ? List.of() : List.copyOf(layers);
+    }
+
+    /**
+     * Client-side per-layer render data, mirroring the wire
+     * {@code FullBulletEntry.LayerEntryFull} shape. Fields are mutable via
+     * the record (design decision: {@code onVisualTick} hooks may reassign
+     * the list via {@link BulletRenderObject#setLayers} to animate layers
+     * in-flight; individual entries stay immutable).
+     *
+     * @param renderMode     {@code "billboard"} or {@code "3d"} tag
+     * @param texture        billboard texture path, {@code null} for 3d layers
+     * @param model          3d model path, {@code null} for billboard layers
+     * @param followRotation whether the layer rotates with the bullet's flight
+     *                       direction
+     * @param followScale    whether the layer inherits the base renderScale
+     * @param offsetX/Y/Z    positional offset relative to the base center
+     * @param scale          per-layer scale multiplier
+     * @param tint           per-layer tint, {@code null} = white identity
+     */
+    public record LayerData(
+            String renderMode,
+            @Nullable ResourceLocation texture,
+            @Nullable ResourceLocation model,
+            boolean followRotation,
+            boolean followScale,
+            float offsetX,
+            float offsetY,
+            float offsetZ,
+            float scale,
+            @Nullable Vector4f tint) {
     }
 }
