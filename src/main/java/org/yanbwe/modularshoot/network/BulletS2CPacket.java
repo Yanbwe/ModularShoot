@@ -223,7 +223,7 @@ public record BulletS2CPacket(
             buf.writeFloat(entry.composedTint().w);
         }
         buf.writeVarInt(entry.layers().size());
-        for (LayerEntryFull l : entry.layers()) {
+        for (FullBulletEntry.LayerEntryFull l : entry.layers()) {
             buf.writeUtf(l.renderMode());
             encodeNullableResourceLocation(buf, l.texture());
             encodeNullableResourceLocation(buf, l.model());
@@ -267,7 +267,7 @@ public record BulletS2CPacket(
             composedTint = new Vector4f(buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat());
         }
         int layerCount = buf.readVarInt();
-        List<LayerEntryFull> layers = new ArrayList<>(Math.max(0, layerCount));
+        List<FullBulletEntry.LayerEntryFull> layers = new ArrayList<>(Math.max(0, layerCount));
         for (int i = 0; i < layerCount; i++) {
             String layerRenderMode = buf.readUtf();
             ResourceLocation layerTexture = decodeNullableResourceLocation(buf);
@@ -282,7 +282,7 @@ public record BulletS2CPacket(
             float tintG = buf.readFloat();
             float tintB = buf.readFloat();
             float tintA = buf.readFloat();
-            layers.add(new LayerEntryFull(
+            layers.add(new FullBulletEntry.LayerEntryFull(
                     layerRenderMode, layerTexture, layerModel,
                     followRotation, followScale,
                     offsetX, offsetY, offsetZ,

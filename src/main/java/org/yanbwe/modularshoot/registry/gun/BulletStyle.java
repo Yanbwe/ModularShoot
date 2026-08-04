@@ -63,26 +63,28 @@ public record BulletStyle(Optional<Base> base, List<Modifier> modifiers) {
     /**
      * Base appearance of a {@link BulletStyle}: a render mode plus exactly one
      * of texture (billboard) or model (3d). {@link #texture} and {@link #model}
-     * are {@code @Nullable}; the codec encodes the {@code null} one by
-     * omitting the field and decodes a missing field back to {@code null}
-     * (preserving the record contract asserted by tests).
+     * use {@link Optional} (the DFU/MC 1.21.1 idiom) so the codec can mark a
+     * field absent on the wire without any {@code null} dataResult carrier
+     * running through {@link RecordCodecBuilder}. Callers that want a
+     * nullable view should call {@code texture().orElse(null)} /
+     * {@code model().orElse(null)}; production consumers (e.g.
+     * {@link org.yanbwe.modularshoot.bullet.ComposedBulletStyle}) unpack to
+     * {@code @Nullable} when building the wire/composed field.
      *
      * @param renderMode which rendering pipeline the projectile uses
-     * @param texture    billboard texture path, {@code null} when base is 3d
-     * @param model      3d model path, {@code null} when base is billboard
+     * @param texture    billboard texture path, empty when base is 3d
+     * @param model      3d model path, empty when base is billboard
      */
     public record Base(
             RenderMode renderMode,
-            @Nullable ResourceLocation texture,
-            @Nullable ResourceLocation model) {
+            Optional<ResourceLocation> texture,
+            Optional<ResourceLocation> model) {
 
         public static final Codec<Base> CODEC = RecordCodecBuilder.create(
                 instance -> instance.group(
                         RenderMode.CODEC.fieldOf("render_mode").forGetter(Base::renderMode),
-                        ResourceLocation.CODEC.optionalFieldOf("texture").xmap(
-                                Optional::orElse, Optional::ofNullable).forGetter(Base::texture),
-                        ResourceLocation.CODEC.optionalFieldOf("model").xmap(
-                                Optional::orElse, Optional::ofNullable).forGetter(Base::model)
+                        ResourceLocation.CODEC.optionalFieldOf("texture").forGetter(Base::texture),
+                        ResourceLocation.CODEC.optionalFieldOf("model").forGetter(Base::model)
                 ).apply(instance, Base::new));
 
     }

@@ -7,21 +7,20 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.jetbrains.annotations.Nullable;
+import org.joml.Vector4f;
 import org.yanbwe.modularshoot.ModularShoot;
-import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 import org.yanbwe.modularshoot.bullet.BulletManager;
 import org.yanbwe.modularshoot.bullet.BulletRecord;
 import org.yanbwe.modularshoot.bullet.BulletSnapshot;
+import org.yanbwe.modularshoot.bullet.ComposedBulletStyle;
 import org.yanbwe.modularshoot.network.ClientBulletSnapshot;
 import org.yanbwe.modularshoot.registry.gun.BulletStyle;
-import org.yanbwe.modularshoot.registry.gun.GunDefinition;
-import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ChunkTrackingView;
@@ -102,14 +101,10 @@ import org.jetbrains.annotations.Nullable;
 @EventBusSubscriber(modid = ModularShoot.MODID)
 public final class BulletSyncService {
 
-    /** Attribute id for {@code bullet_size}, read from each bullet's frozen snapshot. */
-    private static final ResourceLocation BULLET_SIZE_ID =
-            ModularShootAttributes.BULLET_SIZE.getKey().location();
-
-    /** Render-mode tag for the billboard pipeline, used as the default when no style is defined. */
-    private static final String DEFAULT_RENDER_MODE = BulletStyle.RenderMode.BILLBOARD.getSerializedName();
-
-    /** Sentinel entity id used when the bullet has no shooter (ownerless independent firing). */
+    /**
+     * Sentinel entity id used when the bullet has no shooter (ownerless
+     * independent firing).
+     */
     private static final int NO_SHOOTER = -1;
 
     /**
@@ -532,27 +527,73 @@ public final class BulletSyncService {
 
     /**
      * Converts a {@link BulletRecord} into a full-data
-     * {@link BulletS2CPacket.FullBulletEntry}, resolving visual style from
-     * the gun registry and the shooter's network entity id.
+     * {@link BulletS2CPacket.FullBulletEntry}, reading the creation-frozen
+     * composed visual style from {@link BulletRecord#getComposedStyle()} and
+     * the shooter's network entity id.
+     *
+     * <p>As of the modifier-stacking redesign (设计规格 §2.1 / §4.3), the
+     * visual style is <em>cached</em> on the {@link BulletRecord} by whichever
+     * bullet-creation call site invoked {@link
+     * org.yanbwe.modularshoot.bullet.VisualCompositionService#compose}. This
+     * method does <b>not</b> re-resolve the visual style from the gun registry
+     * per full-entry sync — every {@code toFullBulletEntry} invocation re-reads
+     * the same frozen value. In-flight appearance mutations (e.g.
+     * {@code onVisualTick} hooks) operate on the client-side
+     * {@code BulletRenderObject} directly and never re-flow through this
+     * method (spec §7.2).</p>
      *
      * @param bullet the bullet record to convert
-     * @param level  the server level (for gun-registry and entity lookups)
+     * @param level  the server level (only for entity-id lookups now)
      * @return a full bullet entry ready for serialisation
      */
     private static BulletS2CPacket.FullBulletEntry toFullBulletEntry(BulletRecord bullet, Level level) {
         Vec3 pos = bullet.getPosition();
         Vec3 dir = bullet.getDirection();
         BulletSnapshot snapshot = bullet.getSnapshot();
-        VisualStyle style = resolveVisualStyle(snapshot, level);
-        float bulletSize = (float) snapshot.getStat(BULLET_SIZE_ID);
+        ComposedBulletStyle composed = bullet.getComposedStyle();
         int shooterEntityId = resolveShooterEntityId(bullet, level);
         ClientBulletSnapshot clientSnapshot = toClientBulletSnapshot(snapshot, bullet.getShooter());
+        // base texture/model: only one is non-null per render mode.
+        BulletStyle.RenderMode baseMode = composed.base().renderMode();
+        @Nullable ResourceLocation baseTexture =
+                baseMode == BulletStyle.RenderMode.BILLBOARD ? composed.base().texture().orElse(null) : null;
+        @Nullable ResourceLocation baseModel =
+                baseMode == BulletStyle.RenderMode.THREE_D ? composed.base().model().orElse(null) : null;
+        // composedTint: collapse the white identity tint to a null wire sentinel
+        // (spec §4.3 — saves 4 floats per default-styled bullet on the wire).
+        @Nullable Vector4f composedTint = isWhite(composed.composedTint()) ? null : composed.composedTint();
         return new BulletS2CPacket.FullBulletEntry(
                 bullet.getBulletId(),
                 pos.x, pos.y, pos.z,
                 dir.x, dir.y, dir.z,
-                style.texture(), style.modelLocation(), style.renderMode(),
-                bulletSize, shooterEntityId, clientSnapshot);
+                baseTexture, baseModel, baseMode.getSerializedName(),
+                composed.renderScale(),
+                shooterEntityId, clientSnapshot,
+                composedTint,
+                composed.layers().stream()
+                        .map(l -> new BulletS2CPacket.FullBulletEntry.LayerEntryFull(
+                                l.renderMode().getSerializedName(),
+                                l.renderMode() == BulletStyle.RenderMode.BILLBOARD ? l.texture() : null,
+                                l.renderMode() == BulletStyle.RenderMode.THREE_D ? l.model() : null,
+                                l.followRotation(), l.followScale(),
+                                l.offsetX(), l.offsetY(), l.offsetZ(),
+                                l.scale(),
+                                l.tint().x, l.tint().y, l.tint().z, l.tint().w))
+                        .toList());
+    }
+
+    /**
+     * Returns whether the given tint is the white identity tint
+     * {@code (1,1,1,1)}, the condition the wire codec collapses to a
+     * {@code null} sentinel.
+     *
+     * @param t the tint to test (may be {@code null} but in practice never
+     *          is — {@link ComposedBulletStyle#composedTint} is never null)
+     * @return {@code true} if the tint equals white identity
+     */
+    private static boolean isWhite(@Nullable Vector4f t) {
+        return t != null
+                && t.x == 1.0f && t.y == 1.0f && t.z == 1.0f && t.w == 1.0f;
     }
 
     /**
@@ -610,45 +651,6 @@ public final class BulletSyncService {
         Vec3 pos = bullet.getPosition();
         Vec3 dir = bullet.getDirection();
         return new BulletState(pos.x, pos.y, pos.z, dir.x, dir.y, dir.z);
-    }
-
-    /**
-     * Resolves the bullet's visual style (texture, model path, render mode)
-     * from the gun definition's {@link BulletStyle}, falling back to a
-     * billboard default when the gun or style is absent
-     * (设计文档 §子弹视觉样式).
-     *
-     * @param snapshot the bullet's frozen snapshot carrying the gun id
-     * @param level    the server level providing the registry access
-     * @return the resolved visual style
-     */
-    private static VisualStyle resolveVisualStyle(BulletSnapshot snapshot, Level level) {
-        ResourceLocation gunId = snapshot.getGunId();
-        if (gunId == null) {
-            return VisualStyle.DEFAULT;
-        }
-        Optional<GunDefinition> gunDef = GunRegistry.getGun(level, gunId);
-        if (gunDef.isEmpty()) {
-            return VisualStyle.DEFAULT;
-        }
-        return gunDef.get().bulletStyle()
-                .map(BulletSyncService::fromBulletStyle)
-                .orElse(VisualStyle.DEFAULT);
-    }
-
-    /**
-     * Extracts the texture, model path and render-mode tag from a
-     * {@link BulletStyle}. The {@code model} map is keyed by render-mode tag
-     * ("billboard" → texture, "3d" → model path).
-     *
-     * @param style the bullet style from the gun definition
-     * @return the resolved visual style
-     */
-    private static VisualStyle fromBulletStyle(BulletStyle style) {
-        String renderMode = style.renderMode().getSerializedName();
-        ResourceLocation texture = style.model().get(BulletStyle.RenderMode.BILLBOARD.getSerializedName());
-        ResourceLocation modelLocation = style.model().get(BulletStyle.RenderMode.THREE_D.getSerializedName());
-        return new VisualStyle(texture, modelLocation, renderMode);
     }
 
     /**
@@ -717,21 +719,5 @@ public final class BulletSyncService {
             double dirX,
             double dirY,
             double dirZ) {
-    }
-
-    /**
-     * Resolved visual style triple carried through the conversion pipeline.
-     *
-     * @param texture       billboard-mode texture path, or {@code null}
-     * @param modelLocation 3d-mode model path, or {@code null}
-     * @param renderMode    rendering pipeline tag
-     */
-    private record VisualStyle(
-            ResourceLocation texture,
-            ResourceLocation modelLocation,
-            String renderMode) {
-
-        /** Default style used when no gun or bullet style is defined. */
-        static final VisualStyle DEFAULT = new VisualStyle(null, null, DEFAULT_RENDER_MODE);
     }
 }

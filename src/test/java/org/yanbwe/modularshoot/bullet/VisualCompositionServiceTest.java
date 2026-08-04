@@ -6,10 +6,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
-import net.minecraft.core.Holder;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.damagesource.DamageType;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector4f;
 import org.junit.jupiter.api.Test;
@@ -74,6 +72,11 @@ class VisualCompositionServiceTest {
         protected Stream<StateDefinition> allStateDefsWithVisualModifiers(RegistryAccess ra) {
             return states.values().stream().filter(d -> !d.visualModifiers().isEmpty());
         }
+
+        @Override
+        protected Optional<StateDefinition> lookupStateDef(RegistryAccess ra, ResourceLocation stateId) {
+            return Optional.ofNullable(states.get(stateId));
+        }
     }
 
     // ------------------------------------------------------------------
@@ -95,7 +98,7 @@ class VisualCompositionServiceTest {
         return new BulletSnapshot(
                 new HashMap<>(),
                 new HashMap<>(),
-                Holder.direct(new DamageType("test", 0.0f)),
+                null,
                 null,
                 gunId,
                 null,
@@ -211,7 +214,7 @@ class VisualCompositionServiceTest {
     void attachLayerAllPreservedInOrder() {
         FakeService svc = new FakeService();
         AttachLayerModifier l1 = new AttachLayerModifier(
-                BulletStyle.RenderMode.BILLBOARD, rl("m", "flame"), null,
+                BulletStyle.RenderMode.BILLBOARD, Optional.of(rl("m", "flame")), Optional.empty(),
                 false, true, new Vec3(0, 0, -0.1), 1.0f, new Vector4f(1, 1, 1, 1));
         BulletStyle gunStyle = new BulletStyle(Optional.empty(), List.of(l1));
         svc.guns.put(GUN_ID, gunWithStyle(gunStyle));
@@ -221,14 +224,14 @@ class VisualCompositionServiceTest {
         assertEquals(1, result.layers().size(), "gun layer preserved");
         // plus one via trait
         AttachLayerModifier l2 = new AttachLayerModifier(
-                BulletStyle.RenderMode.BILLBOARD, rl("m", "aura"), null,
+                BulletStyle.RenderMode.BILLBOARD, Optional.of(rl("m", "aura")), Optional.empty(),
                 false, false, Vec3.ZERO, 1.0f, new Vector4f(1, 1, 1, 1));
         svc.traits.put(TRAIT_T_ID, new Trait(false, "", Optional.empty(), Optional.empty(),
                 Optional.empty(), false, 0, List.of(l2)));
         // re-snap with trait active
         Map<ResourceLocation, Boolean> traits = Map.of(TRAIT_T_ID, true);
         BulletSnapshot snap = new BulletSnapshot(new HashMap<>(), traits,
-                Holder.direct(new DamageType("test", 0.0f)), null, GUN_ID, null, new HashMap<>());
+                null, null, GUN_ID, null, new HashMap<>());
         ComposedBulletStyle t2 = compose(svc, snap, gd);
         assertEquals(2, t2.layers().size(), "gun + trait layer both preserved");
         assertEquals(rl("m", "flame"), t2.layers().get(0).texture(), "gun layer first");
@@ -243,15 +246,15 @@ class VisualCompositionServiceTest {
     void baseLastWinsByPriority() {
         FakeService svc = new FakeService();
         BulletStyle.Base gunBase = new BulletStyle.Base(BulletStyle.RenderMode.BILLBOARD,
-                rl("m", "gun_tex"), null);
+                Optional.of(rl("m", "gun_tex")), Optional.empty());
         svc.guns.put(GUN_ID, gunWithStyle(new BulletStyle(Optional.of(gunBase), List.of())));
         BulletStyle.Base pluginBase = new BulletStyle.Base(BulletStyle.RenderMode.BILLBOARD,
-                rl("m", "plugin_tex"), null);
+                Optional.of(rl("m", "plugin_tex")), Optional.empty());
         svc.plugins.put(PLUGIN_A_ID, pluginWith(5,
                 new BulletStyle(Optional.of(pluginBase), List.of())));
         GunData gd = gunData(GUN_ID, List.of(pluginInst(PLUGIN_A_ID)));
         ComposedBulletStyle result = compose(svc, snap(GUN_ID, Map.of()), gd);
-        assertEquals(rl("m", "plugin_tex"), result.base().texture(),
+        assertEquals(rl("m", "plugin_tex"), result.base().texture().orElse(null),
                 "higher-priority plugin base wins over gun base (priority 0)");
     }
 
@@ -263,18 +266,18 @@ class VisualCompositionServiceTest {
     void baseTieBreakInstallOrder() {
         FakeService svc = new FakeService();
         BulletStyle.Base gunBase = new BulletStyle.Base(BulletStyle.RenderMode.BILLBOARD,
-                rl("m", "gun_tex"), null);
+                Optional.of(rl("m", "gun_tex")), Optional.empty());
         svc.guns.put(GUN_ID, gunWithStyle(new BulletStyle(Optional.of(gunBase), List.of())));
         BulletStyle.Base aBase = new BulletStyle.Base(BulletStyle.RenderMode.BILLBOARD,
-                rl("m", "a_tex"), null);
+                Optional.of(rl("m", "a_tex")), Optional.empty());
         BulletStyle.Base bBase = new BulletStyle.Base(BulletStyle.RenderMode.BILLBOARD,
-                rl("m", "b_tex"), null);
+                Optional.of(rl("m", "b_tex")), Optional.empty());
         svc.plugins.put(PLUGIN_A_ID, pluginWith(3, new BulletStyle(Optional.of(aBase), List.of())));
         svc.plugins.put(PLUGIN_B_ID, pluginWith(3, new BulletStyle(Optional.of(bBase), List.of())));
         // Install order: A first, B later -> B wins at equal priority
         GunData gd = gunData(GUN_ID, List.of(pluginInst(PLUGIN_A_ID), pluginInst(PLUGIN_B_ID)));
         ComposedBulletStyle result = compose(svc, snap(GUN_ID, Map.of()), gd);
-        assertEquals(rl("m", "b_tex"), result.base().texture(),
+        assertEquals(rl("m", "b_tex"), result.base().texture().orElse(null),
                 "later-installed plugin wins base at equal priority");
     }
 
@@ -288,7 +291,7 @@ class VisualCompositionServiceTest {
         svc.guns.put(GUN_ID, gunWithStyle(new BulletStyle(Optional.empty(), List.of())));
         GunData gd = gunData(GUN_ID, List.of());
         ComposedBulletStyle result = compose(svc, snap(GUN_ID, Map.of()), gd);
-        assertEquals(ComposedBulletStyle.FALLBACK_BASE.texture(), result.base().texture());
+        assertEquals(ComposedBulletStyle.FALLBACK_BASE.texture().orElse(null), result.base().texture().orElse(null));
         assertEquals(ComposedBulletStyle.FALLBACK_BASE.renderMode(), result.base().renderMode());
     }
 
@@ -311,12 +314,12 @@ class VisualCompositionServiceTest {
     void pluginUnregisteredSkips() {
         FakeService svc = new FakeService();
         BulletStyle.Base gunBase = new BulletStyle.Base(BulletStyle.RenderMode.BILLBOARD,
-                rl("m", "gun_tex"), null);
+                Optional.of(rl("m", "gun_tex")), Optional.empty());
         svc.guns.put(GUN_ID, gunWithStyle(new BulletStyle(Optional.of(gunBase), List.of())));
         // Plugin remaining unregistered
         GunData gd = gunData(GUN_ID, List.of(pluginInst(rl("m", "ghost"))));
         ComposedBulletStyle result = compose(svc, snap(GUN_ID, Map.of()), gd);
-        assertEquals(rl("m", "gun_tex"), result.base().texture(),
+        assertEquals(rl("m", "gun_tex"), result.base().texture().orElse(null),
                 "unregistered plugin skipped; gun base retained");
         assertEquals(1.0f, result.renderScale(), 1e-6);
     }
@@ -386,7 +389,7 @@ class VisualCompositionServiceTest {
                 Optional.empty(), false, 0, List.of(new TintModifier(new Vector4f(0.2f, 1.0f, 1.0f, 1.0f)))));
         Map<ResourceLocation, Boolean> traits = Map.of(TRAIT_T_ID, true);
         BulletSnapshot snap = new BulletSnapshot(new HashMap<>(), traits,
-                Holder.direct(new DamageType("test", 0.0f)), null, GUN_ID, null, new HashMap<>());
+                null, null, GUN_ID, null, new HashMap<>());
         ComposedBulletStyle result = compose(svc, snap, null);
         assertEquals(0.2f, result.composedTint().x, 1e-6, "active trait contributes tint");
     }
@@ -398,7 +401,7 @@ class VisualCompositionServiceTest {
                 Optional.empty(), false, 0, List.of(new TintModifier(new Vector4f(0.2f, 1.0f, 1.0f, 1.0f)))));
         Map<ResourceLocation, Boolean> traits = Map.of(TRAIT_T_ID, false);
         BulletSnapshot snap = new BulletSnapshot(new HashMap<>(), traits,
-                Holder.direct(new DamageType("test", 0.0f)), null, GUN_ID, null, new HashMap<>());
+                null, null, GUN_ID, null, new HashMap<>());
         ComposedBulletStyle result = compose(svc, snap, null);
         assertEquals(1.0f, result.composedTint().x, 1e-6, "inactive trait contributes nothing");
     }

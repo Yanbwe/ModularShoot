@@ -26,6 +26,15 @@ public record UnsupportedModifier(String unknownType) implements Modifier {
     /** Sentinel type tag returned by {@link #type()}; never written to JSON. */
     public static final String TYPE_NAME = "unsupported";
 
+    /**
+     * Placeholder tag used only by the {@link Modifier#CODEC} encode-path
+     * lookup when a real {@link Modifier} instance is an
+     * {@code UnsupportedModifier}; the actual wire {@code "type"} field
+     * carries {@link #unknownType()} (see
+     * {@link Modifier.ModifierCodec#encode}).
+     */
+    public static final String ENCODING_TAG = "__unsupported_encoding__";
+
     @Override
     public String type() {
         return TYPE_NAME;

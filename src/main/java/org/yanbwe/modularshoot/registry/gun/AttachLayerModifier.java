@@ -18,9 +18,17 @@ import org.joml.Vector4f;
  * multiplications — only the per-layer scale/tint apply to the layer
  * (spec §4.2 step 5).
  *
+ * <p>As of the任务9修正，{@link #texture} and {@link #model} use
+ * {@link Optional} (the DFU 1.21.1 idiom) rather than {@code @Nullable}
+ * because {@code OptionalFieldCodec} wraps both absent and present fields
+ * in a {@code Optional} carrier that survives a {@link RecordCodecBuilder}
+ * applicative merge without the null {@link DataResult} NPE that an
+ * {@code optionalFieldOf(name, null)} would trip. Callers that want a
+ * nullable view should call {@code texture().orElse(null)}.</p>
+ *
  * @param renderMode     {@code billboard} or {@code 3d} for this layer
- * @param texture        billboard texture path; {@code null} for 3d layers
- * @param model          3d model path; {@code null} for billboard layers
+ * @param texture        billboard texture path; empty for 3d layers
+ * @param model          3d model path; empty for billboard layers
  * @param followRotation whether the layer rotates with the bullet's flight
  *                       direction (billboard layers ignore this — billboards
  *                       always face the camera regardless)
@@ -34,8 +42,8 @@ import org.joml.Vector4f;
  */
 public record AttachLayerModifier(
         BulletStyle.RenderMode renderMode,
-        @Nullable ResourceLocation texture,
-        @Nullable ResourceLocation model,
+        Optional<ResourceLocation> texture,
+        Optional<ResourceLocation> model,
         boolean followRotation,
         boolean followScale,
         Vec3 offset,
@@ -47,20 +55,18 @@ public record AttachLayerModifier(
 
     /**
      * Per-record {@link MapCodec}. Dispatch consumes the {@code "type"} field;
-     * this codec declares only the payload fields. Nullable
-     * {@link ResourceLocation}s are encoded via the
-     * {@code optionalFieldOf().xmap(orElse(null), Optional.ofNullable)} idiom
-     * so a {@code null} omits the field on the wire (canonical) and a missing
-     * field decodes back to {@code null} (preserving the @Nullable record
-     * field type asserted by tests).
+     * this codec declares only the payload fields. Optional
+     * {@link ResourceLocation}s use {@link Codec#optionalFieldOf(String)}
+     * (no default value), which returns a {@code MapCodec<Optional<A>>} that
+     * encodes an empty {@link Optional} by omitting the field on the wire
+     * and decodes a missing field back to {@link Optional#empty()} (the
+     * canonical DFU 1.21.1 idiom for nullable fields).
      */
     public static final MapCodec<AttachLayerModifier> CODEC = RecordCodecBuilder.mapCodec(
             instance -> instance.group(
                     BulletStyle.RenderMode.CODEC.fieldOf("render_mode").forGetter(AttachLayerModifier::renderMode),
-                    ResourceLocation.CODEC.optionalFieldOf("texture").xmap(
-                            Optional::orElse, Optional::ofNullable).forGetter(AttachLayerModifier::texture),
-                    ResourceLocation.CODEC.optionalFieldOf("model").xmap(
-                            Optional::orElse, Optional::ofNullable).forGetter(AttachLayerModifier::model),
+                    ResourceLocation.CODEC.optionalFieldOf("texture").forGetter(AttachLayerModifier::texture),
+                    ResourceLocation.CODEC.optionalFieldOf("model").forGetter(AttachLayerModifier::model),
                     Codec.BOOL.optionalFieldOf("follow_rotation", false).forGetter(AttachLayerModifier::followRotation),
                     Codec.BOOL.optionalFieldOf("follow_scale", true).forGetter(AttachLayerModifier::followScale),
                     Vec3.CODEC.optionalFieldOf("offset", Vec3.ZERO).forGetter(AttachLayerModifier::offset),

@@ -45,15 +45,15 @@ class BulletStyleCodecTest {
     void baseBillboardRoundtrip() {
         BulletStyle.Base base = new BulletStyle.Base(
                 BulletStyle.RenderMode.BILLBOARD,
-                ResourceLocation.fromNamespaceAndPath("m", "textures/bullet/default.png"),
-                null);
+                Optional.of(ResourceLocation.fromNamespaceAndPath("m", "textures/bullet/default.png")),
+                Optional.empty());
         BulletStyle style = new BulletStyle(Optional.of(base), List.of());
         BulletStyle decoded = roundtrip(style);
         assertTrue(decoded.base().isPresent());
         assertEquals(BulletStyle.RenderMode.BILLBOARD, decoded.base().get().renderMode());
         assertEquals(ResourceLocation.fromNamespaceAndPath("m", "textures/bullet/default.png"),
-                decoded.base().get().texture());
-        assertNull(decoded.base().get().model());
+                decoded.base().get().texture().orElse(null));
+        assertTrue(decoded.base().get().model().isEmpty());
     }
 
     @Test
@@ -100,8 +100,8 @@ class BulletStyleCodecTest {
     void attachLayerModifierRoundtrip() {
         AttachLayerModifier layer = new AttachLayerModifier(
                 BulletStyle.RenderMode.BILLBOARD,
-                ResourceLocation.fromNamespaceAndPath("m", "textures/bullet/flame.png"),
-                null,
+                Optional.of(ResourceLocation.fromNamespaceAndPath("m", "textures/bullet/flame.png")),
+                Optional.empty(),
                 false, true,
                 new Vec3(0.0, 0.1, -0.3),
                 0.8f,

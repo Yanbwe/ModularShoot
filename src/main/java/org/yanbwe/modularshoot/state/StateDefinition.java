@@ -245,7 +245,15 @@ public record StateDefinition(
                     TYPED_VALUE_CODEC.optionalFieldOf("default_value")
                             .forGetter(def -> Optional.ofNullable(def.defaultValue())),
                     StateDisplay.CODEC.fieldOf("display").forGetter(StateDefinition::display),
-                    StateVisualModifier.CODEC.listOf().optionalFieldOf("visual_modifiers", List.of())
+                    // lazyInitialized breaks a static-init cycle: the nested
+                    // StateVisualModifier.CODEC transitively references this
+                    // outer CODEC's TYPED_VALUE_CODEC via VisualCondition, so
+                    // building it eagerly while StateDefinition.<clinit> runs
+                    // re-enters StateVisualModifier.<clinit> mid-flight and
+                    // NPEs on the still-null CODEC field. Deferring to
+                    // codec-encode/decode time avoids the cycle.
+                    Codec.lazyInitialized(() -> StateVisualModifier.CODEC.listOf())
+                            .optionalFieldOf("visual_modifiers", List.of())
                             .forGetter(StateDefinition::visualModifiers)
             ).apply(instance, (domain, valueType, defaultValueOpt, display, visualModifiers) ->
                     new StateDefinition(domain, valueType, defaultValueOpt.orElseGet(valueType::zeroValue),
@@ -345,13 +353,13 @@ public record StateDefinition(
             StateConditionEvaluator.Op op,
             Object value) {
 
-        public static final Codec<VisualCondition> CODEC = RecordCodecBuilder.create(
+        public static final Codec<VisualCondition> CODEC = Codec.lazyInitialized(() -> RecordCodecBuilder.create(
                 instance -> instance.group(
                         ResourceLocation.CODEC.fieldOf("state").forGetter(VisualCondition::state),
                         StateDomain.CODEC.optionalFieldOf("domain").forGetter(VisualCondition::domain),
                         StateConditionEvaluator.Op.CODEC.fieldOf("op").forGetter(VisualCondition::op),
                         TYPED_VALUE_CODEC.optionalFieldOf("value").forGetter(vc -> Optional.ofNullable(vc.value()))
                 ).apply(instance, (state, domain, op, valueOpt) ->
-                        new VisualCondition(state, domain, op, valueOpt.orElse(null))));
+                        new VisualCondition(state, domain, op, valueOpt.orElse(null)))));
     }
 }

@@ -212,7 +212,7 @@ public final class BulletRenderManager {
                 entry.texture(),
                 entry.modelLocation(),
                 entry.renderMode(),
-                entry.bulletSize());
+                entry.renderScale());
         renderObjects.put(entry.bulletId(), obj);
         snapshots.put(entry.bulletId(), entry.snapshot());
     }
@@ -237,7 +237,7 @@ public final class BulletRenderManager {
         obj.setTexture(entry.texture());
         obj.setModelLocation(entry.modelLocation());
         obj.setRenderMode(entry.renderMode());
-        obj.setScale(entry.bulletSize());
+        obj.setScale(entry.renderScale());
         snapshots.put(entry.bulletId(), entry.snapshot());
     }
 

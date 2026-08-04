@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import net.minecraft.resources.ResourceLocation;
+import org.yanbwe.modularshoot.registry.gun.BulletStyle;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 
 /**

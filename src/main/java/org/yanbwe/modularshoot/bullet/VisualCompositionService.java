@@ -156,6 +156,29 @@ public class VisualCompositionService {
                 .filter(def -> !def.visualModifiers().isEmpty());
     }
 
+    /**
+     * Resolves a state definition by id (override point for tests).
+     *
+     * <p>Default delegates to {@link StateRegistry#getState}. Test overrides
+     * consult their own in-memory map of registered states so the no-
+     * {@link RegistryAccess} pure-logic path does not blow up with a
+     * null-pointer when the production {@link
+     * StateRegistry#getState(RegistryAccess, ResourceLocation)} would deref
+     * the (absent) {@code ra}.</p>
+     *
+     * @param ra     the runtime registry view (ignored by stubs, may be
+     *               {@code null} under test)
+     * @param stateId the state definition id, never {@code null}
+     * @return the matching state definition, or empty when unregistered
+     */
+    protected Optional<StateDefinition> lookupStateDef(
+            @Nullable RegistryAccess ra, ResourceLocation stateId) {
+        if (ra == null) {
+            return Optional.empty();
+        }
+        return StateRegistry.getState(ra, stateId);
+    }
+
     // ------------------------------------------------------------------
     // Main entry
     // ------------------------------------------------------------------
@@ -215,16 +238,30 @@ public class VisualCompositionService {
         float r = 1.0f, g = 1.0f, b = 1.0f, a = 1.0f;
         for (TintModifier t : tintMods) {
             Vector4f c = t.color();
-            if (Float.isNaN(c.x) || Float.isNaN(c.y) || Float.isNaN(c.z) || Float.isNaN(c.w)
-                    || c.x < 0.0f || c.y < 0.0f || c.z < 0.0f || c.w < 0.0f) {
-                ModularShoot.LOGGER.warn(
-                        "Tint modifier with NaN or negative channel {}; skipping", c);
-                continue;
+            // spec §5: per-channel skip + WARN on negative / NaN; healthy
+            // channels remain multiplied into the running product. So a
+            // (negative, healthy, healthy, healthy) entry still contributes
+            // its healthy channels and emits one WARN per bad channel.
+            if (!Float.isFinite(c.x) || c.x < 0.0f) {
+                ModularShoot.LOGGER.warn("Tint channel x {} invalid; skipping channel", c.x);
+            } else {
+                r *= clamp01(c.x);
             }
-            r *= clamp01(c.x);
-            g *= clamp01(c.y);
-            b *= clamp01(c.z);
-            a *= clamp01(c.w);
+            if (!Float.isFinite(c.y) || c.y < 0.0f) {
+                ModularShoot.LOGGER.warn("Tint channel y {} invalid; skipping channel", c.y);
+            } else {
+                g *= clamp01(c.y);
+            }
+            if (!Float.isFinite(c.z) || c.z < 0.0f) {
+                ModularShoot.LOGGER.warn("Tint channel z {} invalid; skipping channel", c.z);
+            } else {
+                b *= clamp01(c.z);
+            }
+            if (!Float.isFinite(c.w) || c.w < 0.0f) {
+                ModularShoot.LOGGER.warn("Tint channel w {} invalid; skipping channel", c.w);
+            } else {
+                a *= clamp01(c.w);
+            }
         }
         return new Vector4f(clamp01(r), clamp01(g), clamp01(b), clamp01(a));
     }
@@ -241,8 +278,11 @@ public class VisualCompositionService {
         for (AttachLayerModifier m : layerMods) {
             Vector4f tint = m.tint() == null ? ComposedBulletStyle.WHITE_TINT : m.tint();
             Vec3 off = m.offset() == null ? Vec3.ZERO : m.offset();
+            // Optional<RL> -> @Nullable RL for the wire/composed LayerEntry.
+            net.minecraft.resources.ResourceLocation texture = m.texture().orElse(null);
+            net.minecraft.resources.ResourceLocation model = m.model().orElse(null);
             builder.add(new ComposedBulletStyle.LayerEntry(
-                    m.renderMode(), m.texture(), m.model(),
+                    m.renderMode(), texture, model,
                     m.followRotation(), m.followScale(),
                     (float) off.x, (float) off.y, (float) off.z,
                     m.scale(),
@@ -281,9 +321,6 @@ public class VisualCompositionService {
         }
 
         void collectAll() {
-            if (ra == null) {
-                return;
-            }
             collectGun(0);
             collectPlugins();
             collectTraits();
@@ -318,9 +355,10 @@ public class VisualCompositionService {
                     installIdx++;
                     continue;
                 }
-                int priority = pd.get().priority();
+                final int priority = pd.get().priority();
+                final int capturedInstallIdx = installIdx;
                 pd.get().bulletStyle().ifPresent(style -> {
-                    style.base().ifPresent(b -> baseCands.add(new BaseCandidate(b, priority, installIdx)));
+                    style.base().ifPresent(b -> baseCands.add(new BaseCandidate(b, priority, capturedInstallIdx)));
                     addModifiers(style.modifiers());
                 });
                 installIdx++;
@@ -373,7 +411,7 @@ public class VisualCompositionService {
          *         domain
          */
         private @Nullable Object resolveStateValue(StateDefinition.VisualCondition cond) {
-            Optional<StateDefinition> def = StateRegistry.getState(ra, cond.state());
+            Optional<StateDefinition> def = svc.lookupStateDef(ra, cond.state());
             if (def.isEmpty()) {
                 StateWarnLogger.warnUnregistered(cond.state());
                 return null;

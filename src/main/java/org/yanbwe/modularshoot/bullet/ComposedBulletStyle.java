@@ -1,6 +1,7 @@
 package org.yanbwe.modularshoot.bullet;
 
 import java.util.List;
+import java.util.Optional;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector4f;
@@ -43,8 +44,8 @@ public record ComposedBulletStyle(
     /** Framework fallback base: billboard + the conventional default texture. */
     public static final BulletStyle.Base FALLBACK_BASE = new BulletStyle.Base(
             BulletStyle.RenderMode.BILLBOARD,
-            ResourceLocation.fromNamespaceAndPath("modularshoot", "textures/bullet/default.png"),
-            null);
+            Optional.of(ResourceLocation.fromNamespaceAndPath("modularshoot", "textures/bullet/default.png")),
+            Optional.empty());
 
     /** Default composed style for "everything missing" degradation (spec §5 last two rows). */
     public static final ComposedBulletStyle DEFAULT = new ComposedBulletStyle(
