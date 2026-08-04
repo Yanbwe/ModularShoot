@@ -1,5 +1,5 @@
 {
-  "name": "§a测试枪械",
+  "name": "§a测试枪械（视觉叠加演示）",
   "texture": "modularshoot:textures/gun/test_gun.png",
   "stats": {
     "modularshoot:hit_damage": 10.0,
@@ -14,16 +14,27 @@
   },
   "traits": {},
   "slots": {
-    "modularshoot:barrel": 2,
-    "modularshoot:accessory": 1
+    "modularshoot:barrel": 3,
+    "modularshoot:accessory": 2
   },
   "sounds": {
     "shoot": "modularshoot:gun.test_gun.shoot"
   },
   "bullet_style": {
-    "model": {
-      "3d": "modularshoot:models/bullet/normal_fazhang.json"
+    "base": {
+      "render_mode": "billboard",
+      "texture": "modularshoot:textures/bullet/test_bullet_plain.png"
     },
-    "render_mode": "3d"
+    "modifiers": [
+      { "type": "scale", "value": 1.0 },
+      { "type": "attach_layer",
+        "render_mode": "billboard",
+        "texture": "modularshoot:textures/bullet/test_layer_slash_orange.png",
+        "follow_rotation": true,
+        "follow_scale": true,
+        "offset": [0.0, 0.0, -0.4],
+        "scale": 0.6,
+        "tint": [1.0, 0.6, 0.2, 1.0] }
+    ]
   }
 }

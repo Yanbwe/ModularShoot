@@ -1,0 +1,34 @@
+{
+  "domain": "gun",
+  "value_type": "int",
+  "default_value": 0,
+  "display": {
+    "name": "击杀连击",
+    "color": "#FFAA00",
+    "format": "{value} 连杀",
+    "priority": 10,
+    "hide_default": true
+  },
+  "visual_modifiers": [
+    {
+      "condition": {
+        "state": "modularshoot:visual_killstreak",
+        "domain": "gun",
+        "op": ">=",
+        "value": 3
+      },
+      "modifiers": [
+        { "type": "tint", "color": [1.0, 0.3, 0.2] },
+        { "type": "scale", "value": 1.2 },
+        { "type": "attach_layer",
+          "render_mode": "billboard",
+          "texture": "modularshoot:textures/bullet/test_layer_slash_orange.png",
+          "follow_rotation": true,
+          "follow_scale": true,
+          "offset": [0.0, 0.0, -0.3],
+          "scale": 0.7,
+          "tint": [1.0, 0.4, 0.1, 0.9] }
+      ]
+    }
+  ]
+}

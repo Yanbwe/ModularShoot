@@ -1,0 +1,14 @@
+{
+  "tags": ["c:accessory"],
+  "priority": 80,
+  "item_icon": "modularshoot:textures/bullet/test_magic.png",
+  "name": "§d视觉染色 A（tint 蓝）",
+  "brief": "子弹染成蓝色调",
+  "description": "提供 tint 修饰符 (0.5, 1, 1)。与视觉染色 B 同时安装时逐通道连乘得 (0.5, 0.6, 1)",
+  "color": "#55AAFF",
+  "bullet_style": {
+    "modifiers": [
+      { "type": "tint", "color": [0.5, 1.0, 1.0] }
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "§d测试枪械 法球",
+  "texture": "modularshoot:textures/gun/test_gun.png",
+  "stats": {
+    "modularshoot:hit_damage": 15.0,
+    "modularshoot:fire_rate": 1.0,
+    "modularshoot:range": 120.0,
+    "modularshoot:accuracy_yaw": 1.0,
+    "modularshoot:accuracy_pitch": 1.0,
+    "modularshoot:entity_penetration": 2,
+    "modularshoot:bullet_speed": 20.0,
+    "modularshoot:bullet_size": 0.7,
+    "modularshoot:block_penetration": 1
+  },
+  "traits": {},
+  "slots": {
+    "modularshoot:barrel": 3,
+    "modularshoot:accessory": 2
+  },
+  "bullet_style": {
+    "base": {
+      "render_mode": "billboard",
+      "texture": "modularshoot:textures/bullet/test_orb_tracking.png"
+    },
+    "modifiers": [
+      { "type": "attach_layer",
+        "render_mode": "billboard",
+        "texture": "modularshoot:textures/bullet/test_layer_slash_cyan.png",
+        "follow_rotation": true,
+        "follow_scale": false,
+        "offset": [0.0, 0.0, -0.3],
+        "scale": 0.8,
+        "tint": [0.3, 1.0, 1.0, 0.7] }
+    ]
+  }
+}

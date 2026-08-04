@@ -1,0 +1,24 @@
+{
+  "tags": ["c:barrel", "c:accessory"],
+  "priority": 60,
+  "item_icon": "modularshoot:textures/bullet/test_fireball.png",
+  "modifiers": [
+    { "attribute": "hit_damage", "operation": "multiply", "value": 0.1 }
+  ],
+  "name": "§c火焰拖尾（attach_layer）",
+  "brief": "子弹拖出火焰尾迹",
+  "description": "在子弹后方附加火焰拖尾层（billboard attach_layer，follow_rotation 生效，随飞行方向旋转）",
+  "color": "#FF8844",
+  "bullet_style": {
+    "modifiers": [
+      { "type": "attach_layer",
+        "render_mode": "billboard",
+        "texture": "modularshoot:textures/bullet/test_layer_fire.png",
+        "follow_rotation": true,
+        "follow_scale": true,
+        "offset": [0.0, 0.0, -0.5],
+        "scale": 0.9,
+        "tint": [1.0, 0.6, 0.2, 0.8] }
+    ]
+  }
+}

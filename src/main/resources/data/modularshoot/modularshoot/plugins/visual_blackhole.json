@@ -1,0 +1,25 @@
+{
+  "tags": ["c:accessory"],
+  "priority": 55,
+  "item_icon": "modularshoot:textures/bullet/test_blackhole.png",
+  "name": "§5黑洞核心（base 替换 + 光环）",
+  "brief": "子弹变成黑洞外观并带紫色光环",
+  "description": "提供 base（黑洞贴图，priority 55 高于枪 base 的 0，base 替换生效）与光环 attach_layer",
+  "color": "#AA55FF",
+  "bullet_style": {
+    "base": {
+      "render_mode": "billboard",
+      "texture": "modularshoot:textures/bullet/test_blackhole.png"
+    },
+    "modifiers": [
+      { "type": "attach_layer",
+        "render_mode": "billboard",
+        "texture": "modularshoot:textures/bullet/test_layer_slash_cyan.png",
+        "follow_rotation": false,
+        "follow_scale": false,
+        "offset": [0.0, 0.0, 0.0],
+        "scale": 1.3,
+        "tint": [0.6, 0.3, 1.0, 0.5] }
+    ]
+  }
+}

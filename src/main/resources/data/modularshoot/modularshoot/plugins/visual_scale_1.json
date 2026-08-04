@@ -1,0 +1,17 @@
+{
+  "tags": ["c:barrel"],
+  "priority": 100,
+  "item_icon": "modularshoot:textures/bullet/test_magic.png",
+  "modifiers": [
+    { "attribute": "fire_rate", "operation": "multiply", "value": 0.05 }
+  ],
+  "name": "§a视觉放大 I（scale ×1.2）",
+  "brief": "子弹视觉放大 1.2 倍",
+  "description": "提供 scale 修饰符 1.2。与视觉放大 II 同时安装时连乘（1.2 × 1.5 = 1.8 倍）",
+  "color": "#55FF55",
+  "bullet_style": {
+    "modifiers": [
+      { "type": "scale", "value": 1.2 }
+    ]
+  }
+}
