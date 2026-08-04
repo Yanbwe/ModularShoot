@@ -11,14 +11,18 @@ import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.core.SectionPos;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.client.render.BulletRenderManager;
+import org.yanbwe.modularshoot.component.GunData;
+import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.network.BulletSyncService;
 import org.yanbwe.modularshoot.trait.RemoveReason;
+import org.yanbwe.modularshoot.util.GunResolver;
 
 /**
  * Per-dimension manager for all active bullets (设计文档 §子弹管理器).
@@ -245,7 +249,22 @@ public final class BulletManager {
             BulletSnapshot snapshot,
             @Nullable UUID shooter) {
         int bulletId = nextBulletId();
-        BulletRecord bullet = new BulletRecord(snapshot, shooter, position, direction, bulletId);
+        // Compose the visual style exactly once at creation (设计规格 §2.1
+        // "创建瞬间冻结"). For the public API entry point, gunData is
+        // reverse-looked-up from the snapshot's gun instance uuid (spec §4.1:
+        // "gunData 通过 snapshot.gunInstanceUuid 反查取得, state 初值从
+        // BulletSnapshot.state map 取"). When no firing gun is resolvable
+        // (e.g. independent turret/trap firing with a null gun instance uuid),
+        // gunData stays null and the composition degrades gracefully to the
+        // framework FALLBACK_BASE / white tint / empty layers.
+        @Nullable GunData gunData = null;
+        ItemStack gunStack = GunResolver.resolveGunFromSnapshot(snapshot, level);
+        if (gunStack != null) {
+            gunData = gunStack.get(ModularShootDataComponents.GUN_DATA.get());
+        }
+        ComposedBulletStyle composed = VisualCompositionService.INSTANCE.compose(
+                level.registryAccess(), snapshot, gunData);
+        BulletRecord bullet = new BulletRecord(snapshot, shooter, position, direction, bulletId, composed);
         addBullet(bullet);
         // Mark the new bullet as created this tick so that the tick-end sync
         // includes it in the newBullets bucket — even if the bullet is removed

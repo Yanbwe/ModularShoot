@@ -24,6 +24,8 @@ import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 import org.yanbwe.modularshoot.bullet.BulletManager;
 import org.yanbwe.modularshoot.bullet.BulletRecord;
 import org.yanbwe.modularshoot.bullet.BulletSnapshot;
+import org.yanbwe.modularshoot.bullet.ComposedBulletStyle;
+import org.yanbwe.modularshoot.bullet.VisualCompositionService;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.damage.ModularShootDamageTypes;
 import org.yanbwe.modularshoot.degradation.GunDegradationHandler;
@@ -159,7 +161,7 @@ public final class ShootingEngine {
         // Step 6: apply server-side spread to the look angle.
         Vec3 direction = applySpread(player, snapshot);
         // Step 7: register the bullet with the per-dimension BulletManager.
-        BulletRecord bulletRecord = registerBullet(player, snapshot, direction);
+        BulletRecord bulletRecord = registerBullet(player, snapshot, direction, gunData);
         // Mark the new bullet as created this tick so that the tick-end
         // sync includes it in the newBullets bucket — even if the bullet is
         // removed by collision before the Post tick event fires (设计文档
@@ -349,18 +351,33 @@ public final class ShootingEngine {
      * collision box blocking the first tick. A unique bullet id is allocated
      * by the manager before the record is constructed and added.</p>
      *
+     * <p>As of the modifier-stacking redesign, this method also composes the
+     * bullet's visual style exactly once at creation (设计规格 §2.1) via
+     * {@link VisualCompositionService#compose}, supplying the in-scope
+     * {@code gunData} directly so no reverse lookup is needed on the
+     * player-firing path.</p>
+     *
      * @param player     the shooting player (eye position and level)
      * @param snapshot   the frozen bullet snapshot
      * @param direction  the initial flight direction (post-spread)
-     * @return the live, registered {@link BulletRecord}
+     * @param gunData    the firing gun's data (already resolved in
+     *                   {@link #fire}'s scope); never {@code null} on this path
+     * @return the live, registered {@link BulletRecord} with
+     *         creation-frozen composed style
      */
     private static BulletRecord registerBullet(
-            ServerPlayer player, BulletSnapshot snapshot, Vec3 direction) {
+            ServerPlayer player, BulletSnapshot snapshot, Vec3 direction,
+            GunData gunData) {
         Vec3 position = player.getEyePosition();
         BulletManager manager = BulletManager.get(player.level());
         int bulletId = manager.nextBulletId();
+        // Compose the visual style once at creation (spec §2.1 / §4.1). The
+        // player-firing path holds gunData in its own scope, so no reverse
+        // lookup is required (contrast with BulletManager.fireBullet).
+        ComposedBulletStyle composed = VisualCompositionService.INSTANCE.compose(
+                player.registryAccess(), snapshot, gunData);
         BulletRecord bulletRecord =
-                new BulletRecord(snapshot, player.getUUID(), position, direction, bulletId);
+                new BulletRecord(snapshot, player.getUUID(), position, direction, bulletId, composed);
         manager.addBullet(bulletRecord);
         return bulletRecord;
     }

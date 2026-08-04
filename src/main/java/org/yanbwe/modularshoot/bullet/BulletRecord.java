@@ -16,6 +16,15 @@ import org.jetbrains.annotations.Nullable;
  * position and direction are mutable so that trait hooks can implement custom
  * trajectories (tracking rounds, curved paths, etc.) (设计文档 §BulletRecord).</p>
  *
+ * <p>As of the modifier-stacking redesign (设计规格 §2.1 "创建瞬间冻结"),
+ * this record also caches the bullet's {@link ComposedBulletStyle} computed
+ * once at creation by {@link VisualCompositionService#compose}. Subsequent
+ * {@code BulletSyncService.toFullBulletEntry} invocations re-read this
+ * cached value rather than recomputing the composition each full-entry
+ * sync — the composition is frozen for the bullet's entire lifetime, while
+ * in-flight {@code onVisualTick} hooks that want to mutate appearance operate
+ * on the client-side {@code BulletRenderObject} directly (spec §7.2 end).</p>
+ *
  * <p>Penetration dedup sets ({@code penetratedEntities},
  * {@code penetratedBlocks}) are per-bullet lifetime and prevent the same
  * target from being hit twice by one bullet (设计文档 §穿透去重).</p>
@@ -29,6 +38,7 @@ public final class BulletRecord {
     private float traveledDistance;
     private int age;
     private final int bulletId;
+    private final ComposedBulletStyle composedStyle;
 
     private final Set<UUID> penetratedEntities = new HashSet<>();
     private final Set<BlockPos> penetratedBlocks = new HashSet<>();
@@ -40,13 +50,21 @@ public final class BulletRecord {
      * @param direction     initial flight direction; <em>automatically normalised</em>
      *                      (a zero-length vector degrades to {@link Vec3#ZERO})
      * @param bulletId      unique-per-dimension bullet id assigned by BulletManager
+     * @param composedStyle frozen visual composition computed once at creation
+     *                      (设计规格 §2.1); never {@code null} — both bullet
+     *                      creation call sites
+     *                      ({@code ShootingEngine.registerBullet},
+     *                      {@code BulletManager.fireBullet}) supply a freshly
+     *                      composed style from
+     *                      {@link VisualCompositionService#compose}
      */
     public BulletRecord(
             BulletSnapshot snapshot,
             @Nullable UUID shooter,
             Vec3 position,
             Vec3 direction,
-            int bulletId) {
+            int bulletId,
+            ComposedBulletStyle composedStyle) {
         this.snapshot = snapshot;
         this.shooter = shooter;
         this.position = position;
@@ -54,10 +72,17 @@ public final class BulletRecord {
         this.traveledDistance = 0f;
         this.age = 0;
         this.bulletId = bulletId;
+        this.composedStyle = java.util.Objects.requireNonNull(composedStyle,
+                "composedStyle must not be null — both bullet-creation sites supply one");
     }
 
     public BulletSnapshot getSnapshot() {
         return snapshot;
+    }
+
+    /** @return the creation-frozen visual composition; never {@code null}. */
+    public ComposedBulletStyle getComposedStyle() {
+        return composedStyle;
     }
 
     @Nullable
