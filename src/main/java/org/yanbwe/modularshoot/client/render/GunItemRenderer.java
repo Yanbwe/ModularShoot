@@ -1,106 +1,83 @@
 package org.yanbwe.modularshoot.client.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.logging.LogUtils;
+import java.util.List;
 import java.util.UUID;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.geom.EntityModelSet;
 import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
-import net.minecraft.client.renderer.entity.ItemRenderer;
-import net.minecraft.client.resources.model.BakedModel;
-import net.minecraft.client.resources.model.ModelManager;
-import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.client.extensions.common.IClientItemExtensions;
 import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
 import org.yanbwe.modularshoot.ModularShootAPI;
+import org.yanbwe.modularshoot.client.ClientGunDataStore;
 import org.yanbwe.modularshoot.client.PlayerShootStateManager;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 
 /**
  * Custom item renderer for framework guns, integrating shoot-texture
- * switching with the vanilla item rendering pipeline.
+ * switching and plugin overlay compositing with the vanilla flat-item look.
  *
- * <p>The design doc (§渲染器, line 1337-1339) mandates that guns use the
- * vanilla item render pipeline with automatic texture extrusion &mdash; no
- * custom model loader, no external model library. This renderer achieves
- * texture switching <em>within</em> that constraint by acting as a thin
- * interceptor: the gun item's baked model is flagged with
- * {@code custom_renderer: true}, which causes {@link ItemRenderer#render}
- * to delegate to {@link #renderByItem}. This override then selects the
- * correct baked model (base or shoot texture) via {@link ShootTextureResolver}
- * and hands it back to the vanilla {@code ItemRenderer.render} for normal
- * extrusion and drawing.</p>
- *
- * <h2>Extension point</h2>
- * <p>NeoForge 1.21.1 exposes custom item rendering through
- * {@link BlockEntityWithoutLevelRenderer}, registered per-item via
- * {@code IClientItemExtensions.getCustomRenderer()} (fired on the mod event
- * bus through {@code RegisterClientExtensionsEvent}). The gun item's model
- * JSON must set {@code "neoforge:custom_renderer": true} (or equivalent)
- * so that {@link BakedModel#isCustomRenderer()} returns {@code true},
- * routing rendering into this class.</p>
- *
- * <h2>Design deviation note (E-01)</h2>
- * <p>The design doc (§渲染器) states "使用原版物品渲染管线渲染枪械与
- *插件物品". This is satisfied <em>spiritually</em>: the actual geometry
- * rendering, lighting and texture extrusion are all performed by the vanilla
- * {@code ItemRenderer.render} — this class only selects which BakedModel
- * (base or shoot texture) to feed into it. The entry point, however, is the
- * NeoForge BEWR extension rather than a vanilla {@code BakedModel} +
- * {@code ItemOverrideList} combination.</p>
- *
- * <p>This is an <strong>intentional design deviation</strong>. The
- * alternative (BakedModel + ItemOverrideList) was considered and rejected
- * because:</p>
- * <ul>
- *   <li>{@code ItemOverrideList.resolve()} is designed for model switching
- *       driven by the item's own data (damage value, Data Components), not
- *       by external dynamic state such as the holding player's shoot state
- *       ({@link PlayerShootStateManager}).</li>
- *   <li>Shoot-texture switching is driven by per-player client state that
- *       changes every tick; the BEWR entry point combined with the
- *       {@link #RENDERING_PLAYER_UUID} ThreadLocal provides clean access to
- *       this state for both first-person (local player) and third-person
- *       (remote player) rendering.</li>
- *   <li>Rewriting to ItemOverrideList would require injecting overrides into
- *       baked models via {@code ModelEvent.ModifyBakingResult}, deepening
- *       coupling to the model baking pipeline with no functional gain — the
- *       vanilla pipeline already does the actual rendering.</li>
- * </ul>
- * <p>See 设计文档 §渲染器 for the documented rationale.</p>
+ * <p>In 1.21.1 the {@code custom_renderer} model flag no longer exists. The
+ * supported entry point is a {@code builtin/entity} parent model on the item
+ * (baking into a {@code BuiltInModel} with {@code isCustomRenderer() == true}),
+ * which routes the vanilla pipeline into
+ * {@link IClientItemExtensions#getCustomRenderer()} → {@link #renderByItem}
+ * (NeoForge patch on {@code ItemRenderer}). The gun and plugin items ship
+ * with such models, and this renderer is registered for {@code modularshoot:gun}
+ * on the mod event bus (see
+ * {@link org.yanbwe.modularshoot.client.ModularShootClientExtensions}).</p>
  *
  * <h2>Render flow</h2>
  * <ol>
- *   <li>The vanilla pipeline calls {@link #renderByItem} because the gun's
- *       baked model reports {@code isCustomRenderer() == true}.</li>
+ *   <li>The vanilla pipeline calls {@link #renderByItem} for every gun stack
+ *       (the item model reports {@code isCustomRenderer() == true}).</li>
  *   <li>This method reads the {@link GunDefinition} from the stack's
  *       {@code gun_data} component and the holding player's uuid.</li>
  *   <li>{@link ShootTextureResolver#resolveTexture} selects the base or
  *       shoot texture based on the gun's {@code shoot_texture_mode} and the
  *       player's shoot state.</li>
- *   <li>The baked model for the resolved texture is looked up from the
- *       {@link ModelManager}. These per-gun models are generated by the
- *       model-generation subtask and registered at a convention-based
- *       {@link ModelResourceLocation} (see {@link #resolveBakedModel}).</li>
- *   <li>The vanilla {@link ItemRenderer#render} is called with the selected
- *       model. Because the selected model has {@code isCustomRenderer() == false},
- *       the vanilla pipeline renders it normally (extrusion, foil, lighting)
- *       without recursing back into this renderer.</li>
+ *   <li>Installed plugin {@code texture_overlay} layers are collected via
+ *       {@link PluginOverlayCompositor} — preferring the server-pushed
+ *       snapshot in {@link ClientGunDataStore}, falling back to the local
+ *       {@code gun_data} component.</li>
+ *   <li>{@link DynamicGunTextureCache} loads the base PNG, composites the
+ *       overlays on top and uploads the result as a dynamic texture
+ *       (cached per texture+overlays+modifierVersion).</li>
+ *   <li>{@link DynamicItemModelRenderer} draws the texture as an extruded
+ *       flat item, visually equivalent to a vanilla {@code item/generated}
+ *       render.</li>
  * </ol>
+ *
+ * <h2>Why not a baked model + ItemOverrideList</h2>
+ * <p>Shoot-texture switching is driven by per-player client state
+ * ({@link PlayerShootStateManager}) that changes every tick, and the plugin
+ * overlay result is composited at runtime from datapack data — neither can
+ * be represented in a resource-pack baked model. {@code ItemOverrideList}
+ * is designed for model switching driven by the item's own data (damage,
+ * Data Components), not external dynamic state; rewriting to it would also
+ * require injecting overrides into the model baking pipeline. The BEWR
+ * entry point plus the {@link #RENDERING_PLAYER_UUID} ThreadLocal provides
+ * clean access to the external state for both first-person (local player)
+ * and third-person (remote player) rendering (设计文档 §渲染器).</p>
+ *
+ * <p>Content authors therefore only need to supply PNG textures — no model
+ * JSONs, no baked-model conventions. When a texture is missing, the
+ * placeholder in {@link DynamicGunTextureCache} keeps the pipeline visible
+ * and diagnosable.</p>
  *
  * <h2>First-person vs third-person</h2>
  * <p>The vanilla pipeline calls {@code renderByItem} for both first-person
- * (held in hand) and third-person (on the player model) contexts. The
- * {@link ItemDisplayContext} parameter distinguishes them. Both paths use
- * the same texture-resolution logic, satisfying the design doc requirement
- * that texture switching is the sole visual feedback in first person and
- * also applies in third person (设计文档 line 1343-1344).</p>
+ * (held in hand) and third-person (on the player model) contexts. Both paths
+ * use the same texture-resolution logic, satisfying the design doc
+ * requirement that texture switching is the sole visual feedback in first
+ * person and also applies in third person (设计文档 line 1343-1344).</p>
  *
  * <h2>Player context</h2>
  * <p>{@code renderByItem} does not receive the holding {@code LivingEntity}
@@ -112,17 +89,18 @@ import org.yanbwe.modularshoot.registry.gun.GunDefinition;
  * (see {@link #setRenderingPlayer} / {@link #clearRenderingPlayer}).</p>
  *
  * <p><strong>Client-only class.</strong> References to {@link Minecraft},
- * {@link ItemRenderer} and other client types restrict this class to the
- * physical client. It must only be instantiated and registered via
- * {@code IClientItemExtensions} on the client mod event bus.</p>
+ * {@link net.minecraft.client.renderer.entity.ItemRenderer} and other client
+ * types restrict this class to the physical client. It must only be
+ * instantiated and registered via {@code RegisterClientExtensionsEvent} on
+ * the client mod event bus.</p>
  *
  * @see ShootTextureResolver
- * @see BlockEntityWithoutLevelRenderer
+ * @see DynamicGunTextureCache
+ * @see DynamicItemModelRenderer
+ * @see PluginOverlayCompositor
  * @see PlayerShootStateManager
  */
-public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer {
-
-    private static final Logger LOGGER = LogUtils.getLogger();
+public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer implements IClientItemExtensions {
 
     /** Fallback uuid used when no player context is available (e.g. menu). */
     private static final UUID NULL_UUID = new UUID(0L, 0L);
@@ -131,7 +109,7 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer {
      * ThreadLocal tracking the uuid of the player whose held item is
      * currently being rendered.
      *
-     * <p>Set by a Mixin/event hook before {@link ItemRenderer#render} calls
+     * <p>Set by a Mixin/event hook before {@code ItemRenderer.render} calls
      * {@link #renderByItem} and cleared afterwards. This bridges the vanilla
      * API gap where {@code renderByItem} does not receive the holding
      * entity. When unset, the renderer falls back to the local player
@@ -140,15 +118,12 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer {
      */
     private static final ThreadLocal<UUID> RENDERING_PLAYER_UUID = new ThreadLocal<>();
 
-    private final ItemRenderer itemRenderer;
-
     /**
      * Constructs the renderer with the vanilla dispatcher and model set.
      *
      * <p>Intended to be called from
-     * {@code IClientItemExtensions.getCustomRenderer()} during
-     * {@code RegisterClientExtensionsEvent}. The caller should pass the
-     * instances available from
+     * {@code RegisterClientExtensionsEvent} on the client mod event bus. The
+     * caller should pass the instances available from
      * {@code Minecraft.getInstance().getBlockEntityRenderDispatcher()} and
      * {@code Minecraft.getInstance().getEntityModels()}.</p>
      *
@@ -157,14 +132,35 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer {
      */
     public GunItemRenderer(BlockEntityRenderDispatcher dispatcher, EntityModelSet modelSet) {
         super(dispatcher, modelSet);
-        this.itemRenderer = Minecraft.getInstance().getItemRenderer();
+    }
+
+    /**
+     * Returns this renderer as the item's client extension, routing every
+     * gun stack into {@link #renderByItem}.
+     *
+     * @return {@code this}
+     */
+    @Override
+    public BlockEntityWithoutLevelRenderer getCustomRenderer() {
+        return this;
+    }
+
+    /**
+     * Clears the dynamic texture cache on resource reload (F3+T) so the
+     * composited gun textures are re-read from the resource packs.
+     *
+     * @param resourceManager the reloaded resource manager
+     */
+    @Override
+    public void onResourceManagerReload(ResourceManager resourceManager) {
+        DynamicGunTextureCache.getInstance().clear();
     }
 
     /**
      * Sets the uuid of the player whose held item is about to be rendered.
      *
      * <p>Intended to be called by a Mixin on
-     * {@link ItemRenderer#renderStatic} before the call to
+     * {@code ItemRenderer.renderStatic} before the call to
      * {@code renderByItem}. This enables correct shoot-texture resolution
      * for remote players in third-person. When the render completes the
      * caller must invoke {@link #clearRenderingPlayer} to avoid leaking
@@ -191,10 +187,10 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer {
      * gun's baked model reports {@code isCustomRenderer() == true}.
      *
      * <p>Resolves the correct texture via {@link ShootTextureResolver},
-     * looks up the corresponding baked model, and delegates back to the
-     * vanilla {@link ItemRenderer#render} for normal extrusion and drawing.
-     * This keeps the gun visually consistent with vanilla items while
-     * adding shoot-texture switching as the sole dynamic element.</p>
+     * composites the installed plugin overlays on top, and draws the result
+     * via {@link DynamicItemModelRenderer}. This keeps the gun visually
+     * consistent with vanilla flat items while adding shoot-texture
+     * switching and plugin overlays as the dynamic elements.</p>
      *
      * @param stack        the gun item stack
      * @param context      the display context (first-person, third-person,
@@ -215,45 +211,57 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer {
 
         ResourceLocation gunId = ModularShootAPI.getGunId(stack);
         if (gunId == null) {
-            renderFallback(stack, context, poseStack, bufferSource, light, overlay);
+            DynamicItemModelRenderer.renderMissing(stack, context, poseStack, bufferSource, light, overlay);
             return;
         }
 
-        GunDefinition gunDef = resolveGunDefinition(gunId);
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.level == null) {
+            DynamicItemModelRenderer.renderMissing(stack, context, poseStack, bufferSource, light, overlay);
+            return;
+        }
+
+        GunDefinition gunDef = ModularShootAPI.getGunDefinition(minecraft.level.registryAccess(), gunId).orElse(null);
         if (gunDef == null) {
-            renderFallback(stack, context, poseStack, bufferSource, light, overlay);
+            DynamicItemModelRenderer.renderMissing(stack, context, poseStack, bufferSource, light, overlay);
             return;
         }
 
         UUID playerUuid = resolvePlayerUuid();
-        ResourceLocation texture = ShootTextureResolver.resolveTexture(gunDef, playerUuid);
-        boolean useShootTexture = gunDef.shootTexture().isPresent()
-                && texture.equals(gunDef.shootTexture().get());
+        ResourceLocation renderTexture = ShootTextureResolver.resolveTexture(gunDef, playerUuid);
 
-        BakedModel model = resolveBakedModel(gunId, useShootTexture);
-        itemRenderer.render(stack, context, false, poseStack, bufferSource, light, overlay, model);
+        RegistryAccess registryAccess = minecraft.level.registryAccess();
+        List<ResourceLocation> overlays = collectOverlays(stack, registryAccess);
+        int modifierVersion = ClientGunDataStore.getInstance().hasSyncData()
+                ? ClientGunDataStore.getInstance().getModifierVersion()
+                : 0;
+
+        ResourceLocation texture = DynamicGunTextureCache.getInstance().getOrCreate(
+                new DynamicGunTextureCache.Key(renderTexture, overlays, modifierVersion));
+        DynamicItemModelRenderer.render(texture, context, poseStack, bufferSource, light, overlay);
     }
 
     /**
-     * Reads the {@link GunDefinition} for the given gun id from the
-     * {@code modularshoot:guns} registry.
+     * Collects the sorted overlay texture paths of the gun's installed
+     * plugins.
      *
-     * <p>Returns {@code null} when the registry is unavailable (e.g. on the
-     * main menu where the world is not yet loaded) or the id is not
-     * registered. In that case the caller should fall back to a safe
-     * default render.</p>
+     * <p>Prefers the server-pushed snapshot in
+     * {@link ClientGunDataStore} when one has been received (the sync
+     * channel is authoritative and may lead the locally-written
+     * {@code gun_data} component); otherwise falls back to reading the
+     * plugin instances from the stack's own component.</p>
      *
-     * @param gunId the gun definition id
-     * @return the gun definition, or {@code null} when it cannot be resolved
+     * @param stack         the gun item stack
+     * @param registryAccess the runtime registry view (from a loaded world)
+     * @return the sorted overlay texture paths, bottom-to-top; empty when no
+     *         installed plugin declares a texture overlay
      */
-    @Nullable
-    private GunDefinition resolveGunDefinition(ResourceLocation gunId) {
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.level == null) {
-            return null;
+    private List<ResourceLocation> collectOverlays(ItemStack stack, RegistryAccess registryAccess) {
+        ClientGunDataStore store = ClientGunDataStore.getInstance();
+        if (store.hasSyncData()) {
+            return PluginOverlayCompositor.collectOverlayTexturesFromSync(store.getInstalledPlugins(), registryAccess);
         }
-        RegistryAccess registryAccess = minecraft.level.registryAccess();
-        return ModularShootAPI.getGunDefinition(registryAccess, gunId).orElse(null);
+        return PluginOverlayCompositor.collectOverlayTextures(ModularShootAPI.getInstalledPlugins(stack), registryAccess);
     }
 
     /**
@@ -274,85 +282,5 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer {
         }
         Minecraft minecraft = Minecraft.getInstance();
         return minecraft.player != null ? minecraft.player.getUUID() : NULL_UUID;
-    }
-
-    /**
-     * Looks up the baked model for the gun's base or shoot texture.
-     *
-     * <p><b>Model location convention (TODO: coordinate with model-generation
-     * subtask):</b> per-gun item models are registered at</p>
-     * <ul>
-     *   <li>Base: {@code <namespace>:gun/<path>#inventory}</li>
-     *   <li>Shoot: {@code <namespace>:gun/<path>_shoot#inventory}</li>
-     * </ul>
-     * <p>where {@code <namespace>:<path>} is the gun definition id. For
-     * example, gun {@code modularshoot:sniper_rifle} uses</p>
-     * <ul>
-     *   <li>Base model: {@code modularshoot:gun/sniper_rifle#inventory}</li>
-     *   <li>Shoot model: {@code modularshoot:gun/sniper_rifle_shoot#inventory}</li>
-     * </ul>
-     *
-     * <p>The model JSON at these locations should be a standard
-     * {@code minecraft:item/generated} model referencing the corresponding
-     * texture, with {@code custom_renderer} left at its default
-     * ({@code false}) so the vanilla pipeline renders it normally without
-     * recursing into this renderer.</p>
-     *
-     * <p>When the resolved model reports {@code isCustomRenderer() == true}
-     * (misconfigured model JSON) the missing model is substituted to
-     * prevent infinite recursion and a warning is logged.</p>
-     *
-     * @param gunId          the gun definition id, used to derive the model
-     *                      location
-     * @param useShootTexture {@code true} to select the shoot-texture model,
-     *                       {@code false} for the base-texture model
-     * @return a non-custom baked model suitable for vanilla rendering
-     */
-    private BakedModel resolveBakedModel(ResourceLocation gunId, boolean useShootTexture) {
-        String modelPath = useShootTexture
-                ? "gun/" + gunId.getPath() + "_shoot"
-                : "gun/" + gunId.getPath();
-        ModelResourceLocation modelLocation =
-                ModelResourceLocation.inventory(ResourceLocation.fromNamespaceAndPath(gunId.getNamespace(), modelPath));
-
-        ModelManager modelManager = itemRenderer.getItemModelShaper().getModelManager();
-        BakedModel model = modelManager.getModel(modelLocation);
-
-        // Guard against recursion: if the resolved model is also a custom
-        // renderer, rendering it would re-enter renderByItem infinitely.
-        if (model.isCustomRenderer()) {
-            LOGGER.warn("Gun model at {} has custom_renderer=true; using missing model to avoid recursion", modelLocation);
-            return modelManager.getMissingModel();
-        }
-
-        return model;
-    }
-
-    /**
-     * Fallback render path used when the gun definition cannot be resolved
-     * (e.g. on the main menu or when the registry is empty).
-     *
-     * <p>Renders the item with the vanilla missing model so the player sees
-     * the standard black-and-purple pattern rather than nothing. This is a
-     * safe, non-recursive default: the missing model has
-     * {@code isCustomRenderer() == false}.</p>
-     *
-     * @param stack        the gun item stack
-     * @param context      the display context
-     * @param poseStack    the pose stack
-     * @param bufferSource the buffer source
-     * @param light        the packed light value
-     * @param overlay      the packed overlay value
-     */
-    private void renderFallback(
-            ItemStack stack,
-            ItemDisplayContext context,
-            PoseStack poseStack,
-            MultiBufferSource bufferSource,
-            int light,
-            int overlay) {
-
-        BakedModel missingModel = itemRenderer.getItemModelShaper().getModelManager().getMissingModel();
-        itemRenderer.render(stack, context, false, poseStack, bufferSource, light, overlay, missingModel);
     }
 }
