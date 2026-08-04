@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.jetbrains.annotations.Nullable;
+import org.joml.Vector4f;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.network.ClientBulletSnapshot;
 
@@ -208,9 +209,35 @@ public record BulletS2CPacket(
         encodeNullableResourceLocation(buf, entry.texture());
         encodeNullableResourceLocation(buf, entry.modelLocation());
         buf.writeUtf(entry.renderMode());
-        buf.writeFloat(entry.bulletSize());
+        buf.writeFloat(entry.renderScale());
         buf.writeInt(entry.shooterEntityId());
         ClientBulletSnapshot.STREAM_CODEC.encode(buf, entry.snapshot());
+        // new fields (design §4.3 extension)
+        if (entry.composedTint() == null) {
+            buf.writeBoolean(false);
+        } else {
+            buf.writeBoolean(true);
+            buf.writeFloat(entry.composedTint().x);
+            buf.writeFloat(entry.composedTint().y);
+            buf.writeFloat(entry.composedTint().z);
+            buf.writeFloat(entry.composedTint().w);
+        }
+        buf.writeVarInt(entry.layers().size());
+        for (LayerEntryFull l : entry.layers()) {
+            buf.writeUtf(l.renderMode());
+            encodeNullableResourceLocation(buf, l.texture());
+            encodeNullableResourceLocation(buf, l.model());
+            buf.writeBoolean(l.followRotation());
+            buf.writeBoolean(l.followScale());
+            buf.writeFloat(l.offsetX());
+            buf.writeFloat(l.offsetY());
+            buf.writeFloat(l.offsetZ());
+            buf.writeFloat(l.scale());
+            buf.writeFloat(l.tintR());
+            buf.writeFloat(l.tintG());
+            buf.writeFloat(l.tintB());
+            buf.writeFloat(l.tintA());
+        }
     }
 
     /**
@@ -231,12 +258,40 @@ public record BulletS2CPacket(
         ResourceLocation texture = decodeNullableResourceLocation(buf);
         ResourceLocation modelLocation = decodeNullableResourceLocation(buf);
         String renderMode = buf.readUtf();
-        float bulletSize = buf.readFloat();
+        float renderScale = buf.readFloat();
         int shooterEntityId = buf.readInt();
         ClientBulletSnapshot snapshot = ClientBulletSnapshot.STREAM_CODEC.decode(buf);
+        // new fields (design §4.3 extension)
+        @Nullable Vector4f composedTint = null;
+        if (buf.readBoolean()) {
+            composedTint = new Vector4f(buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat());
+        }
+        int layerCount = buf.readVarInt();
+        List<LayerEntryFull> layers = new ArrayList<>(Math.max(0, layerCount));
+        for (int i = 0; i < layerCount; i++) {
+            String layerRenderMode = buf.readUtf();
+            ResourceLocation layerTexture = decodeNullableResourceLocation(buf);
+            ResourceLocation layerModel = decodeNullableResourceLocation(buf);
+            boolean followRotation = buf.readBoolean();
+            boolean followScale = buf.readBoolean();
+            float offsetX = buf.readFloat();
+            float offsetY = buf.readFloat();
+            float offsetZ = buf.readFloat();
+            float scale = buf.readFloat();
+            float tintR = buf.readFloat();
+            float tintG = buf.readFloat();
+            float tintB = buf.readFloat();
+            float tintA = buf.readFloat();
+            layers.add(new LayerEntryFull(
+                    layerRenderMode, layerTexture, layerModel,
+                    followRotation, followScale,
+                    offsetX, offsetY, offsetZ,
+                    scale, tintR, tintG, tintB, tintA));
+        }
         return new FullBulletEntry(
                 bulletId, posX, posY, posZ, dirX, dirY, dirZ,
-                texture, modelLocation, renderMode, bulletSize, shooterEntityId, snapshot);
+                texture, modelLocation, renderMode, renderScale, shooterEntityId, snapshot,
+                composedTint, layers);
     }
 
     // --- DeltaBulletEntry codec -----------------------------------------
@@ -403,7 +458,12 @@ public record BulletS2CPacket(
      * @param renderMode      rendering pipeline tag — {@code "billboard"} or
      *                        {@code "3d"} (see
      *                        {@link org.yanbwe.modularshoot.registry.gun.BulletStyle.RenderMode})
-     * @param bulletSize      visual scale / collision radius of the bullet
+     * @param renderScale     composed visual scale of the bullet. Renamed
+     *                        from {@code bulletSize} in the modifier-stacking
+     *                        redesign (设计规格 §3.4): the wire field stays a
+     *                        single {@code float} in the same position, so
+     *                        the wire format is forward/back compatible by
+     *                        construction.
      * @param shooterEntityId network entity id of the shooter for
      *                        client-side owner attribution, or {@code -1}
      *                        when the bullet is ownerless (independent
@@ -413,6 +473,18 @@ public record BulletS2CPacket(
      *                        {@code onVisualTick} hooks to adjust appearance
      *                        in-flight (设计文档 §特性视觉钩子, line 1298);
      *                        never {@code null}
+     * @param composedTint    channel-wise composed tint
+     *                        ({@link org.yanbwe.modularshoot.bullet.ComposedBulletStyle#composedTint()}),
+     *                        or {@code null} as the wire sentinel for the
+     *                        white identity tint {@code (1,1,1,1)} so a
+     *                        default-styled bullet saves 4 floats on the
+     *                        wire. The client rebuilds the white vector when
+     *                        it sees {@code null}. Added in the
+     *                        modifier-stacking redesign (spec §4.3).
+     * @param layers          composed {@code attach_layer} entries, in source
+     *                        order. Empty when the bullet has no additive
+     *                        layers (most common case). Added in the
+     *                        modifier-stacking redesign (spec §4.3).
      */
     public record FullBulletEntry(
             int bulletId,
@@ -425,9 +497,43 @@ public record BulletS2CPacket(
             @Nullable ResourceLocation texture,
             @Nullable ResourceLocation modelLocation,
             String renderMode,
-            float bulletSize,
+            float renderScale,
             int shooterEntityId,
-            ClientBulletSnapshot snapshot) {
+            ClientBulletSnapshot snapshot,
+            @Nullable Vector4f composedTint,
+            List<LayerEntryFull> layers) {
+
+        /**
+         * Wire-side description of one {@code attach_layer} layer. Scalar
+         * flattening of {@link org.yanbwe.modularshoot.bullet.ComposedBulletStyle.LayerEntry}
+         * (renderMode + texture/model, follow flags, offset XYZ, scale, tint
+         * RGBA) so the wire form is compact and forward-typed (no nested
+         * Vector4f/Vec3). See spec §4.3 LayerEntry.
+         *
+         * @param renderMode      {@code "billboard"} or {@code "3d"} tag
+         * @param texture         billboard texture path, {@code null} for 3d
+         * @param model           3d model path, {@code null} for billboard
+         * @param followRotation  whether the layer rotates with the bullet
+         * @param followScale     whether the layer inherits base renderScale
+         * @param offsetX/Y/Z     positional offset
+         * @param scale           per-layer scale multiplier
+         * @param tintR/G/B/A      per-layer tint channels
+         */
+        public record LayerEntryFull(
+                String renderMode,
+                @Nullable ResourceLocation texture,
+                @Nullable ResourceLocation model,
+                boolean followRotation,
+                boolean followScale,
+                float offsetX,
+                float offsetY,
+                float offsetZ,
+                float scale,
+                float tintR,
+                float tintG,
+                float tintB,
+                float tintA) {
+        }
     }
 
     /**
