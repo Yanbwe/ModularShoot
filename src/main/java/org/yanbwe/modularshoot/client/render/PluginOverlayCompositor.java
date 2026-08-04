@@ -7,6 +7,8 @@ import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import org.yanbwe.modularshoot.component.PluginInstance;
 import org.yanbwe.modularshoot.network.GunSyncS2CPacket;
+import org.yanbwe.modularshoot.plugin.OverlayAlignment;
+import org.yanbwe.modularshoot.plugin.OverlayFit;
 import org.yanbwe.modularshoot.plugin.PluginDefinition;
 import org.yanbwe.modularshoot.plugin.PluginRegistry;
 import org.yanbwe.modularshoot.plugin.TextureOverlay;
@@ -23,11 +25,16 @@ import org.yanbwe.modularshoot.plugin.TextureOverlay;
  * &mdash; or a later install at the same layer &mdash; renders above lower
  * ones.</p>
  *
+ * <p>Each collected {@link CompositeTextureBuilder.OverlayLayer} carries the
+ * plugin's placement ({@link OverlayAlignment}) and sizing ({@link OverlayFit})
+ * parameters, so compositing is driven by the full definition rather than the
+ * bare texture path.</p>
+ *
  * <p>This class performs only <em>collection and ordering</em>; it does not
  * touch {@code NativeImage} or any render-thread state. The returned list is
  * a pure data value that can be fed directly into
  * {@link CompositeTextureBuilder#composite} via
- * {@link #collectOverlayTextures}.</p>
+ * {@link #collectOverlayLayers}.</p>
  *
  * <p><b>Registry availability:</b> the {@code modularshoot:plugins} registry
  * is datapack-driven and <strong>empty on the main menu</strong>
@@ -54,12 +61,19 @@ public final class PluginOverlayCompositor {
      * @param installOrder zero-based index into the gun's
      *                     {@code installedPlugins} list; earlier installs have
      *                     smaller values and are composited first (below)
+     * @param alignment    placement within the base canvas
+     * @param fit          sizing relative to the base canvas
      */
-    public record OverlayEntry(ResourceLocation texture, int layer, int installOrder) {
+    public record OverlayEntry(
+            ResourceLocation texture,
+            int layer,
+            int installOrder,
+            OverlayAlignment alignment,
+            OverlayFit fit) {
     }
 
     /**
-     * Collects texture overlays from a gun's installed plugins, sorted by
+     * Collects overlay layers from a gun's installed plugins, sorted by
      * layer (low to high) then by installation order (earlier first).
      *
      * <p>Plugins whose definition is absent from the registry (e.g. on the
@@ -71,21 +85,21 @@ public final class PluginOverlayCompositor {
      * @param installedPlugins the gun's ordered plugin list
      *                         ({@link org.yanbwe.modularshoot.component.GunData#installedPlugins})
      * @param registryAccess   the runtime registry view (from a loaded world)
-     * @return a new, sorted list of overlay entries; empty when no installed
+     * @return a new, sorted list of overlay layers; empty when no installed
      *         plugin declares a texture overlay
      */
-    public static List<OverlayEntry> collectOverlays(
+    public static List<CompositeTextureBuilder.OverlayLayer> collectOverlayLayers(
             List<PluginInstance> installedPlugins,
             RegistryAccess registryAccess) {
         List<ResourceLocation> pluginIds = new ArrayList<>(installedPlugins.size());
         for (PluginInstance instance : installedPlugins) {
             pluginIds.add(instance.pluginId());
         }
-        return collectOverlaysByIds(pluginIds, registryAccess);
+        return collectOverlayLayersByIds(pluginIds, registryAccess);
     }
 
     /**
-     * Sync-data overload of {@link #collectOverlays}, accepting the wire
+     * Sync-data overload of {@link #collectOverlayLayers}, accepting the wire
      * format {@link GunSyncS2CPacket.PluginSyncEntry} list pushed by the
      * server and stored in
      * {@link org.yanbwe.modularshoot.client.ClientGunDataStore}.
@@ -99,22 +113,22 @@ public final class PluginOverlayCompositor {
      *
      * @param installedPlugins the synced plugin entry list
      * @param registryAccess   the runtime registry view (from a loaded world)
-     * @return a new, sorted list of overlay entries; empty when no installed
+     * @return a new, sorted list of overlay layers; empty when no installed
      *         plugin declares a texture overlay
      */
-    public static List<OverlayEntry> collectOverlaysFromSync(
+    public static List<CompositeTextureBuilder.OverlayLayer> collectOverlayLayersFromSync(
             List<GunSyncS2CPacket.PluginSyncEntry> installedPlugins,
             RegistryAccess registryAccess) {
         List<ResourceLocation> pluginIds = new ArrayList<>(installedPlugins.size());
         for (GunSyncS2CPacket.PluginSyncEntry entry : installedPlugins) {
             pluginIds.add(entry.pluginId());
         }
-        return collectOverlaysByIds(pluginIds, registryAccess);
+        return collectOverlayLayersByIds(pluginIds, registryAccess);
     }
 
     /**
-     * Shared core that collects and sorts overlays from a plain list of
-     * plugin ids, using the list index as the installation order.
+     * Shared core that collects and sorts overlay layers from a plain list
+     * of plugin ids, using the list index as the installation order.
      *
      * <p>Plugins whose definition is absent from the registry (e.g. on the
      * main menu) or that declare no {@code texture_overlay} are skipped. The
@@ -124,10 +138,10 @@ public final class PluginOverlayCompositor {
      *
      * @param pluginIds      the ordered plugin definition ids
      * @param registryAccess the runtime registry view (from a loaded world)
-     * @return a new, sorted list of overlay entries; empty when no plugin
+     * @return a new, sorted list of overlay layers; empty when no plugin
      *         declares a texture overlay
      */
-    private static List<OverlayEntry> collectOverlaysByIds(
+    private static List<CompositeTextureBuilder.OverlayLayer> collectOverlayLayersByIds(
             List<ResourceLocation> pluginIds,
             RegistryAccess registryAccess) {
         List<OverlayEntry> entries = new ArrayList<>(pluginIds.size());
@@ -140,49 +154,18 @@ public final class PluginOverlayCompositor {
                 continue;
             }
             TextureOverlay overlay = definition.textureOverlay().get();
-            entries.add(new OverlayEntry(overlay.texture(), overlay.layer(), i));
+            entries.add(new OverlayEntry(
+                    overlay.texture(),
+                    overlay.layer(),
+                    i,
+                    overlay.alignment(),
+                    overlay.fit()));
         }
         entries.sort(Comparator
                 .comparingInt(OverlayEntry::layer)
                 .thenComparingInt(OverlayEntry::installOrder));
-        return entries;
-    }
-
-    /**
-     * Convenience overload that returns just the sorted texture paths, ready
-     * to pass to
-     * {@link CompositeTextureBuilder#composite(ResourceLocation, List)}.
-     *
-     * @param installedPlugins the gun's ordered plugin list
-     * @param registryAccess   the runtime registry view
-     * @return a new, sorted list of overlay texture paths; empty when no
-     *         installed plugin declares a texture overlay
-     */
-    public static List<ResourceLocation> collectOverlayTextures(
-            List<PluginInstance> installedPlugins,
-            RegistryAccess registryAccess) {
-
-        return collectOverlays(installedPlugins, registryAccess).stream()
-                .map(OverlayEntry::texture)
-                .toList();
-    }
-
-    /**
-     * Sync-data convenience overload of {@link #collectOverlayTextures},
-     * accepting the wire format {@link GunSyncS2CPacket.PluginSyncEntry}
-     * list.
-     *
-     * @param installedPlugins the synced plugin entry list
-     * @param registryAccess   the runtime registry view
-     * @return a new, sorted list of overlay texture paths; empty when no
-     *         installed plugin declares a texture overlay
-     */
-    public static List<ResourceLocation> collectOverlayTexturesFromSync(
-            List<GunSyncS2CPacket.PluginSyncEntry> installedPlugins,
-            RegistryAccess registryAccess) {
-
-        return collectOverlaysFromSync(installedPlugins, registryAccess).stream()
-                .map(OverlayEntry::texture)
+        return entries.stream()
+                .map(e -> new CompositeTextureBuilder.OverlayLayer(e.texture(), e.alignment(), e.fit()))
                 .toList();
     }
 }

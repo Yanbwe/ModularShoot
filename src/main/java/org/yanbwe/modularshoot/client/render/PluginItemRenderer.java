@@ -14,6 +14,7 @@ import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.client.extensions.common.IClientItemExtensions;
 import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.plugin.PluginDefinition;
+import org.yanbwe.modularshoot.registry.gun.TextureScaleMode;
 
 /**
  * Custom item renderer for framework plugin items, drawing the plugin's
@@ -119,8 +120,13 @@ public final class PluginItemRenderer extends BlockEntityWithoutLevelRenderer im
             return;
         }
 
-        ResourceLocation texture = DynamicGunTextureCache.getInstance().getOrCreate(
+        DynamicGunTextureCache.TextureHandle handle = DynamicGunTextureCache.getInstance().getOrCreate(
                 new DynamicGunTextureCache.Key(definition.itemIcon(), List.of(), 0));
-        DynamicItemModelRenderer.render(texture, context, poseStack, bufferSource, light, overlay);
+        boolean auto = definition.textureScale() == TextureScaleMode.AUTO;
+        DynamicItemModelRenderer.render(
+                handle.location(),
+                auto ? handle.width() / 16.0F : 1.0F,
+                auto ? handle.height() / 16.0F : 1.0F,
+                context, poseStack, bufferSource, light, overlay);
     }
 }

@@ -3,6 +3,7 @@
   "texture": "modularshoot:textures/gun/example_gun.png",
   "shoot_texture": "modularshoot:textures/gun/example_gun_shoot.png",
   "shoot_texture_mode": "while_firing",
+  "texture_scale": "auto",
   "stats": {
     "modularshoot:hit_damage": 8.0,
     "modularshoot:fire_rate": 4.0,

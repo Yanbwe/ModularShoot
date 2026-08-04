@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import net.minecraft.resources.ResourceLocation;
 import org.yanbwe.modularshoot.registry.gun.BulletStyle;
+import org.yanbwe.modularshoot.registry.gun.TextureScaleMode;
 
 /**
  * Immutable definition of a plugin entry in the {@code modularshoot:plugins}
@@ -35,6 +36,10 @@ import org.yanbwe.modularshoot.registry.gun.BulletStyle;
  *       inherited from the category.</li>
  *   <li>{@code item_icon} &mdash; required texture path shown in the
  *       inventory.</li>
+ *   <li>{@code texture_scale} &mdash; optional, defaults to {@code auto}.
+ *       Controls whether the {@code item_icon} geometry scales with the
+ *       texture resolution ({@code auto}) or stays fixed in the 16×16 unit
+ *       grid ({@code fixed}).</li>
  *   <li>{@code modifiers} &mdash; attribute modifiers; defaults to an empty
  *       list.</li>
  *   <li>{@code traits} &mdash; boolean trait overrides keyed by trait id;
@@ -57,6 +62,8 @@ import org.yanbwe.modularshoot.registry.gun.BulletStyle;
  * @param tags           tag ids for category intersection matching
  * @param priority       conflict priority; not inherited from the category
  * @param itemIcon       required inventory icon texture path
+ * @param textureScale   item-icon geometry scaling with texture resolution;
+ *                       defaults to {@code auto}
  * @param modifiers      attribute modifiers applied on installation
  * @param traits         boolean trait overrides keyed by trait id
  * @param exclusiveGroup optional mutual-exclusion group id; empty when
@@ -73,6 +80,7 @@ public record PluginDefinition(
         List<ResourceLocation> tags,
         int priority,
         ResourceLocation itemIcon,
+        TextureScaleMode textureScale,
         List<PluginModifier> modifiers,
         Map<ResourceLocation, Boolean> traits,
         Optional<String> exclusiveGroup,
@@ -88,6 +96,7 @@ public record PluginDefinition(
                     ResourceLocation.CODEC.listOf().optionalFieldOf("tags", List.of()).forGetter(PluginDefinition::tags),
                     Codec.INT.optionalFieldOf("priority", 0).forGetter(PluginDefinition::priority),
                     ResourceLocation.CODEC.fieldOf("item_icon").forGetter(PluginDefinition::itemIcon),
+                    TextureScaleMode.CODEC.optionalFieldOf("texture_scale", TextureScaleMode.AUTO).forGetter(PluginDefinition::textureScale),
                     PluginModifier.CODEC.listOf().optionalFieldOf("modifiers", List.of()).forGetter(PluginDefinition::modifiers),
                     Codec.unboundedMap(ResourceLocation.CODEC, Codec.BOOL).optionalFieldOf("traits", Map.of()).forGetter(PluginDefinition::traits),
                     Codec.STRING.optionalFieldOf("exclusive_group").forGetter(PluginDefinition::exclusiveGroup),

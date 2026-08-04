@@ -24,7 +24,11 @@ import net.minecraft.world.item.ItemStack;
  * for a single dynamic texture: an extruded 16×16 block with its front face
  * at {@code z = 8.5}, back face at {@code z = 7.5} and four side faces,
  * mirroring the geometry produced by {@code ItemModelGenerator} for
- * {@code builtin/generated} models.</p>
+ * {@code builtin/generated} models. With {@code texture_scale = auto} the
+ * caller scales the quads by {@code texturePixels / 16} per axis via
+ * {@link #render(ResourceLocation, float, float, ItemDisplayContext, PoseStack, MultiBufferSource, int, int)},
+ * so higher-resolution textures render proportionally larger instead of
+ * being squeezed into the 16×16 unit grid.</p>
  *
  * <p><b>Coordinate space:</b> quads are emitted in the baked-model space of
  * 0..1 (vanilla's {@code FaceBakery} divides block-element coordinates by 16
@@ -78,8 +82,20 @@ public final class DynamicItemModelRenderer {
      * renderer), and the {@link ItemTransforms#NO_TRANSFORMS} transform is
      * the identity.</p>
      *
+     * <p><b>Texture scaling:</b> the quads are scaled by
+     * {@code scaleX}/{@code scaleY} around the centred origin so the rendered
+     * geometry follows the texture resolution — a 32×32 texture with
+     * {@code scaleX = scaleY = 2} renders 2× larger than a 16×16 one. Because
+     * the pose is already centred, the scale keeps the item centred regardless
+     * of magnitude. The extrusion thickness (z axis) is <em>not</em> scaled,
+     * staying at the vanilla 1/16-cell depth. The UVs remain normalised 0..1,
+     * mapping the whole texture onto the (possibly enlarged) quad, so texture
+     * proportions are never stretched.</p>
+     *
      * @param texture      the registered dynamic texture location; must be
      *                     non-{@code null}
+     * @param scaleX       horizontal geometry scale (16 px = 1 grid cell)
+     * @param scaleY       vertical geometry scale (16 px = 1 grid cell)
      * @param context      the display context (GUI, hand, ground, ...)
      * @param poseStack    the pose stack, already centred by the vanilla
      *                     pipeline
@@ -89,6 +105,8 @@ public final class DynamicItemModelRenderer {
      */
     public static void render(
             ResourceLocation texture,
+            float scaleX,
+            float scaleY,
             ItemDisplayContext context,
             PoseStack poseStack,
             MultiBufferSource bufferSource,
@@ -96,6 +114,7 @@ public final class DynamicItemModelRenderer {
             int overlay) {
 
         poseStack.pushPose();
+        poseStack.scale(scaleX, scaleY, 1F);
 
         VertexConsumer consumer = bufferSource.getBuffer(RenderType.entityTranslucent(texture));
         PoseStack.Pose pose = poseStack.last();

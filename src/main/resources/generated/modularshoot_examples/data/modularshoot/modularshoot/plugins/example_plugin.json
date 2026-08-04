@@ -2,6 +2,7 @@
   "tags": ["c:barrel", "c:accessory"],
   "priority": 120,
   "item_icon": "modularshoot:textures/plugins/example_plugin.png",
+  "texture_scale": "auto",
   "modifiers": [
     { "attribute": "hit_damage", "operation": "add", "value": 3.0 },
     { "attribute": "fire_rate", "operation": "multiply", "value": 0.5 },
@@ -19,7 +20,9 @@
   },
   "texture_overlay": {
     "texture": "modularshoot:textures/plugins/example_overlay.png",
-    "layer": 10
+    "layer": 10,
+    "alignment": "center",
+    "fit": "fill"
   },
   "name": "§e示例插件",
   "brief": "综合性能提升插件",

@@ -71,7 +71,7 @@ public final class DynamicGunTextureCache {
      * preserves insertion order so the oldest entries can be evicted first
      * when the cache exceeds {@link #MAX_ENTRIES}.
      */
-    private final Map<Key, ResourceLocation> locations = new LinkedHashMap<>();
+    private final Map<Key, TextureHandle> locations = new LinkedHashMap<>();
     private int nextId;
 
     private DynamicGunTextureCache() {
@@ -81,13 +81,26 @@ public final class DynamicGunTextureCache {
      * Cache key identifying a unique composited texture.
      *
      * @param texturePath     the resolved base (or shoot) texture path
-     * @param overlays        the sorted overlay texture paths, bottom-to-top;
+     * @param overlays        the sorted overlay layers, bottom-to-top, each
+     *                        carrying its placement/sizing parameters;
      *                        empty when the item has no overlay layers
      * @param modifierVersion the gun's anti-cheat modifier version, used to
      *                        force a re-composite when plugins change even if
      *                        the overlay list is unchanged
      */
-    public record Key(ResourceLocation texturePath, List<ResourceLocation> overlays, int modifierVersion) {
+    public record Key(ResourceLocation texturePath, List<CompositeTextureBuilder.OverlayLayer> overlays, int modifierVersion) {
+    }
+
+    /**
+     * Resolved dynamic texture plus the pixel dimensions of the composited
+     * image, so callers can size the render geometry from the texture
+     * resolution ({@code auto} texture scaling).
+     *
+     * @param location the registered texture location for quad rendering
+     * @param width    the composited image width in pixels
+     * @param height   the composited image height in pixels
+     */
+    public record TextureHandle(ResourceLocation location, int width, int height) {
     }
 
     /**
@@ -103,7 +116,7 @@ public final class DynamicGunTextureCache {
     }
 
     /**
-     * Returns the registered texture location for the given key, compositing
+     * Returns the registered texture handle for the given key, compositing
      * and uploading a new dynamic texture on a cache miss.
      *
      * <p>Never returns {@code null}: a failed base-texture load falls back to
@@ -111,14 +124,16 @@ public final class DynamicGunTextureCache {
      * draw. On miss the loaded PNGs are composited via
      * {@link CompositeTextureBuilder#composite} and the result is uploaded
      * through a {@link DynamicTexture} registered at a fresh
-     * {@code modularshoot:dynamic/gun_<n>} location.</p>
+     * {@code modularshoot:dynamic/gun_<n>} location. The handle carries the
+     * composited image's pixel dimensions (16×16 for the placeholder) so
+     * callers can scale the render geometry to the texture resolution.</p>
      *
      * @param key the cache key; must not be {@code null}
-     * @return the texture location for the composited image (never
+     * @return the texture handle for the composited image (never
      *         {@code null})
      */
-    public ResourceLocation getOrCreate(Key key) {
-        ResourceLocation existing = locations.get(key);
+    public TextureHandle getOrCreate(Key key) {
+        TextureHandle existing = locations.get(key);
         if (existing != null) {
             return existing;
         }
@@ -127,7 +142,7 @@ public final class DynamicGunTextureCache {
         // under the limit, releasing the GPU textures of stale configurations.
         while (locations.size() >= MAX_ENTRIES) {
             var first = locations.entrySet().iterator().next();
-            Minecraft.getInstance().getTextureManager().release(first.getValue());
+            Minecraft.getInstance().getTextureManager().release(first.getValue().location());
             locations.remove(first.getKey());
         }
 
@@ -141,13 +156,16 @@ public final class DynamicGunTextureCache {
                     key.texturePath());
             image = createPlaceholder();
         }
+        // Read the dimensions before ownership transfers to the DynamicTexture.
+        int width = image.getWidth();
+        int height = image.getHeight();
 
         // DynamicTexture(NativeImage) prepares and uploads the GL texture,
         // deferring to the render thread when necessary.
         DynamicTexture texture = new DynamicTexture(image);
         Minecraft.getInstance().getTextureManager().register(location, texture);
-        locations.put(key, location);
-        return location;
+        locations.put(key, new TextureHandle(location, width, height));
+        return locations.get(key);
     }
 
     /**
@@ -163,8 +181,8 @@ public final class DynamicGunTextureCache {
             return;
         }
         var textureManager = Minecraft.getInstance().getTextureManager();
-        for (ResourceLocation location : locations.values()) {
-            textureManager.release(location);
+        for (TextureHandle handle : locations.values()) {
+            textureManager.release(handle.location());
         }
         locations.clear();
     }

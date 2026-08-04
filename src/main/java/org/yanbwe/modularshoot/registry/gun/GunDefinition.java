@@ -25,6 +25,9 @@ import org.jetbrains.annotations.Nullable;
  *       Absent → the base texture is used throughout.</li>
  *   <li>{@code shoot_texture_mode} — optional, defaults to {@code per_shot}.
  *       Only effective when {@code shoot_texture} is present.</li>
+ *   <li>{@code texture_scale} — optional, defaults to {@code auto}. Controls
+ *       whether the rendered geometry scales with the texture resolution
+ *       ({@code auto}) or stays fixed in the 16×16 unit grid ({@code fixed}).</li>
  *   <li>{@code stats} — attribute id → value. Keys <strong>must</strong> be
  *       fully namespaced (e.g. {@code "modularshoot:hit_damage"}); bare names
  *       resolve to the {@code minecraft} namespace.</li>
@@ -43,6 +46,8 @@ import org.jetbrains.annotations.Nullable;
  *                         base texture should be kept
  * @param shootTextureMode texture-swap timing; defaults to
  *                         {@link ShootTextureMode#PER_SHOT}
+ * @param textureScale     geometry scaling with texture resolution; defaults
+ *                         to {@link TextureScaleMode#AUTO}
  * @param stats            base attribute values keyed by attribute id
  * @param traits           inherent boolean traits keyed by trait id
  * @param slots            plugin slot configuration keyed by category id
@@ -55,6 +60,7 @@ public record GunDefinition(
         ResourceLocation texture,
         Optional<ResourceLocation> shootTexture,
         ShootTextureMode shootTextureMode,
+        TextureScaleMode textureScale,
         Map<ResourceLocation, Double> stats,
         Map<ResourceLocation, Boolean> traits,
         Map<ResourceLocation, Integer> slots,
@@ -67,6 +73,7 @@ public record GunDefinition(
                     ResourceLocation.CODEC.fieldOf("texture").forGetter(GunDefinition::texture),
                     ResourceLocation.CODEC.optionalFieldOf("shoot_texture").forGetter(GunDefinition::shootTexture),
                     ShootTextureMode.CODEC.optionalFieldOf("shoot_texture_mode", ShootTextureMode.PER_SHOT).forGetter(GunDefinition::shootTextureMode),
+                    TextureScaleMode.CODEC.optionalFieldOf("texture_scale", TextureScaleMode.AUTO).forGetter(GunDefinition::textureScale),
                     Codec.unboundedMap(ResourceLocation.CODEC, Codec.DOUBLE).optionalFieldOf("stats", Map.of()).forGetter(GunDefinition::stats),
                     Codec.unboundedMap(ResourceLocation.CODEC, Codec.BOOL).optionalFieldOf("traits", Map.of()).forGetter(GunDefinition::traits),
                     Codec.unboundedMap(ResourceLocation.CODEC, Codec.INT).optionalFieldOf("slots", Map.of()).forGetter(GunDefinition::slots),

@@ -19,6 +19,7 @@ import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.client.ClientGunDataStore;
 import org.yanbwe.modularshoot.client.PlayerShootStateManager;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
+import org.yanbwe.modularshoot.registry.gun.TextureScaleMode;
 
 /**
  * Custom item renderer for framework guns, integrating shoot-texture
@@ -231,19 +232,50 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer imple
         ResourceLocation renderTexture = ShootTextureResolver.resolveTexture(gunDef, playerUuid);
 
         RegistryAccess registryAccess = minecraft.level.registryAccess();
-        List<ResourceLocation> overlays = collectOverlays(stack, registryAccess);
+        List<CompositeTextureBuilder.OverlayLayer> overlays = collectOverlays(stack, registryAccess);
         int modifierVersion = ClientGunDataStore.getInstance().hasSyncData()
                 ? ClientGunDataStore.getInstance().getModifierVersion()
                 : 0;
 
-        ResourceLocation texture = DynamicGunTextureCache.getInstance().getOrCreate(
+        DynamicGunTextureCache.TextureHandle handle = DynamicGunTextureCache.getInstance().getOrCreate(
                 new DynamicGunTextureCache.Key(renderTexture, overlays, modifierVersion));
-        DynamicItemModelRenderer.render(texture, context, poseStack, bufferSource, light, overlay);
+        DynamicItemModelRenderer.render(
+                handle.location(),
+                scaleFor(gunDef.textureScale(), handle),
+                scaleForY(gunDef.textureScale(), handle),
+                context, poseStack, bufferSource, light, overlay);
     }
 
     /**
-     * Collects the sorted overlay texture paths of the gun's installed
-     * plugins.
+     * Computes the horizontal geometry scale for the resolved texture.
+     *
+     * <p>{@code auto} mode sizes the quad from the texture resolution
+     * (16 px = 1 grid cell); {@code fixed} keeps the 16×16 unit grid
+     * regardless of texture size.</p>
+     *
+     * @param mode   the gun's {@code texture_scale} setting
+     * @param handle the composited texture handle carrying the pixel size
+     * @return the horizontal scale factor
+     */
+    private static float scaleFor(TextureScaleMode mode, DynamicGunTextureCache.TextureHandle handle) {
+        return mode == TextureScaleMode.AUTO ? handle.width() / 16.0F : 1.0F;
+    }
+
+    /**
+     * Computes the vertical geometry scale for the resolved texture, see
+     * {@link #scaleFor}. Width and height scale independently so non-square
+     * textures are never stretched.
+     *
+     * @param mode   the gun's {@code texture_scale} setting
+     * @param handle the composited texture handle carrying the pixel size
+     * @return the vertical scale factor
+     */
+    private static float scaleForY(TextureScaleMode mode, DynamicGunTextureCache.TextureHandle handle) {
+        return mode == TextureScaleMode.AUTO ? handle.height() / 16.0F : 1.0F;
+    }
+
+    /**
+     * Collects the sorted overlay layers of the gun's installed plugins.
      *
      * <p>Prefers the server-pushed snapshot in
      * {@link ClientGunDataStore} when one has been received (the sync
@@ -253,15 +285,15 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer imple
      *
      * @param stack         the gun item stack
      * @param registryAccess the runtime registry view (from a loaded world)
-     * @return the sorted overlay texture paths, bottom-to-top; empty when no
+     * @return the sorted overlay layers, bottom-to-top; empty when no
      *         installed plugin declares a texture overlay
      */
-    private List<ResourceLocation> collectOverlays(ItemStack stack, RegistryAccess registryAccess) {
+    private List<CompositeTextureBuilder.OverlayLayer> collectOverlays(ItemStack stack, RegistryAccess registryAccess) {
         ClientGunDataStore store = ClientGunDataStore.getInstance();
         if (store.hasSyncData()) {
-            return PluginOverlayCompositor.collectOverlayTexturesFromSync(store.getInstalledPlugins(), registryAccess);
+            return PluginOverlayCompositor.collectOverlayLayersFromSync(store.getInstalledPlugins(), registryAccess);
         }
-        return PluginOverlayCompositor.collectOverlayTextures(ModularShootAPI.getInstalledPlugins(stack), registryAccess);
+        return PluginOverlayCompositor.collectOverlayLayers(ModularShootAPI.getInstalledPlugins(stack), registryAccess);
     }
 
     /**
