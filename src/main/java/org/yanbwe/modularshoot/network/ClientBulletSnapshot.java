@@ -34,10 +34,12 @@ import org.jetbrains.annotations.Nullable;
  * entry but never decodes it, and the class carries no client-only
  * dependencies that would break server class-loading.</p>
  *
- * <p><strong>Immutability.</strong> The {@code stats} and {@code traits}
- * maps are defensively copied on construction and on decode, and
- * unmodifiable views are exposed by the record accessors, so visual-tick
- * hooks cannot mutate the frozen values. This matches the read-only contract
+     * <p><strong>Immutability.</strong> The {@code stats} and {@code traits}
+     * maps are frozen once via {@code Map.copyOf} in the canonical constructor —
+     * the single defensive copy on both the server build path (which passes
+     * {@code BulletSnapshot}'s live views) and the client decode path.
+     * Unmodifiable views are exposed by the record accessors, so visual-tick
+     * hooks cannot mutate the frozen values. This matches the read-only contract
  * for client-visible snapshot data: in-flight mutation of stats/traits
  * happens only on the server (via {@code onTick}, {@code onHit}, etc.) and
  * is re-synced to the client on the next full-sync cycle.</p>

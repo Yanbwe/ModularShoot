@@ -380,16 +380,17 @@ public final class BulletManager {
      * Returns a live, read-only view of all active bullets for iteration.
      *
      * <p>Unlike {@link #getAllBullets()} this does <em>not</em> take a
-     * defensive copy — callers must not mutate the map and must not rely on
-     * iteration stability across concurrent removal (the underlying
+     * defensive copy — the returned collection is unmodifiable (remove/clear
+     * throw {@link UnsupportedOperationException}), and iteration remains
+     * weakly consistent across concurrent removal (the underlying
      * {@link ConcurrentHashMap} iterators are weakly consistent). Intended for
      * read-only passes such as the per-tick sync broadcast, which never
      * removes bullets while iterating.</p>
      *
-     * @return the live values view of the bullet id index
+     * @return an unmodifiable live view of the bullet id index values
      */
     public Collection<BulletRecord> getActiveBullets() {
-        return bulletsById.values();
+        return Collections.unmodifiableCollection(bulletsById.values());
     }
 
     /**
