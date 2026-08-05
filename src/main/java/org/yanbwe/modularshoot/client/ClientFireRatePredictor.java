@@ -8,7 +8,13 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+
 import org.jetbrains.annotations.Nullable;
+import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 import org.yanbwe.modularshoot.component.GunData;
@@ -46,6 +52,7 @@ import org.yanbwe.modularshoot.component.ModularShootDataComponents;
  * @see org.yanbwe.modularshoot.shooting.FireRateController
  * @see PlayerShootStateManager#updateLocalPlayer
  */
+@EventBusSubscriber(modid = ModularShoot.MODID, value = Dist.CLIENT)
 public final class ClientFireRatePredictor {
 
     /** Vanilla tick rate (ticks per second), used to convert shots/s into a tick interval. */
@@ -170,5 +177,17 @@ public final class ClientFireRatePredictor {
      */
     public static void clearAll() {
         lastShootTicks.clear();
+    }
+
+    /**
+     * Clears all predicted-shoot state on client logout so the static map
+     * does not accumulate entries across sessions (each login re-creates the
+     * per-player sub-map lazily).
+     *
+     * @param event the client player logging-out event
+     */
+    @SubscribeEvent
+    public static void onPlayerLogout(ClientPlayerNetworkEvent.LoggingOut event) {
+        clearAll();
     }
 }

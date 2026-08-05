@@ -11,6 +11,7 @@ import net.minecraft.world.item.ItemStack;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 
 import org.yanbwe.modularshoot.ModularShoot;
@@ -173,6 +174,10 @@ public final class PlayerShootStateManager {
             }
             return state;
         });
+        // Prune entries that fully decayed and are not firing — they are
+        // indistinguishable from the default state and would otherwise linger.
+        states.entrySet().removeIf(entry ->
+                entry.getValue().shootAnimTimer() <= 0f && !entry.getValue().isFiring());
     }
 
     /**
@@ -180,6 +185,16 @@ public final class PlayerShootStateManager {
      */
     public void clear() {
         states.clear();
+    }
+
+    /**
+     * Clears all per-player shoot state on client logout.
+     *
+     * @param event the client player logging-out event
+     */
+    @SubscribeEvent
+    public static void onPlayerLogout(ClientPlayerNetworkEvent.LoggingOut event) {
+        INSTANCE.clear();
     }
 
     /**
