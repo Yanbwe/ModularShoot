@@ -1,16 +1,20 @@
 package org.yanbwe.modularshoot.plugin;
 
+import java.util.Objects;
 import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.entity.SlotAccess;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ClickAction;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.SubscribeEvent;
+import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.item.ModularShootItems;
+import org.yanbwe.modularshoot.registry.gun.GunRegistry;
+import org.yanbwe.modularshoot.registry.gun.GunSounds;
 
 /**
  * Container-GUI right-click handler that triggers plugin installation,
@@ -47,11 +51,15 @@ import org.yanbwe.modularshoot.item.ModularShootItems;
  *       player is in creative mode. Creative players should obtain
  *       pre-configured guns via {@code /give} or the creative search tab
  *       instead.</li>
- *   <li><b>Sound feedback (W7).</b> The install sound is played only on the
- *       server side (and synced to the client) to avoid a doubled audible
- *       effect from the bilateral event firing. The random pitch draw is
- *       kept on both sides to preserve player-random alignment (see
- *       {@link PluginInstallService#deriveInstanceUuid}).</li>
+ *   <li><b>Sound feedback (W7).</b> The install sound is read from the gun
+ *       definition's {@code sounds.plugin_install} slot (data-driven, 设计文档
+ *       §音效系统); when the slot is unconfigured the install is silent. The
+ *       sound is played only on the server side (and synced to the client) to
+ *       avoid a doubled audible effect from the bilateral event firing. The
+ *       random pitch draw is kept on both sides to preserve player-random
+ *       alignment (see {@link PluginInstallService#deriveInstanceUuid}).
+ *       Extension mods wanting a custom install sound can listen to
+ *       {@code PostPluginInstallEvent} and play their own sound.</li>
  * </ul>
  *
  * @see PluginInstallService
@@ -60,6 +68,9 @@ public final class PluginInstallEventHandler {
 
     /** Translation key for the action-bar warning shown when installation fails. */
     public static final String INSTALL_FAILED_KEY = "modularshoot.install_failed";
+
+    /** 枪械定义 sounds 中的插件安装音效槽位名（设计文档 §音效系统）。 */
+    private static final String INSTALL_SOUND_SLOT = "plugin_install";
 
     public PluginInstallEventHandler() {
     }
@@ -131,15 +142,17 @@ public final class PluginInstallEventHandler {
             access.set(result.consumedPlugin());
             // Suppress the vanilla item swap.
             event.setCanceled(true);
-            // Apotheosis-style sound feedback (W7 fix): the pitch is drawn on
-            // both sides to keep the player's random source aligned (the
-            // install uuid derivation in PluginInstallService relies on
-            // bilateral random synchronization), but the sound is only played
-            // on the server side (and synced to the client) to avoid a
-            // doubled audible effect from the bilateral event firing.
+            // Data-driven sound feedback (W7 fix): the pitch is drawn on both
+            // sides to keep the player's random source aligned (the install
+            // uuid derivation in PluginInstallService relies on bilateral
+            // random synchronization), but the sound is only played on the
+            // server side (and synced to the client) to avoid a doubled
+            // audible effect from the bilateral event firing. The sound event
+            // itself is read from the gun definition's sounds.plugin_install
+            // slot; unconfigured slots stay silent.
             float pitch = 1.5F + 0.35F * (1 - 2 * player.getRandom().nextFloat());
             if (!player.level().isClientSide()) {
-                player.playSound(SoundEvents.AMETHYST_BLOCK_BREAK, 1.0F, pitch);
+                playInstallSound(player, stackedOnItem, pitch);
             }
         } else {
             // Install failed — do NOT cancel. Let vanilla swap proceed.
@@ -169,5 +182,29 @@ public final class PluginInstallEventHandler {
             return false;
         }
         return stack.has(ModularShootDataComponents.PLUGIN_DATA.get());
+    }
+
+    /**
+     * 播放插件安装音效（设计文档 §音效系统 — 数据驱动安装音效）。
+     *
+     * <p>音效从枪械定义 {@code sounds} 的 {@value #INSTALL_SOUND_SLOT} 槽位读取；
+     * 槽位未配置、枪械定义不存在或音效未注册时静音，不播放任何声音。仅服务端
+     * 调用（同步给客户端），保持 W7 的"仅服务端播放避免双端重复"约定。扩展模组
+     * 需要自定义安装音效可监听 {@code PostPluginInstallEvent}。</p>
+     *
+     * @param player 执行安装的玩家
+     * @param gun    被安装插件的枪械 ItemStack
+     * @param pitch  随机音调（W7 双端随机源对齐约定，由调用方计算）
+     */
+    private static void playInstallSound(Player player, ItemStack gun, float pitch) {
+        GunData data = gun.get(ModularShootDataComponents.GUN_DATA.get());
+        if (data == null) {
+            return;
+        }
+        GunRegistry.getGun(player.level().registryAccess(), data.gunId())
+                .flatMap(def -> GunSounds.get(def, INSTALL_SOUND_SLOT))
+                .map(id -> BuiltInRegistries.SOUND_EVENT.get(id))
+                .filter(Objects::nonNull)
+                .ifPresent(sound -> player.playSound(sound, 1.0F, pitch));
     }
 }
