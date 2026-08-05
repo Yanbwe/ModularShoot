@@ -3,11 +3,15 @@ package org.yanbwe.modularshoot.client.render;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
+import org.joml.Vector4f;
 import org.yanbwe.modularshoot.component.PluginInstance;
 import org.yanbwe.modularshoot.network.GunSyncS2CPacket;
+import org.yanbwe.modularshoot.plugin.OutlineSpec;
 import org.yanbwe.modularshoot.plugin.OverlayAlignment;
+import org.yanbwe.modularshoot.plugin.OverlayBlend;
 import org.yanbwe.modularshoot.plugin.OverlayFit;
 import org.yanbwe.modularshoot.plugin.PluginDefinition;
 import org.yanbwe.modularshoot.plugin.PluginRegistry;
@@ -26,9 +30,9 @@ import org.yanbwe.modularshoot.plugin.TextureOverlay;
  * ones.</p>
  *
  * <p>Each collected {@link CompositeTextureBuilder.OverlayLayer} carries the
- * plugin's placement ({@link OverlayAlignment}) and sizing ({@link OverlayFit})
- * parameters, so compositing is driven by the full definition rather than the
- * bare texture path.</p>
+ * plugin's placement ({@link OverlayAlignment}), sizing ({@link OverlayFit}),
+ * colour tint, blend mode and optional outline parameters, so compositing is
+ * driven by the full definition rather than the bare texture path.</p>
  *
  * <p>This class performs only <em>collection and ordering</em>; it does not
  * touch {@code NativeImage} or any render-thread state. The returned list is
@@ -63,13 +67,19 @@ public final class PluginOverlayCompositor {
      *                     smaller values and are composited first (below)
      * @param alignment    placement within the base canvas
      * @param fit          sizing relative to the base canvas
+     * @param tint         per-channel RGBA multiplier applied before blending
+     * @param blend        colour mixing mode against the layers beneath
+     * @param outline      optional outline stroke painted after tinting
      */
     public record OverlayEntry(
             ResourceLocation texture,
             int layer,
             int installOrder,
             OverlayAlignment alignment,
-            OverlayFit fit) {
+            OverlayFit fit,
+            Vector4f tint,
+            OverlayBlend blend,
+            Optional<OutlineSpec> outline) {
     }
 
     /**
@@ -159,13 +169,17 @@ public final class PluginOverlayCompositor {
                     overlay.layer(),
                     i,
                     overlay.alignment(),
-                    overlay.fit()));
+                    overlay.fit(),
+                    overlay.tint(),
+                    overlay.blend(),
+                    overlay.outline()));
         }
         entries.sort(Comparator
                 .comparingInt(OverlayEntry::layer)
                 .thenComparingInt(OverlayEntry::installOrder));
         return entries.stream()
-                .map(e -> new CompositeTextureBuilder.OverlayLayer(e.texture(), e.alignment(), e.fit()))
+                .map(e -> new CompositeTextureBuilder.OverlayLayer(
+                        e.texture(), e.alignment(), e.fit(), e.tint(), e.blend(), e.outline()))
                 .toList();
     }
 }

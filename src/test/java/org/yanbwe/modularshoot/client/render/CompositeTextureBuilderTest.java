@@ -1,9 +1,12 @@
 package org.yanbwe.modularshoot.client.render;
 
 import com.mojang.blaze3d.platform.NativeImage;
+import java.util.Optional;
 import net.minecraft.util.FastColor;
+import org.joml.Vector4f;
 import org.junit.jupiter.api.Test;
 import org.yanbwe.modularshoot.plugin.OverlayAlignment;
+import org.yanbwe.modularshoot.plugin.OverlayBlend;
 import org.yanbwe.modularshoot.plugin.OverlayFit;
 import org.yanbwe.modularshoot.client.render.CompositeTextureBuilder.OverlayLayer;
 
@@ -20,6 +23,10 @@ class CompositeTextureBuilderTest {
     private static final int BASE_RED = FastColor.ABGR32.color(255, 0, 0, 255);
     private static final int OVERLAY_GREEN = FastColor.ABGR32.color(255, 0, 255, 0);
     private static final int TRANSPARENT = FastColor.ABGR32.color(0, 0, 0, 0);
+    private static final int WHITE = FastColor.ABGR32.color(255, 255, 255, 255);
+    private static final int BLACK = FastColor.ABGR32.color(255, 0, 0, 0);
+
+    private static final Vector4f WHITE_TINT = new Vector4f(1.0F, 1.0F, 1.0F, 1.0F);
 
     /** Builds a solid-colour image. */
     private static NativeImage solid(int w, int h, int abgr) {
@@ -33,7 +40,7 @@ class CompositeTextureBuilderTest {
     }
 
     private static OverlayLayer layer(OverlayAlignment alignment, OverlayFit fit) {
-        return new OverlayLayer(null, alignment, fit);
+        return new OverlayLayer(null, alignment, fit, WHITE_TINT, OverlayBlend.NORMAL, Optional.empty());
     }
 
     private static void blend(NativeImage base, int overlayW, int overlayH, OverlayAlignment alignment, OverlayFit fit) {
@@ -170,5 +177,116 @@ class CompositeTextureBuilderTest {
             assertPixel(base, 0, 0, BASE_RED, "corner");
             assertPixel(base, 1, 1, BASE_RED, "overlay area");
         }
+    }
+
+    // --- blend modes (blendPixel) ---
+
+    @Test
+    void normalKeepsLegacyOverCompositing() {
+        // Opaque green over opaque red: the fast path replaces the base.
+        assertEquals(OVERLAY_GREEN,
+                CompositeTextureBuilder.blendPixel(BASE_RED, OVERLAY_GREEN, OverlayBlend.NORMAL),
+                "opaque overlay replaces base");
+        // Semi-transparent green (alpha 128) over opaque red: the general
+        // over formula gives green = round(255 × 128/255) = 128 and
+        // red = round(255 × 127/255) = 127, exactly the legacy behaviour.
+        int out = CompositeTextureBuilder.blendPixel(BASE_RED, FastColor.ABGR32.color(128, 0, 255, 0),
+                OverlayBlend.NORMAL);
+        assertEquals(255, FastColor.ABGR32.alpha(out), "alpha stays opaque");
+        assertEquals(128, FastColor.ABGR32.green(out), "green weighted by src alpha");
+        assertEquals(127, FastColor.ABGR32.red(out), "red weighted by remaining alpha");
+        assertEquals(0, FastColor.ABGR32.blue(out), "blue stays zero");
+    }
+
+    @Test
+    void multiplyDarkens() {
+        // White base × opaque red: C = (1×1, 0, 0) → pure red.
+        assertEquals(FastColor.ABGR32.color(255, 0, 0, 255),
+                CompositeTextureBuilder.blendPixel(WHITE, FastColor.ABGR32.color(255, 0, 0, 255),
+                        OverlayBlend.MULTIPLY),
+                "white × opaque red");
+        // Semi-transparent red (alpha 128) over white: C = (1, 0, 0), so
+        // out = C × 128/255 + D × 127/255 → red 255, green = blue = 127.
+        int out = CompositeTextureBuilder.blendPixel(WHITE, FastColor.ABGR32.color(128, 0, 0, 255),
+                OverlayBlend.MULTIPLY);
+        assertEquals(255, FastColor.ABGR32.alpha(out), "alpha stays opaque");
+        assertEquals(255, FastColor.ABGR32.red(out), "red keeps full intensity");
+        assertEquals(127, FastColor.ABGR32.green(out), "green weighted by remaining alpha");
+        assertEquals(127, FastColor.ABGR32.blue(out), "blue weighted by remaining alpha");
+    }
+
+    @Test
+    void screenBrightens() {
+        // Black base × gray (128,128,128): 1-(1-128/255)(1-0) = 128/255 per channel.
+        assertEquals(FastColor.ABGR32.color(255, 128, 128, 128),
+                CompositeTextureBuilder.blendPixel(BLACK, FastColor.ABGR32.color(255, 128, 128, 128),
+                        OverlayBlend.SCREEN),
+                "black × gray screen");
+    }
+
+    @Test
+    void addClampsToOne() {
+        int red200 = FastColor.ABGR32.color(255, 0, 0, 200); // opaque, r = 200
+        // White base + red (200,0,0): r = 255 + 200 would overflow, clamped to 255.
+        assertEquals(WHITE, CompositeTextureBuilder.blendPixel(WHITE, red200, OverlayBlend.ADD),
+                "white base clamped at 255");
+        // Mid-tone base makes the clamp observable: r = 100 + 200 = 300 → 255.
+        int mid = CompositeTextureBuilder.blendPixel(FastColor.ABGR32.color(255, 100, 100, 100), red200,
+                OverlayBlend.ADD);
+        assertEquals(255, FastColor.ABGR32.red(mid), "red clamped to 255");
+        assertEquals(100, FastColor.ABGR32.green(mid), "green unchanged");
+        assertEquals(100, FastColor.ABGR32.blue(mid), "blue unchanged");
+        // Black base + (200,100,50): nothing to clamp, channels pass through.
+        assertEquals(FastColor.ABGR32.color(255, 50, 100, 200),
+                CompositeTextureBuilder.blendPixel(BLACK, FastColor.ABGR32.color(255, 50, 100, 200),
+                        OverlayBlend.ADD),
+                "black base passes channels through");
+    }
+
+    @Test
+    void alphaStaysOverInAllModes() {
+        // Multiply with a semi-transparent source over an opaque base:
+        // out.alpha = round((128/255 + 1×(1-128/255))×255) = 255.
+        int overOpaque = CompositeTextureBuilder.blendPixel(BASE_RED, FastColor.ABGR32.color(128, 0, 255, 0),
+                OverlayBlend.MULTIPLY);
+        assertEquals(255, FastColor.ABGR32.alpha(overOpaque), "opaque base keeps alpha opaque");
+        // General formula with a semi-transparent base (128, 10, 20, 30) and a
+        // semi-transparent source (64, 200, 0, 0):
+        // out.alpha = round((64/255 + 128/255×(1-64/255))×255) = round(159.88) = 160.
+        int semi = CompositeTextureBuilder.blendPixel(FastColor.ABGR32.color(128, 30, 20, 10),
+                FastColor.ABGR32.color(64, 0, 0, 200), OverlayBlend.MULTIPLY);
+        assertEquals(160, FastColor.ABGR32.alpha(semi), "general alpha-over formula");
+    }
+
+    // --- tint (applyTint) ---
+
+    private static int tinted(int pixel, Vector4f tint) {
+        try (NativeImage img = new NativeImage(1, 1, false)) {
+            img.setPixelRGBA(0, 0, pixel);
+            CompositeTextureBuilder.applyTint(img, tint);
+            return img.getPixelRGBA(0, 0);
+        }
+    }
+
+    @Test
+    void tintMultipliesChannels() {
+        int out = tinted(WHITE, new Vector4f(0.5F, 1.0F, 1.0F, 1.0F));
+        assertEquals(128, FastColor.ABGR32.red(out), "red halved (round(127.5))");
+        assertEquals(255, FastColor.ABGR32.green(out), "green unchanged");
+        assertEquals(255, FastColor.ABGR32.blue(out), "blue unchanged");
+        assertEquals(255, FastColor.ABGR32.alpha(out), "alpha unchanged");
+    }
+
+    @Test
+    void tintMultipliesAlpha() {
+        int out = tinted(WHITE, new Vector4f(1.0F, 1.0F, 1.0F, 0.5F));
+        assertEquals(128, FastColor.ABGR32.alpha(out), "alpha halved (round(127.5))");
+        assertEquals(255, FastColor.ABGR32.red(out), "channels unchanged");
+    }
+
+    @Test
+    void whiteTintIsIdentity() {
+        int pixel = FastColor.ABGR32.color(200, 30, 120, 250); // arbitrary non-white pixel
+        assertEquals(pixel, tinted(pixel, WHITE_TINT), "white tint leaves every byte unchanged");
     }
 }

@@ -11,8 +11,11 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.util.FastColor;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Vector4f;
 import org.slf4j.Logger;
+import org.yanbwe.modularshoot.plugin.OutlineSpec;
 import org.yanbwe.modularshoot.plugin.OverlayAlignment;
+import org.yanbwe.modularshoot.plugin.OverlayBlend;
 import org.yanbwe.modularshoot.plugin.OverlayFit;
 
 /**
@@ -41,6 +44,16 @@ import org.yanbwe.modularshoot.plugin.OverlayFit;
  * extraction and reconstruction uses {@link FastColor.ABGR32} helpers to
  * stay consistent with the vanilla format.</p>
  *
+ * <p><b>Blend modes:</b> each {@link OverlayLayer} may select an
+ * {@link OverlayBlend} mode controlling how its colour channels combine with
+ * the layers beneath: {@link OverlayBlend#MULTIPLY} multiplies the colours
+ * (darkening), {@link OverlayBlend#SCREEN} inverse-multiplies them
+ * (brightening, filter mode) and {@link OverlayBlend#ADD} sums them with
+ * clamping to 1 (brightening). Alpha always uses ordinary over compositing
+ * regardless of the blend mode. A per-layer {@code tint} multiplies the
+ * overlay's RGBA pixels channel-by-channel before blending (white is the
+ * identity).</p>
+ *
  * <p><b>Threading:</b> texture loading and per-pixel blending do not assert
  * the render thread, so {@link #composite} may run off-thread. The returned
  * {@code NativeImage} must be {@linkplain NativeImage#close() closed} by the
@@ -57,16 +70,24 @@ public final class CompositeTextureBuilder {
     }
 
     /**
-     * A single overlay layer ready for compositing: the texture path plus
-     * the placement ({@code alignment}) and sizing ({@code fit}) parameters
-     * from the plugin's {@code texture_overlay} definition.
+     * A single overlay layer ready for compositing: the texture path plus the
+     * placement ({@code alignment}) and sizing ({@code fit}) parameters from
+     * the plugin's {@code texture_overlay} definition, together with its
+     * colour tint, blend mode and optional outline stroke.
      *
      * @param texture   the overlay texture path
      * @param alignment nine-grid placement; only effective when
      *                  {@code fit} is {@link OverlayFit#NONE}
      * @param fit       how the overlay is fitted into the base canvas
+     * @param tint      per-channel RGBA multiplier applied to the overlay
+     *                  pixels before blending; white (1,1,1,1) is the identity
+     * @param blend     how the overlay's colour combines with the underlying
+     *                  layers ({@link OverlayBlend})
+     * @param outline   optional stroke painted along the overlay's alpha edge
+     *                  after tinting; empty when no outline is drawn
      */
-    public record OverlayLayer(ResourceLocation texture, OverlayAlignment alignment, OverlayFit fit) {
+    public record OverlayLayer(ResourceLocation texture, OverlayAlignment alignment, OverlayFit fit,
+                               Vector4f tint, OverlayBlend blend, Optional<OutlineSpec> outline) {
     }
 
     /**
@@ -107,6 +128,7 @@ public final class CompositeTextureBuilder {
                 continue;
             }
             try {
+                applyTint(overlay, layer.tint());
                 blendOnto(base, overlay, layer);
             } finally {
                 overlay.close();
@@ -193,7 +215,7 @@ public final class CompositeTextureBuilder {
                     float srcY = ((y - dstY) + 0.5F) * (overlayH / (float) dstH) - 0.5F;
                     overlayPixel = sampleBilinear(overlay, srcX, srcY);
                 }
-                base.setPixelRGBA(x, y, blendPixel(basePixel, overlayPixel));
+                base.setPixelRGBA(x, y, blendPixel(basePixel, overlayPixel, layer.blend()));
             }
         }
     }
@@ -274,44 +296,99 @@ public final class CompositeTextureBuilder {
     }
 
     /**
-     * Alpha-blends a source (overlay) pixel over a destination (base) pixel
-     * using the standard "over" compositing operator for non-premultiplied
-     * alpha.
+     * Blends a source (overlay) pixel over a destination (base) pixel using
+     * the standard "over" compositing operator for non-premultiplied alpha.
+     *
+     * <p>The {@code blend} mode only affects the colour channels:
+     * {@link OverlayBlend#MULTIPLY} multiplies source and destination colours,
+     * {@link OverlayBlend#SCREEN} inverse-multiplies them, {@link OverlayBlend#ADD}
+     * sums them clamped to 1, and {@link OverlayBlend#NORMAL} (the default)
+     * uses the source colour unchanged. Alpha always composites with the over
+     * formula {@code outA = srcA + dstA * (1 - srcA)}.</p>
      *
      * <p>Fast paths: a fully transparent overlay ({@code alpha == 0}) returns
-     * the base unchanged; a fully opaque overlay ({@code alpha == 255})
-     * replaces the base entirely. The general case uses
-     * {@code outA = srcA + dstA * (1 - srcA)} and the corresponding weighted
-     * colour average, which correctly handles semi-transparent overlays over
-     * both opaque and transparent bases.</p>
+     * the base unchanged; a fully opaque overlay in normal mode returns the
+     * overlay unchanged. The general case computes the blended colour
+     * {@code C} (per blend mode) and then mixes it with the base colour
+     * weighted by alpha, which correctly handles semi-transparent overlays
+     * over both opaque and transparent bases.</p>
+     *
+     * <p>Package-private for unit testing; the pixel math is pure.</p>
      *
      * @param base    the destination pixel in ABGR layout
      * @param overlay the source pixel in ABGR layout
+     * @param blend   the colour mixing mode
      * @return the composited pixel in ABGR layout
      */
-    private static int blendPixel(int base, int overlay) {
+    static int blendPixel(int base, int overlay, OverlayBlend blend) {
         int overlayAlpha = FastColor.ABGR32.alpha(overlay);
         if (overlayAlpha == 0) {
             return base;
         }
-        if (overlayAlpha == 255) {
+        if (overlayAlpha == 255 && blend == OverlayBlend.NORMAL) {
             return overlay;
         }
-        int baseAlpha = FastColor.ABGR32.alpha(base);
         float srcA = overlayAlpha / 255.0F;
-        float dstA = baseAlpha / 255.0F;
+        float dstA = FastColor.ABGR32.alpha(base) / 255.0F;
+        float sr = FastColor.ABGR32.red(overlay) / 255.0F;
+        float sg = FastColor.ABGR32.green(overlay) / 255.0F;
+        float sb = FastColor.ABGR32.blue(overlay) / 255.0F;
+        float dr = FastColor.ABGR32.red(base) / 255.0F;
+        float dg = FastColor.ABGR32.green(base) / 255.0F;
+        float db = FastColor.ABGR32.blue(base) / 255.0F;
+        float cr;
+        float cg;
+        float cb;
+        switch (blend) {
+            case MULTIPLY -> { cr = sr * dr; cg = sg * dg; cb = sb * db; }
+            case SCREEN -> {
+                cr = 1.0F - (1.0F - sr) * (1.0F - dr);
+                cg = 1.0F - (1.0F - sg) * (1.0F - dg);
+                cb = 1.0F - (1.0F - sb) * (1.0F - db);
+            }
+            case ADD -> {
+                cr = Math.min(1.0F, sr + dr);
+                cg = Math.min(1.0F, sg + dg);
+                cb = Math.min(1.0F, sb + db);
+            }
+            default -> { cr = sr; cg = sg; cb = sb; } // NORMAL
+        }
         float oneMinusSrcA = 1.0F - srcA;
         float outA = srcA + dstA * oneMinusSrcA;
-        float invOutA = 1.0F / outA;
+        int or = Math.round((cr * srcA + dr * oneMinusSrcA) * 255.0F);
+        int og = Math.round((cg * srcA + dg * oneMinusSrcA) * 255.0F);
+        int ob = Math.round((cb * srcA + db * oneMinusSrcA) * 255.0F);
+        return FastColor.ABGR32.color(Math.round(outA * 255.0F), ob, og, or);
+    }
 
-        int red = Math.round((FastColor.ABGR32.red(overlay) * srcA
-                + FastColor.ABGR32.red(base) * dstA * oneMinusSrcA) * invOutA);
-        int green = Math.round((FastColor.ABGR32.green(overlay) * srcA
-                + FastColor.ABGR32.green(base) * dstA * oneMinusSrcA) * invOutA);
-        int blue = Math.round((FastColor.ABGR32.blue(overlay) * srcA
-                + FastColor.ABGR32.blue(base) * dstA * oneMinusSrcA) * invOutA);
-        int alpha = Math.round(outA * 255.0F);
-        return FastColor.ABGR32.color(alpha, blue, green, red);
+    /**
+     * Multiplies every pixel of an image channel-by-channel with a tint
+     * vector, in place.
+     *
+     * <p>A fully white tint {@code (1,1,1,1)} is the identity and short-
+     * circuits without touching the image. Each of the four ABGR channels is
+     * scaled by the matching component of {@code tint} and rounded to the
+     * nearest byte.</p>
+     *
+     * <p>Package-private for unit testing; the pixel math is pure.</p>
+     *
+     * @param img  the image to tint, modified in place
+     * @param tint per-channel multiplier in 0..1 (RGBA order)
+     */
+    static void applyTint(NativeImage img, Vector4f tint) {
+        if (tint.x() == 1.0F && tint.y() == 1.0F && tint.z() == 1.0F && tint.w() == 1.0F) {
+            return; // white identity
+        }
+        for (int y = 0; y < img.getHeight(); y++) {
+            for (int x = 0; x < img.getWidth(); x++) {
+                int p = img.getPixelRGBA(x, y);
+                int r = Math.round(FastColor.ABGR32.red(p) * tint.x());
+                int g = Math.round(FastColor.ABGR32.green(p) * tint.y());
+                int b = Math.round(FastColor.ABGR32.blue(p) * tint.z());
+                int a = Math.round(FastColor.ABGR32.alpha(p) * tint.w());
+                img.setPixelRGBA(x, y, FastColor.ABGR32.color(a, b, g, r));
+            }
+        }
     }
 
     /**
