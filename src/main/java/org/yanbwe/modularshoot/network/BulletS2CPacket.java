@@ -180,7 +180,8 @@ public record BulletS2CPacket(
      * {@link #encodeFullEntries}.
      *
      * @param buf the source buffer
-     * @return an immutable list of full entries
+     * @return the freshly built list of full entries (decode product is never
+     *         shared or mutated after return)
      */
     private static List<FullBulletEntry> decodeFullEntries(RegistryFriendlyByteBuf buf) {
         int count = buf.readInt();
@@ -188,7 +189,7 @@ public record BulletS2CPacket(
         for (int i = 0; i < count; i++) {
             entries.add(decodeFullEntry(buf));
         }
-        return List.copyOf(entries);
+        return entries;
     }
 
     /**
@@ -315,7 +316,8 @@ public record BulletS2CPacket(
      * {@link #encodeDeltaEntries}.
      *
      * @param buf the source buffer
-     * @return an immutable list of delta entries
+     * @return the freshly built list of delta entries (decode product is never
+     *         shared or mutated after return)
      */
     private static List<DeltaBulletEntry> decodeDeltaEntries(RegistryFriendlyByteBuf buf) {
         int count = buf.readInt();
@@ -323,7 +325,7 @@ public record BulletS2CPacket(
         for (int i = 0; i < count; i++) {
             entries.add(decodeDeltaEntry(buf));
         }
-        return List.copyOf(entries);
+        return entries;
     }
 
     /**
@@ -383,7 +385,8 @@ public record BulletS2CPacket(
      * {@link #encodeRemovedIds}.
      *
      * @param buf the source buffer
-     * @return an immutable list of removed bullet ids
+     * @return the freshly built list of removed bullet ids (decode product is
+     *         never shared or mutated after return)
      */
     private static List<Integer> decodeRemovedIds(RegistryFriendlyByteBuf buf) {
         int count = buf.readInt();
@@ -391,7 +394,7 @@ public record BulletS2CPacket(
         for (int i = 0; i < count; i++) {
             ids.add(buf.readInt());
         }
-        return List.copyOf(ids);
+        return ids;
     }
 
     // --- Nullable ResourceLocation helpers ------------------------------
