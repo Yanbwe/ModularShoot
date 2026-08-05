@@ -133,6 +133,9 @@ public final class Model3DRenderer {
     /** Full-bright fallback when the client level is unavailable (e.g. main menu). */
     private static final int FULL_BRIGHT = LightTexture.FULL_BRIGHT;
 
+    /** Reusable block position for light lookups (render thread only). */
+    private static final BlockPos.MutableBlockPos LIGHT_POS = new BlockPos.MutableBlockPos();
+
     /** Cached baked models keyed by the raw model location from {@link BulletRenderObject}. */
     private static final Map<ResourceLocation, BakedModel> MODEL_CACHE = new HashMap<>();
 
@@ -303,7 +306,7 @@ public final class Model3DRenderer {
         if (level == null) {
             return FULL_BRIGHT;
         }
-        return LevelRenderer.getLightColor(level, BlockPos.containing(worldPos.x, worldPos.y, worldPos.z));
+        return LevelRenderer.getLightColor(level, LIGHT_POS.set(worldPos.x, worldPos.y, worldPos.z));
     }
 
     /**

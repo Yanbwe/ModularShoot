@@ -64,6 +64,9 @@ public final class BillboardRenderer {
     /** No overlay (UV1) — the bullet has no hurt/damage flash. */
     private static final int NO_OVERLAY = 0;
 
+    /** White identity tint (null-wire sentinel replaced at render time). */
+    private static final Vector4f WHITE_TINT = new Vector4f(1.0f, 1.0f, 1.0f, 1.0f);
+
     private BillboardRenderer() {
     }
 
@@ -102,7 +105,7 @@ public final class BillboardRenderer {
         // (null = white identity sentinel, 设计规格 §4.5).
         float halfSize = renderObject.getScale() * HALF_SIZE_FACTOR;
         Vector4f tint = renderObject.getComposedTint() != null
-                ? renderObject.getComposedTint() : new Vector4f(1.0f, 1.0f, 1.0f, 1.0f);
+                ? renderObject.getComposedTint() : WHITE_TINT;
         drawBillboard(texture, halfSize, tint, poseStack, bufferSource, partialTick, cameraPos);
     }
 

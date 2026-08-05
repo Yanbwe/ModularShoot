@@ -70,6 +70,9 @@ public final class BulletRenderDispatcher {
     private static final RenderLevelStageEvent.Stage RENDER_STAGE =
             RenderLevelStageEvent.Stage.AFTER_PARTICLES;
 
+    /** White identity tint (null-wire sentinel replaced at render time). */
+    private static final Vector4f WHITE_TINT = new Vector4f(1.0f, 1.0f, 1.0f, 1.0f);
+
     private BulletRenderDispatcher() {
     }
 
@@ -208,7 +211,7 @@ public final class BulletRenderDispatcher {
                     ? renderObject.getScale() * layer.scale() : layer.scale();
             // tint: null = white identity sentinel
             Vector4f layerTint = layer.tint() != null
-                    ? layer.tint() : new Vector4f(1.0f, 1.0f, 1.0f, 1.0f);
+                    ? layer.tint() : WHITE_TINT;
             if (BulletRenderObject.RENDER_MODE_BILLBOARD.equals(layer.renderMode())
                     && layer.texture() != null) {
                 BillboardRenderer.drawBillboard(
