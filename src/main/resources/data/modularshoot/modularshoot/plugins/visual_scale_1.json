@@ -9,6 +9,9 @@
   "brief": "子弹视觉放大 1.2 倍",
   "description": "提供 scale 修饰符 1.2。与视觉放大 II 同时安装时连乘（1.2 × 1.5 = 1.8 倍）",
   "color": "#55FF55",
+  "extra_values": {
+    "modularshoot:demo_value": 1
+  },
   "bullet_style": {
     "modifiers": [
       { "type": "scale", "value": 1.2 }

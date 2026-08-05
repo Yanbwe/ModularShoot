@@ -134,6 +134,7 @@ class VisualCompositionServiceTest {
                 Optional.ofNullable(style),
                 Optional.empty(),
                 Optional.empty(),
+                Map.of(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),

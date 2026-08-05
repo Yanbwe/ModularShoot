@@ -1,6 +1,7 @@
 package org.yanbwe.modularshoot;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,6 +21,7 @@ import org.yanbwe.modularshoot.component.PluginInstance;
 import org.yanbwe.modularshoot.datapack.RegistrationCoordinator;
 import org.yanbwe.modularshoot.item.ModularShootItems;
 import org.yanbwe.modularshoot.plugin.PluginDefinition;
+import org.yanbwe.modularshoot.plugin.PluginExtraValueService;
 import org.yanbwe.modularshoot.plugin.PluginLockService;
 import org.yanbwe.modularshoot.plugin.PluginTypeDefinition;
 import org.yanbwe.modularshoot.plugin.PluginTypeRegistry;
@@ -149,6 +151,59 @@ public final class ModularShootAPI {
     public static List<PluginInstance> getInstalledPlugins(ItemStack gun) {
         Objects.requireNonNull(gun, "gun");
         return PluginUninstallService.getInstalledPlugins(gun);
+    }
+
+    /**
+     * Returns the accumulated {@code extra_values} of every valid plugin
+     * installed on the given gun, summed per namespaced key.
+     *
+     * <p>Delegates to {@link PluginExtraValueService#aggregate}. The
+     * framework never interprets these values (e.g. a rarity core may sum
+     * {@code "raritycore:rarity"}) — it only carries and aggregates them.
+     * Degraded plugins (definition missing from the datapack registry) are
+     * filtered with the same contract as the attribute pipeline. Keys never
+     * declared by any installed plugin stay absent from the result; use
+     * {@link #getExtraValue} for a defaulted single-key lookup.</p>
+     *
+     * <p>Requires a loaded world's {@link RegistryAccess} because the
+     * {@code modularshoot:plugins} registry is datapack-driven (empty on the
+     * main menu); supply {@code player.level().registryAccess()} or
+     * equivalent.</p>
+     *
+     * @param gun            the gun item stack to inspect; must not be
+     *                       {@code null}
+     * @param registryAccess the runtime registry view; must not be
+     *                       {@code null}
+     * @return an immutable map of key &rarr; accumulated sum; empty when the
+     *         stack is not a gun or no valid plugin declares any extra value
+     */
+    public static Map<ResourceLocation, Double> getExtraValueSums(
+            ItemStack gun, RegistryAccess registryAccess) {
+        Objects.requireNonNull(gun, "gun");
+        Objects.requireNonNull(registryAccess, "registryAccess");
+        return PluginExtraValueService.aggregate(gun, registryAccess);
+    }
+
+    /**
+     * Convenience single-key lookup over a gun's accumulated
+     * {@code extra_values}: the sum of {@code key} across every valid
+     * installed plugin, or {@code 0.0} when the key is undeclared.
+     *
+     * @param gun            the gun item stack to inspect; must not be
+     *                       {@code null}
+     * @param key            the extra-value key to look up; must not be
+     *                       {@code null}
+     * @param registryAccess the runtime registry view; must not be
+     *                       {@code null}
+     * @return the accumulated value of {@code key}, or {@code 0.0} when
+     *         undeclared
+     */
+    public static double getExtraValue(
+            ItemStack gun, ResourceLocation key, RegistryAccess registryAccess) {
+        Objects.requireNonNull(gun, "gun");
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(registryAccess, "registryAccess");
+        return PluginExtraValueService.get(gun, key, registryAccess);
     }
 
     // ---- Uninstall API --------------------------------------------------

@@ -27,6 +27,9 @@
     "alignment": "center",
     "fit": "fill"
   },
+  "extra_values": {
+    "examplemod:rarity": 5
+  },
   "name": "§e示例插件",
   "brief": "综合性能提升插件",
   "description": "伤害+3，射速提升50%，散布略降。附带纹理叠加与子弹视觉修饰符叠加。",

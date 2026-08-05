@@ -82,6 +82,10 @@ import org.yanbwe.modularshoot.plugin.PluginDefinition;
  *   <li>{@code exclusive_group} — optional mutual-exclusion group id.</li>
  *   <li>{@code bullet_style} — optional projectile appearance override.</li>
  *   <li>{@code texture_overlay} — optional texture overlay.</li>
+ *   <li>{@code gun_outline} — optional whole-gun outline spec.</li>
+ *   <li>{@code extra_values} — optional namespaced numeric extension
+ *       fields, defaults to an empty map; the framework carries and
+ *       aggregates them without interpreting their meaning.</li>
  *   <li>{@code name}/{@code brief}/{@code description}/{@code color} —
  *       optional display fields.</li>
  * </ul>

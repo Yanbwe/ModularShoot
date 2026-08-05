@@ -55,6 +55,13 @@ import org.yanbwe.modularshoot.registry.gun.TextureScaleMode;
  *       painted around the silhouette of the final composited gun texture.
  *       Multiple plugins' outlines stack concentrically, wider strokes
  *       outside thinner ones.</li>
+ *   <li>{@code extra_values} &mdash; optional namespaced numeric extension
+ *       fields (e.g. {@code {"raritycore:rarity": 5.0}}), defaulting to an
+ *       empty map. The framework only carries and aggregates these values
+ *       (see {@link PluginExtraValueService}) and never interprets their
+ *       meaning &mdash; integration mods read them via
+ *       {@code ModularShootAPI.getExtraValueSums} and translate them into
+ *       their own systems (e.g. a rarity component).</li>
  *   <li>{@code name} &mdash; optional display name; supports colour codes
  *       ({@code §}).</li>
  *   <li>{@code brief} &mdash; optional one-line summary.</li>
@@ -77,6 +84,8 @@ import org.yanbwe.modularshoot.registry.gun.TextureScaleMode;
  * @param textureOverlay optional texture overlay; empty when none is stacked
  * @param gunOutline     optional whole-gun outline stroked around the final
  *                       composited texture; empty when none is drawn
+ * @param extraValues    namespaced numeric extension fields; empty when none
+ *                       are declared
  * @param name           optional display name; supports colour codes
  * @param brief          optional one-line summary
  * @param description    optional long-form description
@@ -93,6 +102,7 @@ public record PluginDefinition(
         Optional<BulletStyle> bulletStyle,
         Optional<TextureOverlay> textureOverlay,
         Optional<OutlineSpec> gunOutline,
+        Map<ResourceLocation, Double> extraValues,
         Optional<String> name,
         Optional<String> brief,
         Optional<String> description,
@@ -110,6 +120,9 @@ public record PluginDefinition(
                     BulletStyle.CODEC.optionalFieldOf("bullet_style").forGetter(PluginDefinition::bulletStyle),
                     TextureOverlay.CODEC.optionalFieldOf("texture_overlay").forGetter(PluginDefinition::textureOverlay),
                     OutlineSpec.CODEC.optionalFieldOf("gun_outline").forGetter(PluginDefinition::gunOutline),
+                    Codec.unboundedMap(ResourceLocation.CODEC, Codec.DOUBLE)
+                            .optionalFieldOf("extra_values", Map.of())
+                            .forGetter(PluginDefinition::extraValues),
                     Codec.STRING.optionalFieldOf("name").forGetter(PluginDefinition::name),
                     Codec.STRING.optionalFieldOf("brief").forGetter(PluginDefinition::brief),
                     Codec.STRING.optionalFieldOf("description").forGetter(PluginDefinition::description),
