@@ -189,8 +189,14 @@ public final class CollisionDetector {
      * @param to         ray end
      * @param penetrated block positions to skip
      * @return the nearest non-penetrated block hit, or a MISS result
+     * <p>When the penetrated set is empty (the common case) a fast path performs a single clip with no step-vector computation.</p>
      */
     private static BlockHitResult clipSkippingPenetrated(Level level, Vec3 from, Vec3 to, Set<BlockPos> penetrated) {
+        // Fast path: no penetrated blocks (the common case) — a single clip over
+        // the step with none of the skip-loop bookkeeping (no step-vector work).
+        if (penetrated.isEmpty()) {
+            return level.clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, CollisionContext.empty()));
+        }
         Vec3 step = to.subtract(from);
         double stepLen = step.length();
         Vec3 stepDir = stepLen < 1.0E-12 ? new Vec3(0.0, 0.0, 0.0) : step.scale(1.0 / stepLen);
