@@ -184,12 +184,13 @@ public final class CollisionDetector {
      * This keeps a slow bullet inside an already-penetrated block from
      * re-triggering a hit every tick.</p>
      *
+     * <p>When the penetrated set is empty (the common case) a fast path performs a single clip with no step-vector computation.</p>
+     *
      * @param level      the server level
      * @param from       ray start
      * @param to         ray end
      * @param penetrated block positions to skip
      * @return the nearest non-penetrated block hit, or a MISS result
-     * <p>When the penetrated set is empty (the common case) a fast path performs a single clip with no step-vector computation.</p>
      */
     private static BlockHitResult clipSkippingPenetrated(Level level, Vec3 from, Vec3 to, Set<BlockPos> penetrated) {
         // Fast path: no penetrated blocks (the common case) — a single clip over

@@ -197,6 +197,7 @@ public final class TraitHookRegistry {
      */
     public static List<TraitCallbacks.TraitCallback> getHooks(
             ResourceLocation traitId, TraitHookType type) {
+        Objects.requireNonNull(type, "type");
         Map<TraitHookType, List<TraitCallbacks.TraitCallback>> traitHooks = cachedHookViews.get(traitId);
         if (traitHooks == null) {
             return List.of();
