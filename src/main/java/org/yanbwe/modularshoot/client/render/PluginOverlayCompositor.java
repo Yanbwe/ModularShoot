@@ -83,8 +83,24 @@ public final class PluginOverlayCompositor {
     }
 
     /**
+     * Render inputs collected from a gun's installed plugins: the sorted overlay
+     * layers and the whole-gun outlines (in installation order).
+     *
+     * @param overlays    the sorted overlay layers, bottom-to-top
+     * @param gunOutlines the whole-gun outline specs, in installation order;
+     *                    sorting by width is the compositor's responsibility
+     */
+    public record OverlayRenderData(List<CompositeTextureBuilder.OverlayLayer> overlays, List<OutlineSpec> gunOutlines) {
+    }
+
+    /**
      * Collects overlay layers from a gun's installed plugins, sorted by
      * layer (low to high) then by installation order (earlier first).
+     *
+     * <p>This is a compatibility wrapper delegating to
+     * {@link #collectRenderData} and returning only its {@code overlays}
+     * part; callers that also need the gun's whole-gun outlines should use
+     * {@link #collectRenderData} directly.</p>
      *
      * <p>Plugins whose definition is absent from the registry (e.g. on the
      * main menu) or that declare no {@code texture_overlay} are skipped. The
@@ -101,11 +117,7 @@ public final class PluginOverlayCompositor {
     public static List<CompositeTextureBuilder.OverlayLayer> collectOverlayLayers(
             List<PluginInstance> installedPlugins,
             RegistryAccess registryAccess) {
-        List<ResourceLocation> pluginIds = new ArrayList<>(installedPlugins.size());
-        for (PluginInstance instance : installedPlugins) {
-            pluginIds.add(instance.pluginId());
-        }
-        return collectOverlayLayersByIds(pluginIds, registryAccess);
+        return collectRenderData(installedPlugins, registryAccess).overlays();
     }
 
     /**
@@ -113,6 +125,10 @@ public final class PluginOverlayCompositor {
      * format {@link GunSyncS2CPacket.PluginSyncEntry} list pushed by the
      * server and stored in
      * {@link org.yanbwe.modularshoot.client.ClientGunDataStore}.
+     *
+     * <p>This is a compatibility wrapper delegating to
+     * {@link #collectRenderDataFromSync} and returning only its
+     * {@code overlays} part.</p>
      *
      * <p>Behaviour is identical to the {@link PluginInstance} overload —
      * only the {@code pluginId} of each entry is read, so the two record
@@ -129,57 +145,115 @@ public final class PluginOverlayCompositor {
     public static List<CompositeTextureBuilder.OverlayLayer> collectOverlayLayersFromSync(
             List<GunSyncS2CPacket.PluginSyncEntry> installedPlugins,
             RegistryAccess registryAccess) {
+        return collectRenderDataFromSync(installedPlugins, registryAccess).overlays();
+    }
+
+    /**
+     * Collects the render inputs of a gun's installed plugins: the sorted
+     * overlay layers (layer low to high, then installation order) and the
+     * whole-gun outlines in installation order.
+     *
+     * <p>Plugins whose definition is absent from the registry (e.g. on the
+     * main menu) are skipped and contribute neither overlays nor outlines.
+     * The overlay list is ordered so that compositing it front-to-back places
+     * higher layers and later installs on top, matching the design doc rule
+     * "同层级按安装顺序，后装覆盖先装". {@code gunOutlines} keeps the
+     * installation order (earlier installs first); sorting by width is the
+     * compositor's responsibility
+     * ({@link CompositeTextureBuilder#composite}).</p>
+     *
+     * @param installedPlugins the gun's ordered plugin list
+     *                         ({@link org.yanbwe.modularshoot.component.GunData#installedPlugins})
+     * @param registryAccess   the runtime registry view (from a loaded world)
+     * @return the collected render inputs; both lists may be empty
+     */
+    public static OverlayRenderData collectRenderData(
+            List<PluginInstance> installedPlugins,
+            RegistryAccess registryAccess) {
+        List<ResourceLocation> pluginIds = new ArrayList<>(installedPlugins.size());
+        for (PluginInstance instance : installedPlugins) {
+            pluginIds.add(instance.pluginId());
+        }
+        return collectRenderDataByIds(pluginIds, registryAccess);
+    }
+
+    /**
+     * Sync-data counterpart of {@link #collectRenderData}, accepting the
+     * wire format {@link GunSyncS2CPacket.PluginSyncEntry} list pushed by
+     * the server and stored in
+     * {@link org.yanbwe.modularshoot.client.ClientGunDataStore}.
+     *
+     * <p>Behaviour is identical to the {@link PluginInstance} overload —
+     * only the {@code pluginId} of each entry is read, so the two record
+     * types are interchangeable here. A separate method name is required
+     * because {@code List<PluginInstance>} and
+     * {@code List<PluginSyncEntry>} share the same erasure and cannot
+     * overload each other.</p>
+     *
+     * @param installedPlugins the synced plugin entry list
+     * @param registryAccess   the runtime registry view (from a loaded world)
+     * @return the collected render inputs; both lists may be empty
+     */
+    public static OverlayRenderData collectRenderDataFromSync(
+            List<GunSyncS2CPacket.PluginSyncEntry> installedPlugins,
+            RegistryAccess registryAccess) {
         List<ResourceLocation> pluginIds = new ArrayList<>(installedPlugins.size());
         for (GunSyncS2CPacket.PluginSyncEntry entry : installedPlugins) {
             pluginIds.add(entry.pluginId());
         }
-        return collectOverlayLayersByIds(pluginIds, registryAccess);
+        return collectRenderDataByIds(pluginIds, registryAccess);
     }
 
     /**
-     * Shared core that collects and sorts overlay layers from a plain list
-     * of plugin ids, using the list index as the installation order.
+     * Shared core that collects the render inputs (sorted overlay layers
+     * plus installation-ordered gun outlines) from a plain list of plugin
+     * ids, using the list index as the installation order.
      *
      * <p>Plugins whose definition is absent from the registry (e.g. on the
-     * main menu) or that declare no {@code texture_overlay} are skipped. The
-     * returned list is ordered so that compositing it front-to-back places
+     * main menu) are skipped and contribute neither overlays nor outlines.
+     * The overlay list is ordered so that compositing it front-to-back places
      * higher layers and later installs on top, matching the design doc rule
-     * "同层级按安装顺序，后装覆盖先装".</p>
+     * "同层级按安装顺序，后装覆盖先装". {@code gunOutlines} keeps the
+     * installation order (earlier installs first); sorting by width is the
+     * compositor's responsibility
+     * ({@link CompositeTextureBuilder#composite}).</p>
      *
      * @param pluginIds      the ordered plugin definition ids
      * @param registryAccess the runtime registry view (from a loaded world)
-     * @return a new, sorted list of overlay layers; empty when no plugin
-     *         declares a texture overlay
+     * @return the collected render inputs; both lists may be empty
      */
-    private static List<CompositeTextureBuilder.OverlayLayer> collectOverlayLayersByIds(
+    private static OverlayRenderData collectRenderDataByIds(
             List<ResourceLocation> pluginIds,
             RegistryAccess registryAccess) {
         List<OverlayEntry> entries = new ArrayList<>(pluginIds.size());
+        List<OutlineSpec> gunOutlines = new ArrayList<>();
         for (int i = 0; i < pluginIds.size(); i++) {
             PluginDefinition definition = PluginRegistry.getPlugin(registryAccess, pluginIds.get(i)).orElse(null);
             if (definition == null) {
                 continue;
             }
-            if (definition.textureOverlay().isEmpty()) {
-                continue;
+            if (definition.textureOverlay().isPresent()) {
+                TextureOverlay overlay = definition.textureOverlay().get();
+                entries.add(new OverlayEntry(
+                        overlay.texture(),
+                        overlay.layer(),
+                        i,
+                        overlay.alignment(),
+                        overlay.fit(),
+                        overlay.tint(),
+                        overlay.blend(),
+                        overlay.outline()));
             }
-            TextureOverlay overlay = definition.textureOverlay().get();
-            entries.add(new OverlayEntry(
-                    overlay.texture(),
-                    overlay.layer(),
-                    i,
-                    overlay.alignment(),
-                    overlay.fit(),
-                    overlay.tint(),
-                    overlay.blend(),
-                    overlay.outline()));
+            definition.gunOutline().ifPresent(gunOutlines::add);
         }
         entries.sort(Comparator
                 .comparingInt(OverlayEntry::layer)
                 .thenComparingInt(OverlayEntry::installOrder));
-        return entries.stream()
-                .map(e -> new CompositeTextureBuilder.OverlayLayer(
-                        e.texture(), e.alignment(), e.fit(), e.tint(), e.blend(), e.outline()))
-                .toList();
+        return new OverlayRenderData(
+                entries.stream()
+                        .map(e -> new CompositeTextureBuilder.OverlayLayer(
+                                e.texture(), e.alignment(), e.fit(), e.tint(), e.blend(), e.outline()))
+                        .toList(),
+                gunOutlines);
     }
 }

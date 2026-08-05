@@ -110,23 +110,6 @@ public final class CompositeTextureBuilder {
     }
 
     /**
-     * Composites a list of overlay layers onto a base texture, returning a
-     * single blended {@link NativeImage}, without any whole-gun outlines.
-     *
-     * @param baseTexture the gun's base (or shoot) texture path
-     * @param overlays    the sorted overlay layers, bottom-to-top
-     * @return the composited image, or {@code null} when the base texture
-     *         cannot be loaded (an error is logged); missing overlay
-     *         textures are skipped with a warning
-     */
-    @Nullable
-    public static NativeImage composite(
-            ResourceLocation baseTexture,
-            List<OverlayLayer> overlays) {
-        return composite(baseTexture, overlays, List.of());
-    }
-
-    /**
      * Composites a list of overlay layers onto a base texture, then paints
      * the given whole-gun outlines around the composited silhouette, returning
      * a single blended {@link NativeImage}.

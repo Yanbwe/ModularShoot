@@ -1,7 +1,6 @@
 package org.yanbwe.modularshoot.client.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import java.util.List;
 import java.util.UUID;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.geom.EntityModelSet;
@@ -232,13 +231,14 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer imple
         ResourceLocation renderTexture = ShootTextureResolver.resolveTexture(gunDef, playerUuid);
 
         RegistryAccess registryAccess = minecraft.level.registryAccess();
-        List<CompositeTextureBuilder.OverlayLayer> overlays = collectOverlays(stack, registryAccess);
+        PluginOverlayCompositor.OverlayRenderData renderData = collectRenderData(stack, registryAccess);
         int modifierVersion = ClientGunDataStore.getInstance().hasSyncData()
                 ? ClientGunDataStore.getInstance().getModifierVersion()
                 : 0;
 
         DynamicGunTextureCache.TextureHandle handle = DynamicGunTextureCache.getInstance().getOrCreate(
-                new DynamicGunTextureCache.Key(renderTexture, overlays, modifierVersion));
+                new DynamicGunTextureCache.Key(
+                        renderTexture, renderData.overlays(), renderData.gunOutlines(), modifierVersion));
         DynamicItemModelRenderer.render(
                 handle.location(),
                 scaleFor(gunDef.textureScale(), handle),
@@ -275,7 +275,8 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer imple
     }
 
     /**
-     * Collects the sorted overlay layers of the gun's installed plugins.
+     * Collects the render inputs of the gun's installed plugins: the sorted
+     * overlay layers and the whole-gun outlines in installation order.
      *
      * <p>Prefers the server-pushed snapshot in
      * {@link ClientGunDataStore} when one has been received (the sync
@@ -283,17 +284,18 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer imple
      * {@code gun_data} component); otherwise falls back to reading the
      * plugin instances from the stack's own component.</p>
      *
-     * @param stack         the gun item stack
+     * @param stack          the gun item stack
      * @param registryAccess the runtime registry view (from a loaded world)
-     * @return the sorted overlay layers, bottom-to-top; empty when no
-     *         installed plugin declares a texture overlay
+     * @return the collected render inputs: overlays sorted bottom-to-top and
+     *         gun outlines in installation order (width sorting is the
+     *         compositor's job); both lists may be empty
      */
-    private List<CompositeTextureBuilder.OverlayLayer> collectOverlays(ItemStack stack, RegistryAccess registryAccess) {
+    private PluginOverlayCompositor.OverlayRenderData collectRenderData(ItemStack stack, RegistryAccess registryAccess) {
         ClientGunDataStore store = ClientGunDataStore.getInstance();
         if (store.hasSyncData()) {
-            return PluginOverlayCompositor.collectOverlayLayersFromSync(store.getInstalledPlugins(), registryAccess);
+            return PluginOverlayCompositor.collectRenderDataFromSync(store.getInstalledPlugins(), registryAccess);
         }
-        return PluginOverlayCompositor.collectOverlayLayers(ModularShootAPI.getInstalledPlugins(stack), registryAccess);
+        return PluginOverlayCompositor.collectRenderData(ModularShootAPI.getInstalledPlugins(stack), registryAccess);
     }
 
     /**

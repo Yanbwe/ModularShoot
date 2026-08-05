@@ -121,7 +121,7 @@ public final class PluginItemRenderer extends BlockEntityWithoutLevelRenderer im
         }
 
         DynamicGunTextureCache.TextureHandle handle = DynamicGunTextureCache.getInstance().getOrCreate(
-                new DynamicGunTextureCache.Key(definition.itemIcon(), List.of(), 0));
+                new DynamicGunTextureCache.Key(definition.itemIcon(), List.of(), List.of(), 0));
         boolean auto = definition.textureScale() == TextureScaleMode.AUTO;
         DynamicItemModelRenderer.render(
                 handle.location(),

@@ -11,6 +11,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.FastColor;
 import org.slf4j.Logger;
 import org.yanbwe.modularshoot.ModularShoot;
+import org.yanbwe.modularshoot.plugin.OutlineSpec;
 
 /**
  * Client-side cache for dynamically composited gun / plugin item textures.
@@ -32,9 +33,10 @@ import org.yanbwe.modularshoot.ModularShoot;
  * purple-black missing texture. The failure is logged once per distinct key.</p>
  *
  * <p><b>Key invalidation:</b> the cache key is
- * {@code (texture path, overlay list, modifierVersion)}. Overlay changes are
- * reflected by the key, and the caller feeds the server-pushed modifier
- * version ({@link org.yanbwe.modularshoot.client.ClientGunDataStore#getModifierVersion})
+ * {@code (texture path, overlay list, gun outline list, modifierVersion)}.
+ * Overlay and gun-outline changes are reflected by the key, and the caller
+ * feeds the server-pushed modifier version
+ * ({@link org.yanbwe.modularshoot.client.ClientGunDataStore#getModifierVersion})
  * so plugin installs/uninstalls produce a new key and a re-composite.
  * {@link #clear()} releases every registered texture and is invoked from the
  * {@code onResourceManagerReload} of the item renderers, so an F3+T resource
@@ -84,11 +86,17 @@ public final class DynamicGunTextureCache {
      * @param overlays        the sorted overlay layers, bottom-to-top, each
      *                        carrying its placement/sizing parameters;
      *                        empty when the item has no overlay layers
+     * @param gunOutlines     the whole-gun outline specs painted around the
+     *                        composited silhouette, in installation order;
+     *                        part of the cache key so editing a plugin's
+     *                        {@code gun_outline} definition and reloading
+     *                        (F3+T) triggers a re-composite
      * @param modifierVersion the gun's anti-cheat modifier version, used to
      *                        force a re-composite when plugins change even if
      *                        the overlay list is unchanged
      */
-    public record Key(ResourceLocation texturePath, List<CompositeTextureBuilder.OverlayLayer> overlays, int modifierVersion) {
+    public record Key(ResourceLocation texturePath, List<CompositeTextureBuilder.OverlayLayer> overlays,
+                      List<OutlineSpec> gunOutlines, int modifierVersion) {
     }
 
     /**
@@ -149,7 +157,7 @@ public final class DynamicGunTextureCache {
         ResourceLocation location =
                 ResourceLocation.fromNamespaceAndPath(ModularShoot.MODID, "dynamic/gun_" + nextId++);
 
-        NativeImage image = CompositeTextureBuilder.composite(key.texturePath(), key.overlays());
+        NativeImage image = CompositeTextureBuilder.composite(key.texturePath(), key.overlays(), key.gunOutlines());
         if (image == null) {
             LOGGER.warn(
                     "Gun texture {} could not be loaded; using programmatic placeholder",
