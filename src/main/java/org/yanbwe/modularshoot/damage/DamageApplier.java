@@ -177,8 +177,8 @@ public final class DamageApplier {
      *       covers online players and loaded mob shooters alike; the result
      *       is semantically equivalent to the old two-step lookup.</li>
      *   <li>{@link Level#getPlayerByUUID(UUID)} — kept only as a fallback for
-     *       non-server levels (客户端/集成方测试场景) where no entity index
-     *       exists.</li>
+     *       non-server levels (client/integration-test scenarios) where no
+     *       entity index exists.</li>
      * </ol>
      *
      * <p>Returns {@code null} when the shooter uuid is {@code null}, the
@@ -198,8 +198,8 @@ public final class DamageApplier {
         // O(1) entity-index lookup on the server level — covers online players
         // and loaded mob shooters alike (players are entities in the index).
         // The O(players) getPlayerByUUID scan is kept only as a fallback for
-        // non-server levels (客户端/集成方测试场景), where no entity index
-        // exists.
+        // non-server levels (client/integration-test scenarios), where no
+        // entity index exists.
         if (level instanceof ServerLevel serverLevel) {
             return serverLevel.getEntity(shooterUuid);
         }

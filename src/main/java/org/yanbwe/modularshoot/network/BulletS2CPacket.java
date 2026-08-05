@@ -225,7 +225,7 @@ public record BulletS2CPacket(
         buf.writeDouble(entry.dirZ());
         encodeNullableResourceLocation(buf, entry.texture());
         encodeNullableResourceLocation(buf, entry.modelLocation());
-        // Varint enum ordinal instead of a UTF string: the two render modes are
+        // Enum ordinal byte instead of a UTF string: the two render modes are
         // fixed in code (unreleased mod — no cross-version compat concern).
         buf.writeByte(renderModeOrdinal(entry.renderMode()));
         buf.writeFloat(entry.renderScale());
