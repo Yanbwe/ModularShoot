@@ -349,6 +349,23 @@ public final class BulletManager {
     }
 
     /**
+     * Returns a live, read-only view of all active bullets for iteration.
+     *
+     * <p>Unlike {@link #getAllBullets()} this does <em>not</em> take a
+     * defensive copy — the returned collection is unmodifiable (remove/clear
+     * throw {@link UnsupportedOperationException}), and iteration remains
+     * weakly consistent across concurrent removal (the underlying
+     * {@link ConcurrentHashMap} iterators are weakly consistent). Intended for
+     * read-only passes such as the per-tick sync broadcast, which never
+     * removes bullets while iterating.</p>
+     *
+     * @return an unmodifiable live view of the bullet id index values
+     */
+    public Collection<BulletRecord> getActiveBullets() {
+        return Collections.unmodifiableCollection(bulletsById.values());
+    }
+
+    /**
      * Returns a point-in-time unmodifiable snapshot of all active bullets in
      * this dimension (设计文档 §getAllBullets).
      *

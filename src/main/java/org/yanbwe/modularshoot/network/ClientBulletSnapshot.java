@@ -34,10 +34,12 @@ import org.jetbrains.annotations.Nullable;
  * entry but never decodes it, and the class carries no client-only
  * dependencies that would break server class-loading.</p>
  *
- * <p><strong>Immutability.</strong> The {@code stats} and {@code traits}
- * maps are defensively copied on construction and on decode, and
- * unmodifiable views are exposed by the record accessors, so visual-tick
- * hooks cannot mutate the frozen values. This matches the read-only contract
+     * <p><strong>Immutability.</strong> The {@code stats} and {@code traits}
+     * maps are frozen once via {@code Map.copyOf} in the canonical constructor —
+     * the single defensive copy on both the server build path (which passes
+     * {@code BulletSnapshot}'s live views) and the client decode path.
+     * Unmodifiable views are exposed by the record accessors, so visual-tick
+     * hooks cannot mutate the frozen values. This matches the read-only contract
  * for client-visible snapshot data: in-flight mutation of stats/traits
  * happens only on the server (via {@code onTick}, {@code onHit}, etc.) and
  * is re-synced to the client on the next full-sync cycle.</p>
@@ -168,7 +170,8 @@ public record ClientBulletSnapshot(
      * Decodes the stats map written by {@link #encodeStatMap}.
      *
      * @param buf the source buffer
-     * @return an unmodifiable stats map
+     * @return the raw decoded map; the canonical constructor freezes it via
+     *         {@code Map.copyOf} (single defensive copy on the decode path)
      */
     private static Map<ResourceLocation, Double> decodeStatMap(RegistryFriendlyByteBuf buf) {
         int count = buf.readInt();
@@ -178,7 +181,7 @@ public record ClientBulletSnapshot(
             double value = buf.readDouble();
             map.put(key, value);
         }
-        return Map.copyOf(map);
+        return map;
     }
 
     /**
@@ -200,7 +203,8 @@ public record ClientBulletSnapshot(
      * Decodes the traits map written by {@link #encodeTraitMap}.
      *
      * @param buf the source buffer
-     * @return an unmodifiable traits map
+     * @return the raw decoded map; the canonical constructor freezes it via
+     *         {@code Map.copyOf} (single defensive copy on the decode path)
      */
     private static Map<ResourceLocation, Boolean> decodeTraitMap(RegistryFriendlyByteBuf buf) {
         int count = buf.readInt();
@@ -210,7 +214,7 @@ public record ClientBulletSnapshot(
             boolean value = buf.readBoolean();
             map.put(key, value);
         }
-        return Map.copyOf(map);
+        return map;
     }
 
     // --- Nullable helpers -----------------------------------------------
