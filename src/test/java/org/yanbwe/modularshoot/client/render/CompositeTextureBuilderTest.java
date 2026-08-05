@@ -3,8 +3,10 @@ package org.yanbwe.modularshoot.client.render;
 import com.mojang.blaze3d.platform.NativeImage;
 import java.util.Optional;
 import net.minecraft.util.FastColor;
+import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.junit.jupiter.api.Test;
+import org.yanbwe.modularshoot.plugin.OutlineSpec;
 import org.yanbwe.modularshoot.plugin.OverlayAlignment;
 import org.yanbwe.modularshoot.plugin.OverlayBlend;
 import org.yanbwe.modularshoot.plugin.OverlayFit;
@@ -27,6 +29,25 @@ class CompositeTextureBuilderTest {
     private static final int BLACK = FastColor.ABGR32.color(255, 0, 0, 0);
 
     private static final Vector4f WHITE_TINT = new Vector4f(1.0F, 1.0F, 1.0F, 1.0F);
+    private static final int OUTLINE_RED = FastColor.ABGR32.color(255, 0, 0, 255);
+
+    /** Builds an {@link OutlineSpec} with the given RGB colour and width. */
+    private static OutlineSpec spec(float r, float g, float b, float alpha, int width) {
+        return new OutlineSpec(new Vector3f(r, g, b), alpha, width);
+    }
+
+    /** Builds an 8x8 canvas with an opaque 4x4 white square at (2,2)-(5,5);
+     *  every other pixel is explicitly transparent (NativeImage's native
+     *  backing memory is not zero-initialised). */
+    private static NativeImage squareCanvas() {
+        NativeImage img = solid(8, 8, TRANSPARENT);
+        for (int y = 2; y < 6; y++) {
+            for (int x = 2; x < 6; x++) {
+                img.setPixelRGBA(x, y, WHITE);
+            }
+        }
+        return img;
+    }
 
     /** Builds a solid-colour image. */
     private static NativeImage solid(int w, int h, int abgr) {
@@ -288,5 +309,88 @@ class CompositeTextureBuilderTest {
     void whiteTintIsIdentity() {
         int pixel = FastColor.ABGR32.color(200, 30, 120, 250); // arbitrary non-white pixel
         assertEquals(pixel, tinted(pixel, WHITE_TINT), "white tint leaves every byte unchanged");
+    }
+
+    // --- outline (outlineLayer) ---
+
+    @Test
+    void outlinesOnePixelRing() {
+        // 8x8 canvas with an opaque 4x4 square at (2,2)-(5,5): a 1px ring of
+        // outline red hugs the square's edges; the square keeps its colour and
+        // pixels two or more away stay fully transparent.
+        try (NativeImage img = squareCanvas()) {
+            CompositeTextureBuilder.outlineLayer(img, spec(1.0F, 0.0F, 0.0F, 1.0F, 1));
+            assertPixel(img, 2, 1, OUTLINE_RED, "ring above the square");
+            assertPixel(img, 1, 2, OUTLINE_RED, "ring left of the square");
+            assertPixel(img, 6, 2, OUTLINE_RED, "ring right of the square");
+            assertPixel(img, 2, 6, OUTLINE_RED, "ring below the square");
+            assertPixel(img, 2, 2, WHITE, "square interior keeps its colour");
+            assertPixel(img, 5, 5, WHITE, "square interior keeps its colour");
+            assertPixel(img, 0, 0, TRANSPARENT, "corner stays transparent");
+            assertPixel(img, 7, 7, TRANSPARENT, "corner stays transparent");
+        }
+    }
+
+    @Test
+    void outlineWidthTwo() {
+        // Same canvas, 2px ring: every pixel outside the square is within the
+        // ring, including the canvas corners (Chebyshev distance 2).
+        try (NativeImage img = squareCanvas()) {
+            CompositeTextureBuilder.outlineLayer(img, spec(1.0F, 0.0F, 0.0F, 1.0F, 2));
+            for (int y = 0; y < 8; y++) {
+                for (int x = 0; x < 8; x++) {
+                    boolean inside = x >= 2 && x < 6 && y >= 2 && y < 6;
+                    assertPixel(img, x, y, inside ? WHITE : OUTLINE_RED,
+                            inside ? "square interior" : "ring pixel");
+                }
+            }
+        }
+    }
+
+    @Test
+    void ignoresNonPositiveWidth() {
+        // width=0: nothing is painted, every pixel stays byte-identical.
+        try (NativeImage img = squareCanvas();
+             NativeImage reference = squareCanvas()) {
+            CompositeTextureBuilder.outlineLayer(img, spec(1.0F, 0.0F, 0.0F, 1.0F, 0));
+            for (int y = 0; y < 8; y++) {
+                for (int x = 0; x < 8; x++) {
+                    assertPixel(img, x, y, reference.getPixelRGBA(x, y), "byte-identical pixel");
+                }
+            }
+        }
+    }
+
+    @Test
+    void transparentImageGetsNoOutline() {
+        // A fully transparent image has no alpha silhouette to stroke.
+        try (NativeImage img = solid(4, 4, TRANSPARENT)) {
+            CompositeTextureBuilder.outlineLayer(img, spec(1.0F, 0.0F, 0.0F, 1.0F, 1));
+            for (int y = 0; y < 4; y++) {
+                for (int x = 0; x < 4; x++) {
+                    assertPixel(img, x, y, TRANSPARENT, "transparent pixel stays transparent");
+                }
+            }
+        }
+    }
+
+    @Test
+    void outlineIsPaintedAfterTint() {
+        // 6x6 canvas with an opaque 4x4 white square at (1,1)-(4,4). Tinting
+        // first turns the square magenta; the blue outline painted afterwards
+        // must not be affected by the tint (order contract: tint → outline).
+        NativeImage img = solid(6, 6, TRANSPARENT);
+        for (int y = 1; y < 5; y++) {
+            for (int x = 1; x < 5; x++) {
+                img.setPixelRGBA(x, y, WHITE);
+            }
+        }
+        try (img) {
+            CompositeTextureBuilder.applyTint(img, new Vector4f(1.0F, 0.0F, 1.0F, 1.0F));
+            CompositeTextureBuilder.outlineLayer(img, spec(0.0F, 0.0F, 1.0F, 1.0F, 1));
+            assertPixel(img, 2, 2, FastColor.ABGR32.color(255, 255, 0, 255), "tinted square pixel");
+            assertPixel(img, 0, 1, FastColor.ABGR32.color(255, 255, 0, 0), "blue outline left");
+            assertPixel(img, 5, 5, FastColor.ABGR32.color(255, 255, 0, 0), "blue outline corner");
+        }
     }
 }

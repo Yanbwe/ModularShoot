@@ -54,6 +54,13 @@ import org.yanbwe.modularshoot.plugin.OverlayFit;
  * overlay's RGBA pixels channel-by-channel before blending (white is the
  * identity).</p>
  *
+ * <p><b>Per-layer processing order:</b> each overlay is tinted first, then
+ * its optional outline stroke is painted along the alpha silhouette
+ * ({@link #outlineLayer}), and only then is the result blended onto the
+ * base. The outline colour is applied after the tint, so it never
+ * participates in tinting — callers must rely on this call order rather
+ * than pre-tinting the outline colour.</p>
+ *
  * <p><b>Threading:</b> texture loading and per-pixel blending do not assert
  * the render thread, so {@link #composite} may run off-thread. The returned
  * {@code NativeImage} must be {@linkplain NativeImage#close() closed} by the
@@ -129,6 +136,9 @@ public final class CompositeTextureBuilder {
             }
             try {
                 applyTint(overlay, layer.tint());
+                if (layer.outline().isPresent()) {
+                    outlineLayer(overlay, layer.outline().get());
+                }
                 blendOnto(base, overlay, layer);
             } finally {
                 overlay.close();
@@ -387,6 +397,87 @@ public final class CompositeTextureBuilder {
                 int b = Math.round(FastColor.ABGR32.blue(p) * tint.z());
                 int a = Math.round(FastColor.ABGR32.alpha(p) * tint.w());
                 img.setPixelRGBA(x, y, FastColor.ABGR32.color(a, b, g, r));
+            }
+        }
+    }
+
+    /**
+     * Checks whether any pixel within a square neighbourhood of radius
+     * {@code width} around {@code (x, y)} has non-zero alpha (including the
+     * pixel itself). Neighbourhood cells outside the image bounds are skipped.
+     *
+     * <p>Used by {@link #outlineLayer} to find transparent pixels hugging an
+     * opaque silhouette.</p>
+     *
+     * <p>Package-private for unit testing; the pixel math is pure.</p>
+     *
+     * @param img   the image to sample
+     * @param x     the centre x coordinate
+     * @param y     the centre y coordinate
+     * @param width the neighbourhood radius in pixels
+     * @return {@code true} when an alpha &gt; 0 pixel exists within the
+     *         neighbourhood
+     */
+    static boolean hasAlphaNeighbor(NativeImage img, int x, int y, int width) {
+        for (int dy = -width; dy <= width; dy++) {
+            for (int dx = -width; dx <= width; dx++) {
+                int nx = x + dx;
+                int ny = y + dy;
+                if (nx < 0 || ny < 0 || nx >= img.getWidth() || ny >= img.getHeight()) {
+                    continue;
+                }
+                if (FastColor.ABGR32.alpha(img.getPixelRGBA(nx, ny)) > 0) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Paints an outline stroke along the image's alpha silhouette, in place:
+     * every fully transparent pixel within {@code width} pixels (Chebyshev
+     * distance) of a non-transparent pixel is painted with the outline colour.
+     *
+     * <p>A non-positive {@code width} logs a warning and paints nothing. The
+     * stroke colour is fixed and never participates in tinting — the call
+     * order in {@link #composite} (tint first, then outline) guarantees this.
+     * Two passes are used: pass one marks the target pixels based on the
+     * original alpha values, pass two writes the colour, so freshly painted
+     * outline pixels never trigger further marking.</p>
+     *
+     * <p>Package-private for unit testing; the pixel math is pure.</p>
+     *
+     * @param img  the image to stroke, modified in place
+     * @param spec the outline colour (RGB in 0..1), opacity and width
+     */
+    static void outlineLayer(NativeImage img, OutlineSpec spec) {
+        int width = spec.width();
+        if (width <= 0) {
+            LOGGER.warn("Outline width {} is not positive; outline skipped for layer", width);
+            return;
+        }
+        int w = img.getWidth();
+        int h = img.getHeight();
+        boolean[] marks = new boolean[w * h];
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                if (FastColor.ABGR32.alpha(img.getPixelRGBA(x, y)) == 0
+                        && hasAlphaNeighbor(img, x, y, width)) {
+                    marks[y * w + x] = true;
+                }
+            }
+        }
+        int color = FastColor.ABGR32.color(
+                Math.round(spec.alpha() * 255.0F),
+                Math.round(spec.color().z() * 255.0F),
+                Math.round(spec.color().y() * 255.0F),
+                Math.round(spec.color().x() * 255.0F));
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                if (marks[y * w + x]) {
+                    img.setPixelRGBA(x, y, color);
+                }
             }
         }
     }
