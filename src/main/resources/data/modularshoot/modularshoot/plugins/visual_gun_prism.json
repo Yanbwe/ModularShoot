@@ -1,0 +1,17 @@
+{
+  "tags": ["c:accessory"],
+  "priority": 95,
+  "item_icon": "modularshoot:textures/bullet/test_magic.png",
+  "name": "§d枪械棱镜（动态描边演示）",
+  "brief": "描边颜色持续流转（彩虹）",
+  "description": "演示动态描边：客户端以插件 id 向 DynamicOutlineTintRegistry 注册 provider，描边逐帧取色（白色遮罩 × 每帧 tint），缓存纹理无需重建",
+  "color": "#FF88FF",
+  "texture_overlay": {
+    "texture": "modularshoot:textures/bullet/test_orb_tracking.png",
+    "layer": 7,
+    "fit": "contain",
+    "tint": [1.0, 0.6, 0.9, 1.0],
+    "blend": "screen"
+  },
+  "gun_outline": { "color": [1.0, 1.0, 1.0], "alpha": 1.0, "width": 2 }
+}

@@ -95,6 +95,9 @@ class DatapackJsonCodecTest {
                 "plugins/visual_tint_b.json",
                 "plugins/visual_fire_trail.json",
                 "plugins/visual_blackhole.json",
+                "plugins/visual_gun_ember.json",
+                "plugins/visual_gun_frost.json",
+                "plugins/visual_gun_prism.json",
                 "plugins/explosive_rounds.json",
                 "plugins/precision_barrel.json",
                 "plugins/rapid_fire_barrel.json"

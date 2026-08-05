@@ -601,6 +601,81 @@ public final class CompositeTextureBuilder {
     }
 
     /**
+     * Builds a white whole-gun outline mask for the given composited image,
+     * without modifying it.
+     *
+     * <p>The mask is a second texture with the same dimensions as the
+     * composited image: every pixel that {@link #applyGunOutlines} would
+     * stroke is painted <em>white opaque</em>, every other pixel stays
+     * transparent. It is derived from the <strong>original silhouette</strong>
+     * (an alpha snapshot taken before any stroke is painted — the caller must
+     * pass an image that has not had its gun outlines baked yet), so the mask
+     * footprint exactly matches the union of the baked strokes. Rendering
+     * draws the mask over the composited texture and multiplies it by a
+     * per-frame tint at draw time (white mask &times; tint = tint), which
+     * yields a dynamically coloured outline without re-compositing.</p>
+     *
+     * <p>Outline detection reuses the same marking rule as
+     * {@link #applyGunOutlines}: for each spec sorted by width descending,
+     * fully transparent pixels within the Chebyshev neighbourhood are marked.
+     * A non-positive {@code width} logs a warning and contributes nothing.
+     * An empty list returns {@code null} (no mask exists). The returned image
+     * is newly allocated and not closed by this method; the caller owns it.</p>
+     *
+     * <p>Package-private for unit testing; the pixel math is pure.</p>
+     *
+     * @param composited the composited image <em>without</em> gun outlines
+     *                   painted; not modified
+     * @param outlines   the whole-gun outline specs, any order; sorted
+     *                   widest-first internally
+     * @return a new white-opaque mask image, or {@code null} when
+     *         {@code outlines} is empty
+     */
+    @Nullable
+    static NativeImage buildOutlineMask(NativeImage composited, List<OutlineSpec> outlines) {
+        if (outlines.isEmpty()) {
+            return null;
+        }
+        int w = composited.getWidth();
+        int h = composited.getHeight();
+        // Alpha snapshot of the original silhouette — identical to the one
+        // applyGunOutlines takes, so the mask footprint matches its strokes.
+        int[] alphaSnapshot = new int[w * h];
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                alphaSnapshot[y * w + x] = FastColor.ABGR32.alpha(composited.getPixelRGBA(x, y));
+            }
+        }
+        // NativeImage's native backing memory is not zero-initialised, so
+        // every pixel is explicitly set to transparent before marking.
+        NativeImage mask = new NativeImage(w, h, false);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                mask.setPixelRGBA(x, y, 0);
+            }
+        }
+        List<OutlineSpec> sorted = new ArrayList<>(outlines);
+        sorted.sort(Comparator.comparingInt(OutlineSpec::width).reversed());
+        int white = FastColor.ABGR32.color(255, 255, 255, 255);
+        for (OutlineSpec spec : sorted) {
+            int width = Math.min(spec.width(), Math.max(w, h) - 1);
+            if (width <= 0) {
+                LOGGER.warn("Gun outline width {} is not positive; outline skipped in mask", spec.width());
+                continue;
+            }
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    if (alphaSnapshot[y * w + x] == 0
+                            && hasAlphaNeighborInSnapshot(alphaSnapshot, w, h, x, y, width)) {
+                        mask.setPixelRGBA(x, y, white);
+                    }
+                }
+            }
+        }
+        return mask;
+    }
+
+    /**
      * Checks whether any pixel within a square neighbourhood of radius
      * {@code width} around {@code (x, y)} has non-zero alpha in the given
      * alpha snapshot (including the pixel itself). Neighbourhood cells

@@ -10,6 +10,8 @@ import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
+import org.jetbrains.annotations.Nullable;
+import org.joml.Vector4f;
 
 /**
  * Renders a 2D item texture with the vanilla flat-item extrusion, driven
@@ -66,31 +68,18 @@ import net.minecraft.world.item.ItemStack;
  */
 public final class DynamicItemModelRenderer {
 
+    /** White identity vertex colour used when no mask pass is requested. */
+    private static final Vector4f WHITE_COLOR = new Vector4f(1.0F, 1.0F, 1.0F, 1.0F);
+
     private DynamicItemModelRenderer() {
     }
 
     /**
      * Draws the extruded item quads for the given dynamic texture.
      *
-     * <p>Emits six faces (front, back and four sides) as a single quad batch
-     * to {@code bufferSource}, in baked-model space (0..1). The pose stack is
-     * pushed and popped around the call, so the caller's stack is restored on
-     * return. <em>No transform is applied here:</em> {@code renderByItem}
-     * already receives a pose centred on the model origin (the vanilla
-     * pipeline applies the model display transform and
-     * {@code translate(-0.5, -0.5, -0.5)} before dispatching to a custom
-     * renderer), and the {@link ItemTransforms#NO_TRANSFORMS} transform is
-     * the identity.</p>
-     *
-     * <p><b>Texture scaling:</b> the quads are scaled by
-     * {@code scaleX}/{@code scaleY} around the centred origin so the rendered
-     * geometry follows the texture resolution — a 32×32 texture with
-     * {@code scaleX = scaleY = 2} renders 2× larger than a 16×16 one. Because
-     * the pose is already centred, the scale keeps the item centred regardless
-     * of magnitude. The extrusion thickness (z axis) is <em>not</em> scaled,
-     * staying at the vanilla 1/16-cell depth. The UVs remain normalised 0..1,
-     * mapping the whole texture onto the (possibly enlarged) quad, so texture
-     * proportions are never stretched.</p>
+     * <p>Convenience overload of {@link #render(ResourceLocation, ResourceLocation, Vector4f, float, float, ItemDisplayContext, PoseStack, MultiBufferSource, int, int)}
+     * with no mask pass — the composite texture is drawn with white vertex
+     * colour, exactly the static-item look.</p>
      *
      * @param texture      the registered dynamic texture location; must be
      *                     non-{@code null}
@@ -112,39 +101,110 @@ public final class DynamicItemModelRenderer {
             MultiBufferSource bufferSource,
             int light,
             int overlay) {
+        render(texture, null, null, scaleX, scaleY, context, poseStack, bufferSource, light, overlay);
+    }
+
+    /**
+     * Draws the extruded item quads for the given dynamic texture, optionally
+     * followed by a tinted outline-mask pass.
+     *
+     * <p>Behaviour and geometry are identical to the plain overload when
+     * {@code maskTexture} or {@code maskTint} is {@code null}: the composite
+     * texture is drawn with white vertex colour. When both are provided, the
+     * white outline mask (same pixel dimensions as {@code texture}) is drawn
+     * on top of the same extruded quads with the per-frame tint as vertex
+     * colour — texture &times; vertex colour yields the tint, so a
+     * dynamically coloured whole-gun outline is rendered without
+     * re-compositing or re-uploading any texture (设计文档 §动态描边).</p>
+     *
+     * @param texture      the registered composite texture location; must be
+     *                     non-{@code null}
+     * @param maskTexture  the registered white outline-mask texture location,
+     *                     or {@code null} to skip the mask pass
+     * @param maskTint     the per-frame outline tint (RGBA, 0..1), or
+     *                     {@code null} to skip the mask pass
+     * @param scaleX       horizontal geometry scale (16 px = 1 grid cell)
+     * @param scaleY       vertical geometry scale (16 px = 1 grid cell)
+     * @param context      the display context (GUI, hand, ground, ...)
+     * @param poseStack    the pose stack, already centred by the vanilla
+     *                     pipeline
+     * @param bufferSource the buffer source to submit quads to
+     * @param light        the packed light value
+     * @param overlay      the packed overlay value
+     */
+    public static void render(
+            ResourceLocation texture,
+            @Nullable ResourceLocation maskTexture,
+            @Nullable Vector4f maskTint,
+            float scaleX,
+            float scaleY,
+            ItemDisplayContext context,
+            PoseStack poseStack,
+            MultiBufferSource bufferSource,
+            int light,
+            int overlay) {
 
         poseStack.pushPose();
         poseStack.scale(scaleX, scaleY, 1F);
+
+        renderFaces(texture, WHITE_COLOR, poseStack, bufferSource, light, overlay);
+        if (maskTexture != null && maskTint != null) {
+            renderFaces(maskTexture, maskTint, poseStack, bufferSource, light, overlay);
+        }
+
+        poseStack.popPose();
+    }
+
+    /**
+     * Emits the six extruded faces of the given texture with a fixed vertex
+     * colour, inside the caller's already-scaled pose.
+     *
+     * <p>Front face (z = 0.53125, normal +z), vertices CCW seen from +z.</p>
+     *
+     * @param texture      the texture location to sample
+     * @param color        the vertex colour (RGBA, 0..1) multiplied into the
+     *                     sampled texel
+     * @param poseStack    the pose stack, already centred and scaled by the
+     *                     caller
+     * @param bufferSource the buffer source to submit quads to
+     * @param light        the packed light value
+     * @param overlay      the packed overlay value
+     */
+    private static void renderFaces(
+            ResourceLocation texture,
+            Vector4f color,
+            PoseStack poseStack,
+            MultiBufferSource bufferSource,
+            int light,
+            int overlay) {
 
         VertexConsumer consumer = bufferSource.getBuffer(RenderType.entityTranslucent(texture));
         PoseStack.Pose pose = poseStack.last();
 
         // Front face (z = 0.53125, normal +z), vertices CCW seen from +z.
-        face(consumer, pose, light, overlay,
+        face(consumer, pose, light, overlay, color,
                 0F, 0F, 0.53125F, 1F, 0F, 0.53125F, 1F, 1F, 0.53125F, 0F, 1F, 0.53125F,
                 0F, 0F, 1F);
         // Back face (z = 0.46875, normal -z).
-        face(consumer, pose, light, overlay,
+        face(consumer, pose, light, overlay, color,
                 1F, 0F, 0.46875F, 0F, 0F, 0.46875F, 0F, 1F, 0.46875F, 1F, 1F, 0.46875F,
                 0F, 0F, -1F);
         // Left side (x = 0, normal -x).
-        face(consumer, pose, light, overlay,
+        face(consumer, pose, light, overlay, color,
                 0F, 0F, 0.46875F, 0F, 0F, 0.53125F, 0F, 1F, 0.53125F, 0F, 1F, 0.46875F,
                 -1F, 0F, 0F);
         // Right side (x = 1, normal +x).
-        face(consumer, pose, light, overlay,
+        face(consumer, pose, light, overlay, color,
                 1F, 0F, 0.53125F, 1F, 0F, 0.46875F, 1F, 1F, 0.46875F, 1F, 1F, 0.53125F,
                 1F, 0F, 0F);
         // Bottom side (y = 0, normal -y).
-        face(consumer, pose, light, overlay,
+        face(consumer, pose, light, overlay, color,
                 0F, 0F, 0.46875F, 1F, 0F, 0.46875F, 1F, 0F, 0.53125F, 0F, 0F, 0.53125F,
                 0F, -1F, 0F);
         // Top side (y = 1, normal +y).
-        face(consumer, pose, light, overlay,
+        face(consumer, pose, light, overlay, color,
                 0F, 1F, 0.53125F, 1F, 1F, 0.53125F, 1F, 1F, 0.46875F, 0F, 1F, 0.46875F,
                 0F, 1F, 0F);
-
-        poseStack.popPose();
     }
 
     /**
@@ -212,16 +272,17 @@ public final class DynamicItemModelRenderer {
             PoseStack.Pose pose,
             int light,
             int overlay,
+            Vector4f color,
             float x1, float y1, float z1,
             float x2, float y2, float z2,
             float x3, float y3, float z3,
             float x4, float y4, float z4,
             float nx, float ny, float nz) {
 
-        vertex(consumer, pose, light, overlay, x1, y1, z1, 0F, 1F, nx, ny, nz);
-        vertex(consumer, pose, light, overlay, x2, y2, z2, 1F, 1F, nx, ny, nz);
-        vertex(consumer, pose, light, overlay, x3, y3, z3, 1F, 0F, nx, ny, nz);
-        vertex(consumer, pose, light, overlay, x4, y4, z4, 0F, 0F, nx, ny, nz);
+        vertex(consumer, pose, light, overlay, color, x1, y1, z1, 0F, 1F, nx, ny, nz);
+        vertex(consumer, pose, light, overlay, color, x2, y2, z2, 1F, 1F, nx, ny, nz);
+        vertex(consumer, pose, light, overlay, color, x3, y3, z3, 1F, 0F, nx, ny, nz);
+        vertex(consumer, pose, light, overlay, color, x4, y4, z4, 0F, 0F, nx, ny, nz);
     }
 
     /**
@@ -245,12 +306,13 @@ public final class DynamicItemModelRenderer {
             PoseStack.Pose pose,
             int light,
             int overlay,
+            Vector4f color,
             float x, float y, float z,
             float u, float v,
             float nx, float ny, float nz) {
 
         consumer.addVertex(pose, x, y, z)
-                .setColor(1.0F, 1.0F, 1.0F, 1.0F)
+                .setColor(color.x(), color.y(), color.z(), color.w())
                 .setUv(u, v)
                 .setOverlay(overlay)
                 .setLight(light)

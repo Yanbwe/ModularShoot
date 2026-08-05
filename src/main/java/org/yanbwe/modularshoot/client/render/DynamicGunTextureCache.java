@@ -9,6 +9,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.FastColor;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.plugin.OutlineSpec;
@@ -25,6 +26,14 @@ import org.yanbwe.modularshoot.plugin.OutlineSpec;
  * {@link DynamicTexture} under a framework-managed
  * {@code modularshoot:dynamic/...} location, and hands that location to the
  * caller for quad rendering (see {@link DynamicItemModelRenderer}).</p>
+ *
+ * <p><b>Outline masks:</b> when the key declares {@code gun_outline} specs,
+ * a second white outline-mask texture (same dimensions, same cache key) is
+ * registered alongside the composite — see {@link TextureHandle#maskLocation}.
+ * The mask is extracted from the image <em>before</em> the static strokes are
+ * baked, so its footprint matches them exactly; renderers draw it on top of
+ * the composite multiplied by a per-frame tint to produce dynamically
+ * coloured outlines without re-compositing (设计文档 §动态描边).</p>
  *
  * <p><b>Placeholder fallback:</b> when the base texture cannot be loaded
  * (missing PNG), a programmatically generated 16×16 placeholder image is
@@ -104,11 +113,18 @@ public final class DynamicGunTextureCache {
      * image, so callers can size the render geometry from the texture
      * resolution ({@code auto} texture scaling).
      *
-     * @param location the registered texture location for quad rendering
-     * @param width    the composited image width in pixels
-     * @param height   the composited image height in pixels
+     * @param location     the registered texture location for quad rendering
+     * @param maskLocation the registered white outline-mask texture location
+     *                     (same dimensions as {@code location}), or
+     *                     {@code null} when the key declares no gun outlines
+     * @param width        the composited image width in pixels
+     * @param height       the composited image height in pixels
      */
-    public record TextureHandle(ResourceLocation location, int width, int height) {
+    public record TextureHandle(
+            ResourceLocation location,
+            @Nullable ResourceLocation maskLocation,
+            int width,
+            int height) {
     }
 
     /**
@@ -150,14 +166,18 @@ public final class DynamicGunTextureCache {
         // under the limit, releasing the GPU textures of stale configurations.
         while (locations.size() >= MAX_ENTRIES) {
             var first = locations.entrySet().iterator().next();
-            Minecraft.getInstance().getTextureManager().release(first.getValue().location());
+            releaseHandle(first.getValue());
             locations.remove(first.getKey());
         }
 
         ResourceLocation location =
                 ResourceLocation.fromNamespaceAndPath(ModularShoot.MODID, "dynamic/gun_" + nextId++);
 
-        NativeImage image = CompositeTextureBuilder.composite(key.texturePath(), key.overlays(), key.gunOutlines());
+        // Composite WITHOUT baking the gun outlines: the outline mask must be
+        // derived from the original silhouette (strokes would widen the mask
+        // if they were already painted), so the outlines are baked here only
+        // after the mask has been extracted from the same image.
+        NativeImage image = CompositeTextureBuilder.composite(key.texturePath(), key.overlays(), List.of());
         if (image == null) {
             LOGGER.warn(
                     "Gun texture {} could not be loaded; using programmatic placeholder",
@@ -168,12 +188,36 @@ public final class DynamicGunTextureCache {
         int width = image.getWidth();
         int height = image.getHeight();
 
+        ResourceLocation maskLocation = null;
+        if (!key.gunOutlines().isEmpty()) {
+            NativeImage maskImage = CompositeTextureBuilder.buildOutlineMask(image, key.gunOutlines());
+            maskLocation = ResourceLocation.fromNamespaceAndPath(
+                    ModularShoot.MODID, "dynamic/gun_mask_" + nextId++);
+            DynamicTexture maskTexture = new DynamicTexture(maskImage);
+            Minecraft.getInstance().getTextureManager().register(maskLocation, maskTexture);
+            CompositeTextureBuilder.applyGunOutlines(image, key.gunOutlines());
+        }
+
         // DynamicTexture(NativeImage) prepares and uploads the GL texture,
         // deferring to the render thread when necessary.
         DynamicTexture texture = new DynamicTexture(image);
         Minecraft.getInstance().getTextureManager().register(location, texture);
-        locations.put(key, new TextureHandle(location, width, height));
+        locations.put(key, new TextureHandle(location, maskLocation, width, height));
         return locations.get(key);
+    }
+
+    /**
+     * Releases every GPU texture owned by a handle (the composite texture and,
+     * when present, its outline-mask texture).
+     *
+     * @param handle the handle whose registered locations are released
+     */
+    private static void releaseHandle(TextureHandle handle) {
+        var textureManager = Minecraft.getInstance().getTextureManager();
+        textureManager.release(handle.location());
+        if (handle.maskLocation() != null) {
+            textureManager.release(handle.maskLocation());
+        }
     }
 
     /**
@@ -188,9 +232,8 @@ public final class DynamicGunTextureCache {
         if (locations.isEmpty()) {
             return;
         }
-        var textureManager = Minecraft.getInstance().getTextureManager();
         for (TextureHandle handle : locations.values()) {
-            textureManager.release(handle.location());
+            releaseHandle(handle);
         }
         locations.clear();
     }

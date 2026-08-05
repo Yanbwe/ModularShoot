@@ -86,11 +86,20 @@ public final class PluginOverlayCompositor {
      * Render inputs collected from a gun's installed plugins: the sorted overlay
      * layers and the whole-gun outlines (in installation order).
      *
-     * @param overlays    the sorted overlay layers, bottom-to-top
-     * @param gunOutlines the whole-gun outline specs, in installation order;
-     *                    sorting by width is the compositor's responsibility
+     * @param overlays            the sorted overlay layers, bottom-to-top
+     * @param gunOutlines         the whole-gun outline specs, in installation
+     *                            order; sorting by width is the compositor's
+     *                            responsibility
+     * @param gunOutlinePluginIds the plugin ids that contributed a
+     *                            {@code gun_outline}, in installation order —
+     *                            index-aligned with {@code gunOutlines}; used
+     *                            by {@link DynamicOutlineTintRegistry} to
+     *                            resolve per-frame dynamic outline tints
      */
-    public record OverlayRenderData(List<CompositeTextureBuilder.OverlayLayer> overlays, List<OutlineSpec> gunOutlines) {
+    public record OverlayRenderData(
+            List<CompositeTextureBuilder.OverlayLayer> overlays,
+            List<OutlineSpec> gunOutlines,
+            List<ResourceLocation> gunOutlinePluginIds) {
     }
 
     /**
@@ -227,6 +236,7 @@ public final class PluginOverlayCompositor {
             RegistryAccess registryAccess) {
         List<OverlayEntry> entries = new ArrayList<>(pluginIds.size());
         List<OutlineSpec> gunOutlines = new ArrayList<>();
+        List<ResourceLocation> gunOutlinePluginIds = new ArrayList<>();
         for (int i = 0; i < pluginIds.size(); i++) {
             PluginDefinition definition = PluginRegistry.getPlugin(registryAccess, pluginIds.get(i)).orElse(null);
             if (definition == null) {
@@ -244,7 +254,10 @@ public final class PluginOverlayCompositor {
                         overlay.blend(),
                         overlay.outline()));
             }
-            definition.gunOutline().ifPresent(gunOutlines::add);
+            if (definition.gunOutline().isPresent()) {
+                gunOutlines.add(definition.gunOutline().get());
+                gunOutlinePluginIds.add(pluginIds.get(i));
+            }
         }
         entries.sort(Comparator
                 .comparingInt(OverlayEntry::layer)
@@ -254,6 +267,7 @@ public final class PluginOverlayCompositor {
                         .map(e -> new CompositeTextureBuilder.OverlayLayer(
                                 e.texture(), e.alignment(), e.fit(), e.tint(), e.blend(), e.outline()))
                         .toList(),
-                List.copyOf(gunOutlines));
+                List.copyOf(gunOutlines),
+                List.copyOf(gunOutlinePluginIds));
     }
 }

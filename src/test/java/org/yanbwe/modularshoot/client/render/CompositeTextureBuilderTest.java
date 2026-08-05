@@ -435,6 +435,98 @@ class CompositeTextureBuilderTest {
         }
     }
 
+    // --- outline mask (buildOutlineMask) ---
+
+    /** Builds a w×h canvas with an opaque white square from (x1,y1) to (x2,y2)
+     *  inclusive; every other pixel is explicitly transparent. */
+    private static NativeImage squareCanvas(int w, int h, int x1, int y1, int x2, int y2) {
+        NativeImage img = solid(w, h, TRANSPARENT);
+        for (int y = y1; y <= y2; y++) {
+            for (int x = x1; x <= x2; x++) {
+                img.setPixelRGBA(x, y, WHITE);
+            }
+        }
+        return img;
+    }
+
+    /** Chebyshev distance of (x, y) to the square at (x1,y1)-(x2,y2). */
+    private static int squareDistance(int x, int y, int x1, int y1, int x2, int y2) {
+        int dx = Math.max(x1 - x, Math.max(0, x - x2));
+        int dy = Math.max(y1 - y, Math.max(0, y - y2));
+        return Math.max(dx, dy);
+    }
+
+    @Test
+    void emptyOutlinesReturnNull() {
+        assertNull(CompositeTextureBuilder.buildOutlineMask(squareCanvas(), List.of()),
+                "an empty outline list yields no mask");
+    }
+
+    @Test
+    void maskMatchesBakedStrokeFootprint() {
+        // The mask must mark exactly the pixels the baked strokes occupy:
+        // white opaque at every stroke pixel, transparent at the original
+        // silhouette and beyond the stroke. The mask input image is never
+        // modified by the call.
+        List<OutlineSpec> specs = List.of(spec(1.0F, 0.0F, 0.0F, 1.0F, 2));
+        try (NativeImage baked = squareCanvas();
+             NativeImage maskSource = squareCanvas()) {
+            NativeImage mask = CompositeTextureBuilder.buildOutlineMask(maskSource, specs);
+            try (mask) {
+                // maskSource must be untouched (pure function).
+                for (int y = 0; y < 8; y++) {
+                    for (int x = 0; x < 8; x++) {
+                        assertPixel(maskSource, x, y, squareCanvas().getPixelRGBA(x, y),
+                                "mask source untouched");
+                    }
+                }
+                CompositeTextureBuilder.applyGunOutlines(baked, specs);
+                for (int y = 0; y < 8; y++) {
+                    for (int x = 0; x < 8; x++) {
+                        boolean inside = squareDistance(x, y, 2, 2, 5, 5) == 0;
+                        boolean bakedStroke = !inside && FastColor.ABGR32.alpha(baked.getPixelRGBA(x, y)) > 0;
+                        assertPixel(mask, x, y, bakedStroke ? WHITE : TRANSPARENT,
+                                "mask pixel matches baked stroke footprint");
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    void maskCoversUnionOfNestedRings() {
+        // A width-3 ring plus a width-1 ring: the mask is the UNION of both
+        // strokes — every pixel at Chebyshev distance 1..3 from the square is
+        // white, the interior and everything beyond stay transparent (unlike
+        // the baked image, which colours the rings separately).
+        List<OutlineSpec> specs = List.of(spec(1.0F, 0.0F, 0.0F, 1.0F, 3), spec(1.0F, 1.0F, 0.0F, 1.0F, 1));
+        try (NativeImage mask = CompositeTextureBuilder.buildOutlineMask(
+                squareCanvas(12, 12, 4, 4, 7, 7), specs)) {
+            for (int y = 0; y < 12; y++) {
+                for (int x = 0; x < 12; x++) {
+                    int d = squareDistance(x, y, 4, 4, 7, 7);
+                    int expected = (d >= 1 && d <= 3) ? WHITE : TRANSPARENT;
+                    assertPixel(mask, x, y, expected, "union ring pixel");
+                }
+            }
+        }
+    }
+
+    @Test
+    void transparentSilhouetteYieldsEmptyMask() {
+        // A fully transparent image has no alpha silhouette to stroke, so the
+        // mask stays fully transparent (but non-null for a non-empty spec).
+        try (NativeImage mask = CompositeTextureBuilder.buildOutlineMask(
+                solid(4, 4, TRANSPARENT), List.of(spec(1.0F, 0.0F, 0.0F, 1.0F, 1)))) {
+            assertNotNull(mask, "mask exists even for an empty silhouette");
+            for (int y = 0; y < 4; y++) {
+                for (int x = 0; x < 4; x++) {
+                    assertPixel(mask, x, y, TRANSPARENT, "transparent mask pixel");
+                }
+            }
+        }
+    }
+
     @Test
     void singleOutlineRingsTheCompositedShape() {
         // 8x8 canvas with an opaque 4x4 white square at (2,2)-(5,5): a 2px

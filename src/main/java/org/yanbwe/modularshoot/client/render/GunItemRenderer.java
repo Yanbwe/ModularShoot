@@ -1,6 +1,7 @@
 package org.yanbwe.modularshoot.client.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.geom.EntityModelSet;
@@ -15,6 +16,7 @@ import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.client.extensions.common.IClientItemExtensions;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Vector4f;
 import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.client.ClientGunDataStore;
 import org.yanbwe.modularshoot.client.PlayerShootStateManager;
@@ -49,11 +51,14 @@ import org.yanbwe.modularshoot.registry.gun.TextureScaleMode;
  *       snapshot in {@link ClientGunDataStore}, falling back to the local
  *       {@code gun_data} component.</li>
  *   <li>{@link DynamicGunTextureCache} loads the base PNG, composites the
- *       overlays on top and uploads the result as a dynamic texture
- *       (cached per texture+overlays+modifierVersion).</li>
+ *       overlays on top (and, for outline-carrying guns, registers a white
+ *       outline-mask texture alongside) and uploads the result as a dynamic
+ *       texture (cached per texture+overlays+gunOutlines+modifierVersion).</li>
  *   <li>{@link DynamicItemModelRenderer} draws the texture as an extruded
  *       flat item, visually equivalent to a vanilla {@code item/generated}
- *       render.</li>
+ *       render. When an installed plugin has a registered dynamic tint
+ *       provider ({@link DynamicOutlineTintRegistry}), the outline mask is
+ *       drawn on top tinted with the provider's per-frame colour.</li>
  * </ol>
  *
  * <h2>Why not a baked model + ItemOverrideList</h2>
@@ -240,8 +245,18 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer imple
         DynamicGunTextureCache.TextureHandle handle = DynamicGunTextureCache.getInstance().getOrCreate(
                 new DynamicGunTextureCache.Key(
                         renderTexture, renderData.overlays(), renderData.gunOutlines(), modifierVersion));
+        // Dynamic outline pass: when any installed outline-carrying plugin has
+        // a registered per-frame tint provider, the white outline mask is
+        // drawn over the composite tinted with the provider's colour. Without
+        // a provider the mask pass is skipped and the baked static strokes
+        // render exactly as before.
+        float partialTick = Minecraft.getInstance().getTimer().getGameTimeDeltaPartialTick(false);
+        Optional<Vector4f> tint = DynamicOutlineTintRegistry.resolve(
+                renderData.gunOutlinePluginIds(), stack, partialTick);
         DynamicItemModelRenderer.render(
                 handle.location(),
+                tint.isPresent() ? handle.maskLocation() : null,
+                tint.orElse(null),
                 scaleFor(gunDef.textureScale(), handle),
                 scaleForY(gunDef.textureScale(), handle),
                 context, poseStack, bufferSource, light, overlay);
