@@ -1,8 +1,11 @@
 package org.yanbwe.modularshoot.client.render;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
@@ -101,6 +104,30 @@ public final class PluginOverlayCompositor {
             List<OutlineSpec> gunOutlines,
             List<ResourceLocation> gunOutlinePluginIds) {
     }
+
+    /**
+     * Bounded LRU cache of collected render inputs, keyed by the plugin-id list
+     * (value semantics) plus the {@link RegistryAccess} identity. The render
+     * data is player-independent and fully derived from datapack definitions,
+     * so the per-frame rebuild in {@link GunItemRenderer} is pure repetition —
+     * the same gun stack resolves to the same data every frame. A {@code /reload}
+     * rebuilds the dynamic registries, producing a new {@code RegistryAccess}
+     * instance and thus a natural cache miss; the LRU bound (64 entries) keeps
+     * the key's strong reference to the registry access bounded across world
+     * changes.
+     */
+    private record RenderDataKey(List<ResourceLocation> pluginIds, RegistryAccess registryAccess) {
+    }
+
+    private static final int MAX_CACHE_ENTRIES = 64;
+
+    private static final Map<RenderDataKey, OverlayRenderData> RENDER_DATA_CACHE =
+            Collections.synchronizedMap(new LinkedHashMap<>(16, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<RenderDataKey, OverlayRenderData> eldest) {
+                    return size() > MAX_CACHE_ENTRIES;
+                }
+            });
 
     /**
      * Collects overlay layers from a gun's installed plugins, sorted by
@@ -227,6 +254,15 @@ public final class PluginOverlayCompositor {
      * compositor's responsibility
      * ({@link CompositeTextureBuilder#composite}).</p>
      *
+     * <p><b>Caching:</b> results are memoised in a bounded LRU cache keyed by
+     * the plugin-id list (value semantics) plus the {@link RegistryAccess}
+     * identity, because the render data is player-independent and fully
+     * derived from datapack definitions — the same plugin-id list resolves to
+     * the same data every call. A {@code /reload} rebuilds the dynamic
+     * registries, producing a new {@code RegistryAccess} instance and thus a
+     * natural cache miss; the LRU bound (64 entries) keeps the key's strong
+     * reference to the registry access bounded across world changes.</p>
+     *
      * @param pluginIds      the ordered plugin definition ids
      * @param registryAccess the runtime registry view (from a loaded world)
      * @return the collected render inputs; both lists may be empty
@@ -234,6 +270,11 @@ public final class PluginOverlayCompositor {
     private static OverlayRenderData collectRenderDataByIds(
             List<ResourceLocation> pluginIds,
             RegistryAccess registryAccess) {
+        RenderDataKey key = new RenderDataKey(pluginIds, registryAccess);
+        OverlayRenderData cached = RENDER_DATA_CACHE.get(key);
+        if (cached != null) {
+            return cached;
+        }
         List<OverlayEntry> entries = new ArrayList<>(pluginIds.size());
         List<OutlineSpec> gunOutlines = new ArrayList<>();
         List<ResourceLocation> gunOutlinePluginIds = new ArrayList<>();
@@ -262,12 +303,14 @@ public final class PluginOverlayCompositor {
         entries.sort(Comparator
                 .comparingInt(OverlayEntry::layer)
                 .thenComparingInt(OverlayEntry::installOrder));
-        return new OverlayRenderData(
+        OverlayRenderData renderData = new OverlayRenderData(
                 entries.stream()
                         .map(e -> new CompositeTextureBuilder.OverlayLayer(
                                 e.texture(), e.alignment(), e.fit(), e.tint(), e.blend(), e.outline()))
                         .toList(),
                 List.copyOf(gunOutlines),
                 List.copyOf(gunOutlinePluginIds));
+        RENDER_DATA_CACHE.put(key, renderData);
+        return renderData;
     }
 }
