@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -360,6 +361,15 @@ public final class BulletSyncService {
             ServerLevel serverLevel,
             Map<Integer, BulletS2CPacket.FullBulletEntry> fullEntryCache) {
         double syncRadius = getSyncRadius(player);
+
+        // Nothing to diff and no client state to clean up — skip the
+        // per-player collection allocations entirely (no bullets, no
+        // created-this-tick, and the player has no tracked bullet state).
+        if (allBullets.isEmpty()
+                && (createdThisTick == null || createdThisTick.isEmpty())
+                && playerStates.isEmpty()) {
+            return;
+        }
         Set<Integer> createdIds = new HashSet<>();
         List<BulletS2CPacket.FullBulletEntry> newBullets = new ArrayList<>();
         List<BulletS2CPacket.DeltaBulletEntry> updatedBullets = new ArrayList<>();
@@ -452,10 +462,16 @@ public final class BulletSyncService {
         Set<Integer> activeIds = new HashSet<>();
         for (BulletRecord bullet : allBullets) {
             int bulletId = bullet.getBulletId();
-            activeIds.add(bulletId);
-            if (createdIds.contains(bulletId) || !isInRenderDistance(bullet, player, syncRadius)) {
+            if (createdIds.contains(bulletId)) {
+                continue; // handled (and state-recorded) by collectCreatedThisTick
+            }
+            if (!isInRenderDistance(bullet, player, syncRadius)) {
+                // Out of range: not active for this player. collectRemovedBullets
+                // drops it from playerStates and notifies the client, which only
+                // destroys render objects via removedBulletIds/full-sync.
                 continue;
             }
+            activeIds.add(bulletId);
             BulletState prevState = playerStates.get(bulletId);
             if (prevState == null) {
                 newBullets.add(toFullBulletEntry(bullet, serverLevel, fullEntryCache));
@@ -483,10 +499,13 @@ public final class BulletSyncService {
             Set<Integer> activeIds,
             Set<Integer> createdIds,
             List<Integer> removedBulletIds) {
-        for (Integer bulletId : new HashSet<>(playerStates.keySet())) {
+        Iterator<Map.Entry<Integer, BulletState>> it = playerStates.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<Integer, BulletState> entry = it.next();
+            int bulletId = entry.getKey();
             if (!activeIds.contains(bulletId) && !createdIds.contains(bulletId)) {
                 removedBulletIds.add(bulletId);
-                playerStates.remove(bulletId);
+                it.remove();
             }
         }
     }
