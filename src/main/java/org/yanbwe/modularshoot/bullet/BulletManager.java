@@ -5,14 +5,11 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
-import net.minecraft.core.SectionPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
@@ -48,14 +45,13 @@ import org.yanbwe.modularshoot.util.GunResolver;
  * preventing dimension unload cleanup. Only the lightweight
  * {@link ResourceKey Level dimension key} is retained for logging.</p>
  *
- * <h2>Chunk bucketing</h2>
- * <p>Bullets are indexed by their current {@link ChunkPos} so that per-tick
- * collision detection only scans the bullet's chunk and its neighbours (3×3
- * range) instead of every world entity (设计文档 §空间分区). The index is a
- * {@code ConcurrentHashMap<ChunkPos, Set<BulletRecord>>}; each bucket is a
- * concurrent set and is created/removed atomically via
- * {@link ConcurrentHashMap#computeIfAbsent} / {@link ConcurrentHashMap#compute}
- * to avoid race conditions on bucket lifecycle.</p>
+ * <h2>Spatial querying</h2>
+ * <p>Collision detection does not iterate every world entity. The
+ * {@code BulletTickHandler} maintains a per-tick, per-chunk entity
+ * candidate cache (query box + candidate list) and every bullet in a chunk
+ * shares one {@code Level.getEntitiesOfClass} query whose box contains its
+ * step search box (设计文档 §空间分区). No bullet-to-chunk index is kept on
+ * the manager.</p>
  *
  * <h2>Bullet id strategy</h2>
  * <p>Ids are {@code int}, per-dimension, monotonically increasing from 1 and
@@ -75,9 +71,6 @@ public final class BulletManager {
 
     /** All active bullets indexed by id (thread-safe). */
     private final Map<Integer, BulletRecord> bulletsById = new ConcurrentHashMap<>();
-
-    /** Chunk bucketing index: chunk → live set of bullets currently in that chunk. */
-    private final Map<ChunkPos, Set<BulletRecord>> chunkBuckets = new ConcurrentHashMap<>();
 
     /** Monotonic per-dimension id counter; starts at 1, guarded by synchronization in {@link #nextBulletId}. */
     private int nextId = 1;
@@ -195,20 +188,15 @@ public final class BulletManager {
     }
 
     /**
-     * Registers a bullet with this dimension's manager. The bullet is added to
-     * the id index and to the chunk bucket for its current position
-     * (设计文档 §空间分区).
+     * Registers a bullet with this dimension's manager (设计文档 §空间分区).
      *
      * <p>The bullet must already carry a unique id assigned via
-     * {@link #nextBulletId()} (or equivalent). Its position determines the
-     * bucket it lands in.</p>
+     * {@link #nextBulletId()} (or equivalent).</p>
      *
      * @param bullet the bullet record to register
      */
     public void addBullet(BulletRecord bullet) {
         bulletsById.put(bullet.getBulletId(), bullet);
-        ChunkPos chunk = toChunkPos(bullet.getPosition());
-        chunkBuckets.computeIfAbsent(chunk, key -> ConcurrentHashMap.newKeySet()).add(bullet);
     }
 
     /**
@@ -286,10 +274,10 @@ public final class BulletManager {
      *
      * <p>The bullet is first atomically detached from the id index (which
      * guarantees the hook fires exactly once even under concurrent
-     * removal), then the {@code ON_REMOVE} callbacks run, and finally the
-     * chunk-bucket entry is cleaned up. The {@code ON_EXPIRE} hook — when
-     * applicable — is fired by the caller before invoking this method
-     * (设计文档 §onExpire 与 onRemove 的触发关系).</p>
+     * removal), then the {@code ON_REMOVE} callbacks run. The
+     * {@code ON_EXPIRE} hook — when applicable — is fired by the caller
+     * before invoking this method (设计文档 §onExpire 与 onRemove 的触发
+     * 关系).</p>
      *
      * @param bulletId id of the bullet to remove
      * @param reason   why the bullet is being removed; passed to the
@@ -301,7 +289,6 @@ public final class BulletManager {
             return;
         }
         BulletHookInvoker.fireOnRemove(bullet, reason);
-        removeFromChunkBucket(bullet);
     }
 
     /**
@@ -351,21 +338,6 @@ public final class BulletManager {
     }
 
     /**
-     * Atomically removes a bullet from its current chunk bucket, dropping the
-     * bucket entry entirely once it becomes empty.
-     */
-    private void removeFromChunkBucket(BulletRecord bullet) {
-        ChunkPos chunk = toChunkPos(bullet.getPosition());
-        chunkBuckets.compute(chunk, (key, bucket) -> {
-            if (bucket == null) {
-                return null;
-            }
-            bucket.remove(bullet);
-            return bucket.isEmpty() ? null : bucket;
-        });
-    }
-
-    /**
      * Looks up a bullet by id.
      *
      * @param id the bullet id
@@ -389,68 +361,4 @@ public final class BulletManager {
         return Collections.unmodifiableList(new ArrayList<>(bulletsById.values()));
     }
 
-    /**
-     * Returns all bullets located in the chunk bucket of {@code center} plus
-     * every chunk within {@code radius} (inclusive) on both axes. With
-     * {@code radius = 1} this is the 3×3 neighbourhood used for per-tick
-     * collision scanning (设计文档 §空间分区).
-     *
-     * <p>The returned collection is an unmodifiable snapshot.</p>
-     *
-     * @param center the central chunk
-     * @param radius chunk radius around the centre (0 = same chunk only)
-     * @return an unmodifiable collection of bullets in the range
-     */
-    public Collection<BulletRecord> getBulletsInChunkRange(ChunkPos center, int radius) {
-        List<BulletRecord> result = new ArrayList<>();
-        for (int dx = -radius; dx <= radius; dx++) {
-            for (int dz = -radius; dz <= radius; dz++) {
-                ChunkPos chunk = new ChunkPos(center.x + dx, center.z + dz);
-                Set<BulletRecord> bucket = chunkBuckets.get(chunk);
-                if (bucket != null) {
-                    result.addAll(bucket);
-                }
-            }
-        }
-        return Collections.unmodifiableList(result);
-    }
-
-    /**
-     * Migrates a bullet from its old chunk bucket to a new one when it crosses
-     * a chunk boundary (设计文档 §空间分区). Does nothing if the old and new
-     * chunks are identical.
-     *
-     * <p>The caller is responsible for having already updated the bullet's
-     * position; this method only maintains the bucket index.</p>
-     *
-     * @param bullet   the bullet that moved
-     * @param oldChunk the chunk the bullet was in before moving
-     * @param newChunk the chunk the bullet is now in
-     */
-    public void updateChunkBucket(BulletRecord bullet, ChunkPos oldChunk, ChunkPos newChunk) {
-        if (oldChunk.equals(newChunk)) {
-            return;
-        }
-        chunkBuckets.compute(oldChunk, (key, bucket) -> {
-            if (bucket != null) {
-                bucket.remove(bullet);
-                if (bucket.isEmpty()) {
-                    return null;
-                }
-            }
-            return bucket;
-        });
-        chunkBuckets.computeIfAbsent(newChunk, key -> ConcurrentHashMap.newKeySet()).add(bullet);
-    }
-
-    /**
-     * Converts a world-space position to its containing chunk coordinates.
-     * Uses {@link SectionPos#blockToSectionCoord(double)} which floors the
-     * coordinate before shifting, handling negative positions correctly.
-     */
-    private static ChunkPos toChunkPos(Vec3 pos) {
-        return new ChunkPos(
-                SectionPos.blockToSectionCoord(pos.x),
-                SectionPos.blockToSectionCoord(pos.z));
-    }
 }
