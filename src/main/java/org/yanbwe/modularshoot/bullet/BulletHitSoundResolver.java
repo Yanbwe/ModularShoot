@@ -55,13 +55,17 @@ public final class BulletHitSoundResolver {
      * （注册表尚未加载 / 定义被移除）时返回 {@link Optional#empty()}，调用
      * 方静音处理，不抛异常。</p>
      *
+     * <p>独立射击（炮塔 / 陷阱等，{@code snapshot.getGunId()} 为
+     * {@code null}）时同样返回 {@link Optional#empty()}（静音），不抛异常。</p>
+     *
      * @param bullet  子弹记录（不可为 null）
      * @param level   子弹所在世界（用于查动态注册表）
      * @param hitType 命中类型
      * @return 该次命中应播放的音效 ID；无法解析时返回 {@link Optional#empty()}
      */
     public static Optional<ResourceLocation> resolve(BulletRecord bullet, Level level, HitType hitType) {
-        return GunRegistry.getGun(level, bullet.getSnapshot().getGunId())
+        return Optional.ofNullable(bullet.getSnapshot().getGunId())
+                .flatMap(gunId -> GunRegistry.getGun(level, gunId))
                 .flatMap(definition -> resolve(definition, hitType));
     }
 }
