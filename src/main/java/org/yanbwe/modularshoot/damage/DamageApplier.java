@@ -50,6 +50,25 @@ import org.yanbwe.modularshoot.bullet.BulletRecord;
  * tactical shields should handle this in a damage processor or a
  * {@code LivingShieldBlockEvent} listener (设计文档 §盾牌格挡).</p>
  *
+ * <h2>Knockback contract</h2>
+ * <p>This {@code DamageSource} has neither a {@code directEntity} (the bullet
+ * is not a vanilla entity) nor a {@code sourcePosition}. In vanilla
+ * {@code LivingEntity.hurt()}, a damage source with no projectile and no
+ * source position passes a zero vector into {@code knockback()}, and vanilla
+ * {@code knockback()} then substitutes a <b>random</b> direction for a
+ * zero-length vector — the cause of the old random-direction bullet knockback
+ * bug. To keep bullet behaviour fully deterministic, the framework ships the
+ * data-pack tag file {@code data/minecraft/tags/damage_type/no_knockback.json}
+ * listing {@code modularshoot:bullet_damage}, which makes vanilla skip the
+ * knockback branch entirely (设计文档 §伤害应用机制 — 击退约定).</p>
+ *
+ * <p><b>Custom damage types.</b> Trait hooks and integration mods may swap
+ * {@code BulletSnapshot.damageType} onto any registered damage type. A custom
+ * type that is <em>not</em> in {@code minecraft:no_knockback} re-enters the
+ * vanilla zero-vector random-knockback fallback, so any damage type used for
+ * bullets should also be listed in that tag (multiple data packs writing the
+ * same tag are union-merged, so appending is safe).</p>
+ *
  * <p>This is a stateless utility class; all methods are static and it is not
  * instantiable.</p>
  */
