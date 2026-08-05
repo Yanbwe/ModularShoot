@@ -1,11 +1,12 @@
 package org.yanbwe.modularshoot.bullet;
 
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import net.minecraft.core.SectionPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -25,9 +26,10 @@ import org.yanbwe.modularshoot.trait.RemoveReason;
  * <p>Listens to {@link LevelTickEvent.Pre} on the game bus and, for every
  * active bullet in the dimension, performs the full flight pipeline
  * (设计文档 §执行顺序):
- * {@code onTick} hook, aging, straight-line position advance, chunk-bucket
- * migration, collision detection, penetration bookkeeping, damage
- * application, range expiry, then unloaded-chunk expiry.</p>
+ * {@code onTick} hook, aging, straight-line position advance, collision
+ * detection (with per-chunk entity candidate cache), penetration
+ * bookkeeping, damage application, range expiry, then unloaded-chunk
+ * expiry.</p>
  *
  * <p><b>Execution order rationale.</b> Collision detection runs <em>before</em>
  * range and unloaded-chunk expiry so that a bullet whose final step both
@@ -101,16 +103,21 @@ public final class BulletTickHandler {
     private static void tickBullets(Level level) {
         BulletManager manager = BulletManager.get(level);
         Collection<BulletRecord> bullets = manager.getAllBullets();
+        // Per-tick entity candidate cache: one chunk query shared by every
+        // bullet in the same chunk (设计文档 §空间分区). Discarded with this
+        // method's frame; the server tick is single-threaded.
+        Map<Long, CollisionDetector.ChunkEntityQuery> entityCache = new HashMap<>();
         for (BulletRecord bullet : bullets) {
-            processBullet(level, manager, bullet);
+            processBullet(level, manager, bullet, entityCache);
         }
     }
 
     /**
      * Processes a single bullet for one tick, executing the flight pipeline
      * (设计文档 §执行顺序):
-     * {@code onTick} hook, aging, position advance, chunk migration,
-     * collision/penetration/damage, range expiry, then unloaded-chunk expiry.
+     * {@code onTick} hook, aging, position advance, collision detection
+     * (with per-chunk entity candidate cache), penetration/damage, range
+     * expiry, then unloaded-chunk expiry.
      *
      * <p>Collision detection runs <em>before</em> range and unloaded-chunk
      * expiry. This guarantees that when a bullet's step both crosses a target
@@ -123,14 +130,17 @@ public final class BulletTickHandler {
      * {@code onTick} hook fires, the bullet's continued presence in the
      * manager's id index is verified. If an {@code onTick} callback removed
      * the bullet (e.g. a fuse/detonation trait), the remaining stages are
-     * skipped — no aging, position advance, chunk migration or collision
-     * detection runs on the already-removed record.</p>
+     * skipped — no aging, position advance or collision detection runs on
+     * the already-removed record.</p>
      *
      * @param level   the server level
      * @param manager the dimension's bullet manager
      * @param bullet  the bullet to advance
+     * @param entityCache the per-tick per-chunk entity candidate cache
+     *                    (设计文档 §空间分区)
      */
-    private static void processBullet(Level level, BulletManager manager, BulletRecord bullet) {
+    private static void processBullet(Level level, BulletManager manager, BulletRecord bullet,
+                                      Map<Long, CollisionDetector.ChunkEntityQuery> entityCache) {
         // 1. onTick trait hook — fire ON_TICK callbacks before aging/advance.
         BulletHookInvoker.fireOnTick(bullet);
 
@@ -138,9 +148,9 @@ public final class BulletTickHandler {
         //     manager.removeBullet(...) (e.g. a "fuse" trait that detonates
         //     after N ticks). Once the bullet is evicted from the id index,
         //     every subsequent stage would operate on a stale record —
-        //     advancing a dead bullet's position, re-inserting it into chunk
-        //     buckets, even re-detecting collisions for a projectile that no
-        //     longer exists. Bail out early so the rest of the pipeline is
+        //     advancing a dead bullet's position, even re-detecting
+        //     collisions for a projectile that no longer exists. Bail out
+        //     early so the rest of the pipeline is
         //     skipped for a bullet removed by its own onTick hook.
         if (manager.getBulletById(bullet.getBulletId()) == null) {
             return;
@@ -149,27 +159,24 @@ public final class BulletTickHandler {
         // 2. age++
         bullet.incrementAge();
 
-        // 3. position advance (records prevPos for chunk migration & collision)
+        // 3. position advance (records prevPos for collision detection)
         Vec3 prevPos = bullet.getPosition();
         advancePosition(bullet);
 
-        // 4. chunk-bucket migration if the bullet crossed a chunk boundary
-        checkChunkMigration(level, manager, bullet, prevPos);
-
-        // 5. collision detection → penetration dedup → damage application
+        // 4. collision detection → penetration dedup → damage application
         //    (设计文档 §执行顺序: 碰撞检测必须在范围/未加载检查之前执行，
         //    否则子弹本 tick 步进既穿过目标又超出射程时会因射程移除而漏判命中)
-        if (handleCollision(level, manager, bullet, prevPos)) {
+        if (handleCollision(level, manager, bullet, prevPos, entityCache)) {
             return;
         }
 
-        // 6. range expiry — the bullet's lifetime has ended
+        // 5. range expiry — the bullet's lifetime has ended
         //    (设计文档 §执行顺序: 范围检查在碰撞检测之后)
         if (checkRangeExpiry(manager, bullet)) {
             return;
         }
 
-        // 7. unloaded-chunk expiry — cannot raycast into unloaded space
+        // 6. unloaded-chunk expiry — cannot raycast into unloaded space
         //    (设计文档 §执行顺序: 未加载区块处理在范围检查之后)
         if (checkUnloadedChunk(level, manager, bullet)) {
             return;
@@ -199,13 +206,16 @@ public final class BulletTickHandler {
      * @param manager the dimension's bullet manager
      * @param bullet  the bullet being processed
      * @param prevPos the bullet's position before this tick's advance
+     * @param entityCache the per-tick per-chunk entity candidate cache
+     *                    (设计文档 §空间分区)
      * @return {@code true} if the bullet was removed by this collision (the
      *         caller should skip further processing this tick); {@code false}
      *         if the bullet continues flying (no hit, or penetration succeeded)
      */
-    private static boolean handleCollision(Level level, BulletManager manager, BulletRecord bullet, Vec3 prevPos) {
+    private static boolean handleCollision(Level level, BulletManager manager, BulletRecord bullet, Vec3 prevPos,
+                                           Map<Long, CollisionDetector.ChunkEntityQuery> entityCache) {
         Vec3 curPos = bullet.getPosition();
-        CollisionResult collision = CollisionDetector.detectCollision(level, bullet, prevPos, curPos);
+        CollisionResult collision = CollisionDetector.detectCollision(level, bullet, prevPos, curPos, entityCache);
         return switch (collision.hitType()) {
             case ENTITY -> {
                 Vec3 hitPos = computeHitPos(bullet, prevPos, collision.distance());
@@ -305,24 +315,6 @@ public final class BulletTickHandler {
     }
 
     /**
-     * Migrates the bullet's chunk-bucket index if it crossed a chunk boundary
-     * during this tick's position advance (设计文档 §空间分区).
-     *
-     * <p>{@link BulletManager#updateChunkBucket} is a no-op when the old and
-     * new chunks are identical, so calling it unconditionally is safe.</p>
-     *
-     * @param level   the server level (reserved for future collision integration)
-     * @param manager the dimension's bullet manager
-     * @param bullet  the bullet that may have moved
-     * @param prevPos the bullet's position before this tick's advance
-     */
-    private static void checkChunkMigration(Level level, BulletManager manager, BulletRecord bullet, Vec3 prevPos) {
-        ChunkPos oldChunk = toChunkPos(prevPos);
-        ChunkPos newChunk = toChunkPos(bullet.getPosition());
-        manager.updateChunkBucket(bullet, oldChunk, newChunk);
-    }
-
-    /**
      * Checks whether the bullet has exceeded its {@code range}; if so, fires
      * {@code onExpire} and removes the bullet with
      * {@link RemoveReason#EXPIRED} (设计文档 §范围检查).
@@ -375,19 +367,5 @@ public final class BulletTickHandler {
             return true;
         }
         return false;
-    }
-
-    /**
-     * Converts a world-space position to its containing chunk coordinates.
-     * Uses {@link SectionPos#blockToSectionCoord(double)} which floors the
-     * coordinate before shifting, handling negative positions correctly.
-     *
-     * @param pos the world-space position
-     * @return the chunk containing that position
-     */
-    private static ChunkPos toChunkPos(Vec3 pos) {
-        return new ChunkPos(
-                SectionPos.blockToSectionCoord(pos.x),
-                SectionPos.blockToSectionCoord(pos.z));
     }
 }

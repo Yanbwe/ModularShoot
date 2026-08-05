@@ -84,8 +84,11 @@ public final class CollisionDetector {
      * {@link Level#getEntitiesOfClass} call and the candidate entities it
      * returned. Candidates are reused by every bullet in the same chunk whose
      * search box is contained in {@link #box()} (设计文档 §空间分区).
+     *
+     * <p>Package-visible: {@link BulletTickHandler} holds the per-tick cache
+     * map of this type (设计文档 §空间分区).</p>
      */
-    private record ChunkEntityQuery(AABB box, List<LivingEntity> entities) {
+    record ChunkEntityQuery(AABB box, List<LivingEntity> entities) {
     }
 
     private CollisionDetector() {
