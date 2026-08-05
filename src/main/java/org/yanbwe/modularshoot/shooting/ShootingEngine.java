@@ -34,6 +34,7 @@ import org.yanbwe.modularshoot.plugin.TraitMergeService;
 import org.yanbwe.modularshoot.network.ShootAnimSyncService;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
+import org.yanbwe.modularshoot.registry.gun.GunSounds;
 
 /**
  * Server-side shooting engine orchestrator (设计文档 §射击时序步骤 3-9).
@@ -398,7 +399,7 @@ public final class ShootingEngine {
      * @param gunDefinition  the gun definition (carries the sound bindings)
      */
     private static void playShootSound(ServerPlayer player, GunDefinition gunDefinition) {
-        ResourceLocation soundId = gunDefinition.sounds().get(SHOOT_SOUND_SLOT);
+        ResourceLocation soundId = GunSounds.get(gunDefinition, SHOOT_SOUND_SLOT).orElse(null);
         if (soundId == null) {
             return;
         }
