@@ -109,8 +109,10 @@ public final class CollisionDetector {
     }
 
     /**
-     * 同 4 参版本，但实体查询结果按 chunk 缓存复用。缓存生命周期为一个 tick
-     * （由 BulletTickHandler 持有并传入）；传入空 Map 时行为与 4 参版本一致。
+     * Like the 4-param overload, but entity query results are cached per chunk
+     * and reused across bullets. The cache lives for one tick (held and passed
+     * in by {@code BulletTickHandler}); passing an empty map behaves exactly
+     * like the 4-param overload.
      *
      * @param level       the server level to query blocks/entities in
      * @param bullet      the bullet record (supplies snapshot, shooter, dedup sets)
@@ -119,7 +121,7 @@ public final class CollisionDetector {
      * @param entityCache the per-tick per-chunk entity candidate cache
      * @return the nearest hit, or {@link CollisionResult#none()} if nothing was hit
      */
-    public static CollisionResult detectCollision(
+    static CollisionResult detectCollision(
             Level level, BulletRecord bullet, Vec3 prevPos, Vec3 curPos,
             Map<Long, ChunkEntityQuery> entityCache) {
         double bulletSize = bullet.getSnapshot().getStat(BULLET_SIZE_ID);
@@ -218,15 +220,28 @@ public final class CollisionDetector {
     /**
      * Returns the entity candidates for this bullet's step, reusing the
      * per-chunk query result when the bullet's search box fits inside the
-     * cached query box; otherwise performs the exact per-bullet query.
+     * cached query box; otherwise queries the union of the chunk column box
+     * and the step's own search box (covering the full step, including
+     * steps that cross the chunk boundary).
      *
      * <p>Correctness: {@link Level#getEntitiesOfClass} returns every entity
      * whose bounding box intersects the query box. When {@code searchAABB} is
      * contained in the cached box, every entity that could intersect the
      * bullet's step is therefore already in the cached candidate list — reuse
-     * is exact, not approximate. The containment fallback covers bullets whose
-     * {@code bullet_size} or step length would extend beyond the cached box
-     * (including steps crossing the chunk boundary).</p>
+     * is exact, not approximate. The union fallback likewise covers bullets
+     * whose {@code bullet_size} or step length extends beyond the chunk
+     * column box: the widened box contains {@code searchAABB}, so its
+     * candidate list covers the whole step, exactly as the pre-cache
+     * per-bullet query did. The widened box is cached, so later bullets in
+     * the same chunk are more likely to be contained in it and hit the cache.</p>
+     *
+     * <p>Freshness: the candidate list is frozen at the tick's first query
+     * and reused by every bullet in the chunk. During
+     * {@code LevelTickEvent.Pre} entities have not ticked yet, so the frozen
+     * list matches a fresh per-bullet query (entities that died meanwhile are
+     * filtered by {@link #isSkippableEntity}). A theoretical divergence
+     * remains only if a trait callback teleports or summons an entity into
+     * the bullet's path within the same tick.</p>
      *
      * @param level       the server level
      * @param bullet      the bullet record (position decides the chunk key)
@@ -251,7 +266,13 @@ public final class CollisionDetector {
                 && cached.box().minZ <= searchAABB.minZ && cached.box().maxZ >= searchAABB.maxZ) {
             return cached.entities();
         }
-        AABB queryBox = chunkQueryBox(level, chunkKey, bulletSize);
+        // Fallback: the bullet's step is not fully covered by the per-chunk
+        // column box (e.g. a step crossing the chunk boundary extends into
+        // the source chunk beyond the pad). Query the union of the column
+        // box and the step's own search box so the whole step is covered —
+        // identical coverage to the pre-cache per-bullet query — and cache
+        // the widened box so later bullets in the same chunk hit the cache.
+        AABB queryBox = chunkQueryBox(level, chunkKey, bulletSize).minmax(searchAABB);
         List<LivingEntity> entities = level.getEntitiesOfClass(LivingEntity.class, queryBox);
         entityCache.put(chunkKey, new ChunkEntityQuery(queryBox, entities));
         return entities;
