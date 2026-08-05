@@ -43,3 +43,5 @@ AGENTS.md
 .tmp/
 docs
 logs
+### Worktrees ###
+.worktrees/
