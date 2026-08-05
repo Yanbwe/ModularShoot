@@ -230,10 +230,13 @@ public final class ModularShootPayloads {
      *
      * <p>Delegates to {@link ClientHitEffectHandler#playHitEffect} on the
      * main client thread via {@link IPayloadContext#enqueueWork(Runnable)}.
-     * The handler spawns the appropriate particles and plays a local sound
-     * for the hit type (entity / block / pierce) without mutating any game
-     * state — the server has already resolved damage authoritatively
-     * (设计文档 §BulletHitS2CPacket 客户端处理, lines 2033-2035).</p>
+     * The handler spawns the appropriate particles for the hit type
+     * (entity / block / pierce) and plays a data-driven sound resolved by
+     * the server from the gun definition's {@code sounds} slots
+     * ({@code payload.soundId()}; {@code null} means silent) without
+     * mutating any game state — the server has already resolved damage
+     * authoritatively (设计文档 §BulletHitS2CPacket 客户端处理, lines
+     * 2033-2035).</p>
      *
      * @return the payload handler
      */
@@ -246,7 +249,8 @@ public final class ModularShootPayloads {
                 }
                 Vec3 hitPos = new Vec3(payload.hitX(), payload.hitY(), payload.hitZ());
                 ClientHitEffectHandler.playHitEffect(
-                        mc.level, hitPos, payload.hitType(), payload.hitEntityId());
+                        mc.level, hitPos, payload.hitType(), payload.hitEntityId(),
+                        payload.soundId());
             });
         };
     }
