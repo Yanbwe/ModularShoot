@@ -50,10 +50,19 @@ public record CollisionResult(
     }
 
     /**
+     * Shared no-hit instance. The record is immutable (all fields final, no
+     * mutation API), so reusing one instance for every no-hit result is safe
+     * even across server tick threads (bullet collision hot path allocates
+     * 2-3 no-hit results per bullet per tick).
+     */
+    private static final CollisionResult NONE =
+            new CollisionResult(HitType.NONE, Double.MAX_VALUE, null, null, null);
+
+    /**
      * @return a no-hit result (distance {@link Double#MAX_VALUE})
      */
     public static CollisionResult none() {
-        return new CollisionResult(HitType.NONE, Double.MAX_VALUE, null, null, null);
+        return NONE;
     }
 
     /**
