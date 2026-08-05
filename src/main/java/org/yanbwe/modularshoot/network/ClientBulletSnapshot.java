@@ -168,7 +168,8 @@ public record ClientBulletSnapshot(
      * Decodes the stats map written by {@link #encodeStatMap}.
      *
      * @param buf the source buffer
-     * @return an unmodifiable stats map
+     * @return the raw decoded map; the canonical constructor freezes it via
+     *         {@code Map.copyOf} (single defensive copy on the decode path)
      */
     private static Map<ResourceLocation, Double> decodeStatMap(RegistryFriendlyByteBuf buf) {
         int count = buf.readInt();
@@ -178,7 +179,7 @@ public record ClientBulletSnapshot(
             double value = buf.readDouble();
             map.put(key, value);
         }
-        return Map.copyOf(map);
+        return map;
     }
 
     /**
@@ -200,7 +201,8 @@ public record ClientBulletSnapshot(
      * Decodes the traits map written by {@link #encodeTraitMap}.
      *
      * @param buf the source buffer
-     * @return an unmodifiable traits map
+     * @return the raw decoded map; the canonical constructor freezes it via
+     *         {@code Map.copyOf} (single defensive copy on the decode path)
      */
     private static Map<ResourceLocation, Boolean> decodeTraitMap(RegistryFriendlyByteBuf buf) {
         int count = buf.readInt();
@@ -210,7 +212,7 @@ public record ClientBulletSnapshot(
             boolean value = buf.readBoolean();
             map.put(key, value);
         }
-        return Map.copyOf(map);
+        return map;
     }
 
     // --- Nullable helpers -----------------------------------------------

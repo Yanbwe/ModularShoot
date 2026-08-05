@@ -213,7 +213,10 @@ public final class BulletSyncService {
      */
     private static void syncBulletsToPlayers(Level level) {
         BulletManager manager = BulletManager.get(level);
-        Collection<BulletRecord> allBullets = manager.getAllBullets();
+        // Read-only pass over the live index view — the sync loop never
+        // removes bullets, so the defensive copy of getAllBullets() is
+        // unnecessary here (每 tick 省一次 O(子弹数) 拷贝).
+        Collection<BulletRecord> allBullets = manager.getActiveBullets();
 
         ServerLevel serverLevel = (ServerLevel) level;
         List<ServerPlayer> players = serverLevel.players();
