@@ -1,5 +1,9 @@
 package org.yanbwe.modularshoot.network;
 
+import org.yanbwe.modularshoot.bullet.BulletHitSoundResolver;
+import org.yanbwe.modularshoot.bullet.BulletRecord;
+
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -43,18 +47,27 @@ public final class BulletHitBroadcastService {
      * {@link ShootAnimSyncService#BROADCAST_RADIUS}, shared with the shoot
      * animation service for consistent visibility.</p>
      *
+     * <p>The packet's {@code soundId} is resolved from the firing gun
+     * definition's {@code sounds} slots via
+     * {@link BulletHitSoundResolver} — entity hits read {@code hit_entity},
+     * block hits read {@code hit_block}, pierce hits read
+     * {@code hit_pierce}. When a slot is not configured the value is
+     * {@code null}, and clients play no sound (silent impact).</p>
+     *
      * @param level       the server level in which the hit occurred
-     * @param bulletId    the id of the bullet that hit
+     * @param bullet      the bullet that hit; its id, snapshot and gun
+     *                    definition drive the broadcast and sound resolution
      * @param hitPos      the exact world-space hit position
      * @param hitType     kind of hit (ENTITY / BLOCK / PIERCE)
      * @param hitEntityId network id of the hit entity, or
      *                    {@link BulletHitS2CPacket#NO_ENTITY} ({@code -1})
      *                    when the hit is not an entity
      */
-    public static void broadcastHit(ServerLevel level, int bulletId, Vec3 hitPos,
+    public static void broadcastHit(ServerLevel level, BulletRecord bullet, Vec3 hitPos,
                                     BulletHitS2CPacket.HitType hitType, int hitEntityId) {
+        ResourceLocation soundId = BulletHitSoundResolver.resolve(bullet, level, hitType).orElse(null);
         BulletHitS2CPacket packet = new BulletHitS2CPacket(
-                bulletId, hitPos.x, hitPos.y, hitPos.z, hitType, hitEntityId);
+                bullet.getBulletId(), hitPos.x, hitPos.y, hitPos.z, hitType, hitEntityId, soundId);
         PacketDistributor.sendToPlayersNear(
                 level, null, hitPos.x, hitPos.y, hitPos.z,
                 ShootAnimSyncService.BROADCAST_RADIUS, packet);

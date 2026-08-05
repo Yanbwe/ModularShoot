@@ -7,6 +7,8 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
+import org.jetbrains.annotations.Nullable;
+
 /**
  * Server-to-client bullet hit packet (设计文档 §BulletHitS2CPacket).
  *
@@ -24,6 +26,7 @@ import net.minecraft.resources.ResourceLocation;
  *   <li>{@code double} — hit z</li>
  *   <li>{@code String} (UTF) — {@link HitType} enum name</li>
  *   <li>{@code int} — hit entity id ({@code -1} when not an entity hit)</li>
+ *   <li>{@code boolean} presence + {@code ResourceLocation} — 命中音效 ID（未配置时 presence 为 false）</li>
  * </ol>
  *
  * <p>The hit position is transmitted as three primitive {@code double}s
@@ -39,6 +42,8 @@ import net.minecraft.resources.ResourceLocation;
  * @param hitType     kind of hit (ENTITY / BLOCK / PIERCE)
  * @param hitEntityId network id of the hit entity, or {@code -1} when
  *                    {@code hitType != ENTITY}
+ * @param soundId    枪械定义 sounds 槽位解析出的命中音效 ID，未配置时为
+ *                   null；客户端据此播放数据驱动音效
  */
 public record BulletHitS2CPacket(
         int bulletId,
@@ -46,7 +51,8 @@ public record BulletHitS2CPacket(
         double hitY,
         double hitZ,
         HitType hitType,
-        int hitEntityId) implements CustomPacketPayload {
+        int hitEntityId,
+        @Nullable ResourceLocation soundId) implements CustomPacketPayload {
 
     /**
      * Kind of hit a bullet made, used by the client to select the correct
@@ -99,6 +105,7 @@ public record BulletHitS2CPacket(
         buf.writeDouble(packet.hitZ);
         buf.writeUtf(packet.hitType.name());
         buf.writeInt(packet.hitEntityId);
+        encodeNullableResourceLocation(buf, packet.soundId);
     }
 
     /**
@@ -115,7 +122,36 @@ public record BulletHitS2CPacket(
         double hitZ = buf.readDouble();
         HitType hitType = HitType.valueOf(buf.readUtf());
         int hitEntityId = buf.readInt();
-        return new BulletHitS2CPacket(bulletId, hitX, hitY, hitZ, hitType, hitEntityId);
+        ResourceLocation soundId = decodeNullableResourceLocation(buf);
+        return new BulletHitS2CPacket(bulletId, hitX, hitY, hitZ, hitType, hitEntityId, soundId);
+    }
+
+    // --- Nullable ResourceLocation helpers ------------------------------
+
+    /**
+     * Writes a nullable {@link ResourceLocation} as a boolean presence flag
+     * followed by the location when present.
+     *
+     * @param buf      the target buffer
+     * @param location the location to write, or {@code null}
+     */
+    private static void encodeNullableResourceLocation(RegistryFriendlyByteBuf buf, @Nullable ResourceLocation location) {
+        buf.writeBoolean(location != null);
+        if (location != null) {
+            buf.writeResourceLocation(location);
+        }
+    }
+
+    /**
+     * Reads a nullable {@link ResourceLocation} written by
+     * {@link #encodeNullableResourceLocation}.
+     *
+     * @param buf the source buffer
+     * @return the location, or {@code null} when the presence flag was false
+     */
+    @Nullable
+    private static ResourceLocation decodeNullableResourceLocation(RegistryFriendlyByteBuf buf) {
+        return buf.readBoolean() ? buf.readResourceLocation() : null;
     }
 
     /**

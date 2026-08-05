@@ -235,7 +235,7 @@ public final class BulletTickHandler {
      *         {@code false} if the bullet continues flying (successful penetration)
      */
     private static boolean handleEntityCollision(ServerLevel level, BulletManager manager, BulletRecord bullet, Entity target, Vec3 hitPos) {
-        BulletHitBroadcastService.broadcastHit(level, bullet.getBulletId(), hitPos, BulletHitS2CPacket.HitType.ENTITY, target.getId());
+        BulletHitBroadcastService.broadcastHit(level, bullet, hitPos, BulletHitS2CPacket.HitType.ENTITY, target.getId());
         double baseDamage = bullet.getSnapshot().getStat(HIT_DAMAGE_ID);
         double finalDamage = DamageHandlerRegistry.processChain(bullet, target, baseDamage);
         DamageApplier.applyDamage(bullet, target, finalDamage);
@@ -260,7 +260,7 @@ public final class BulletTickHandler {
      */
     private static boolean handleBlockCollision(ServerLevel level, BulletManager manager, BulletRecord bullet,
                                                  net.minecraft.core.BlockPos pos, net.minecraft.core.Direction face, Vec3 hitPos) {
-        BulletHitBroadcastService.broadcastHit(level, bullet.getBulletId(), hitPos, BulletHitS2CPacket.HitType.BLOCK, BulletHitS2CPacket.NO_ENTITY);
+        BulletHitBroadcastService.broadcastHit(level, bullet, hitPos, BulletHitS2CPacket.HitType.BLOCK, BulletHitS2CPacket.NO_ENTITY);
         return PenetrationHandler.handleBlockHit(bullet, pos, face, manager);
     }
 
