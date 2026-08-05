@@ -1,14 +1,18 @@
 package org.yanbwe.modularshoot.bullet;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.SectionPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
@@ -75,6 +79,15 @@ public final class CollisionDetector {
     /** Margin added around the path AABB when querying nearby entities. */
     private static final double ENTITY_SEARCH_MARGIN = 2.0;
 
+    /**
+     * Per-tick per-chunk entity query result: the query box used for the
+     * {@link Level#getEntitiesOfClass} call and the candidate entities it
+     * returned. Candidates are reused by every bullet in the same chunk whose
+     * search box is contained in {@link #box()} (设计文档 §空间分区).
+     */
+    private record ChunkEntityQuery(AABB box, List<LivingEntity> entities) {
+    }
+
     private CollisionDetector() {
     }
 
@@ -89,9 +102,26 @@ public final class CollisionDetector {
      * @return the nearest hit, or {@link CollisionResult#none()} if nothing was hit
      */
     public static CollisionResult detectCollision(Level level, BulletRecord bullet, Vec3 prevPos, Vec3 curPos) {
+        return detectCollision(level, bullet, prevPos, curPos, new HashMap<>());
+    }
+
+    /**
+     * 同 4 参版本，但实体查询结果按 chunk 缓存复用。缓存生命周期为一个 tick
+     * （由 BulletTickHandler 持有并传入）；传入空 Map 时行为与 4 参版本一致。
+     *
+     * @param level       the server level to query blocks/entities in
+     * @param bullet      the bullet record (supplies snapshot, shooter, dedup sets)
+     * @param prevPos     the bullet's position before this tick's advance
+     * @param curPos      the bullet's position after this tick's advance
+     * @param entityCache the per-tick per-chunk entity candidate cache
+     * @return the nearest hit, or {@link CollisionResult#none()} if nothing was hit
+     */
+    public static CollisionResult detectCollision(
+            Level level, BulletRecord bullet, Vec3 prevPos, Vec3 curPos,
+            Map<Long, ChunkEntityQuery> entityCache) {
         double bulletSize = bullet.getSnapshot().getStat(BULLET_SIZE_ID);
         CollisionResult blockHit = detectBlockCollision(level, bullet, prevPos, curPos);
-        CollisionResult entityHit = detectEntityCollision(level, bullet, prevPos, curPos, bulletSize);
+        CollisionResult entityHit = detectEntityCollision(level, bullet, prevPos, curPos, bulletSize, entityCache);
         return nearestHit(blockHit, entityHit);
     }
 
@@ -174,38 +204,70 @@ public final class CollisionDetector {
         return BlockHitResult.miss(to, Direction.UP, BlockPos.ZERO);
     }
 
-    /**
-     * Detects the nearest non-skipped entity hit along the step
-     * (设计文档 §实体碰撞).
-     *
-     * <p>Queries {@link LivingEntity} instances in an AABB enclosing the path
-     * (inflated by {@code bullet_size} plus a margin), then ray-clips each
-     * candidate's (inflated) hitbox. This localises the scan to the
-     * 3×3-chunk-equivalent neighbourhood around the step
-     * (设计文档 §空间分区).</p>
-     *
-     * <p><b>Entity-type filter (W15 fix).</b> The query is restricted to
-     * {@link LivingEntity} rather than the raw {@link Entity} root class.
-     * The vast majority of combat-relevant targets (players, mobs, armour
-     * stands) extend {@code LivingEntity}, while non-combat entities such as
-     * item frames, experience orbs, dropped items, paintings, boats and
-     * minecarts do not. Filtering at the {@code getEntitiesOfClass} level
-     * avoids both the cost of ray-clipping irrelevant hitboxes and the
-     * gameplay bug of a bullet "hitting" (and being stopped by) a passing
-     * item frame or experience orb.</p>
-     *
-     * @param level      the server level
-     * @param bullet     the bullet record (supplies shooter + dedup set)
-     * @param prevPos    step start
-     * @param curPos     step end
-     * @param bulletSize the bullet radius (inflates entity hitboxes)
-     * @return an entity-hit result, or {@link CollisionResult#none()} if no entity is hit
-     */
     private static CollisionResult detectEntityCollision(
-            Level level, BulletRecord bullet, Vec3 prevPos, Vec3 curPos, double bulletSize) {
+            Level level, BulletRecord bullet, Vec3 prevPos, Vec3 curPos, double bulletSize,
+            Map<Long, ChunkEntityQuery> entityCache) {
         AABB searchAABB = buildSearchAABB(prevPos, curPos, bulletSize);
-        List<LivingEntity> entities = level.getEntitiesOfClass(LivingEntity.class, searchAABB);
-        return findNearestEntity(entities, bullet, prevPos, curPos, bulletSize);
+        List<LivingEntity> entities = queryEntityCandidates(level, bullet, searchAABB, bulletSize, entityCache);
+        return findNearestEntity(entities, bullet, prevPos, curPos, bulletSize, searchAABB);
+    }
+
+    /**
+     * Returns the entity candidates for this bullet's step, reusing the
+     * per-chunk query result when the bullet's search box fits inside the
+     * cached query box; otherwise performs the exact per-bullet query.
+     *
+     * <p>Correctness: {@link Level#getEntitiesOfClass} returns every entity
+     * whose bounding box intersects the query box. When {@code searchAABB} is
+     * contained in the cached box, every entity that could intersect the
+     * bullet's step is therefore already in the cached candidate list — reuse
+     * is exact, not approximate. The containment fallback covers bullets whose
+     * {@code bullet_size} or step length would extend beyond the cached box
+     * (including steps crossing the chunk boundary).</p>
+     *
+     * @param level       the server level
+     * @param bullet      the bullet record (position decides the chunk key)
+     * @param searchAABB  the bullet's step search box
+     * @param bulletSize  the bullet radius (inflates the chunk query box)
+     * @param entityCache the per-tick per-chunk cache to read/update
+     * @return candidate {@link LivingEntity} instances near the step
+     */
+    private static List<LivingEntity> queryEntityCandidates(
+            Level level, BulletRecord bullet, AABB searchAABB, double bulletSize,
+            Map<Long, ChunkEntityQuery> entityCache) {
+        Vec3 pos = bullet.getPosition();
+        long chunkKey = ChunkPos.asLong(
+                SectionPos.blockToSectionCoord(pos.x),
+                SectionPos.blockToSectionCoord(pos.z));
+        ChunkEntityQuery cached = entityCache.get(chunkKey);
+        // This version's AABB lacks the contains(AABB) overload; inline the
+        // equivalent inclusive containment test (min/max bounds, boundary equal).
+        if (cached != null
+                && cached.box().minX <= searchAABB.minX && cached.box().maxX >= searchAABB.maxX
+                && cached.box().minY <= searchAABB.minY && cached.box().maxY >= searchAABB.maxY
+                && cached.box().minZ <= searchAABB.minZ && cached.box().maxZ >= searchAABB.maxZ) {
+            return cached.entities();
+        }
+        AABB queryBox = chunkQueryBox(level, chunkKey, bulletSize);
+        List<LivingEntity> entities = level.getEntitiesOfClass(LivingEntity.class, queryBox);
+        entityCache.put(chunkKey, new ChunkEntityQuery(queryBox, entities));
+        return entities;
+    }
+
+    /**
+     * Builds the per-chunk entity query box: the chunk column at full world
+     * height, inflated by {@link #ENTITY_SEARCH_MARGIN} plus the bullet radius.
+     */
+    private static AABB chunkQueryBox(Level level, long chunkKey, double bulletSize) {
+        int chunkX = ChunkPos.getX(chunkKey);
+        int chunkZ = ChunkPos.getZ(chunkKey);
+        double pad = ENTITY_SEARCH_MARGIN + bulletSize;
+        // getMaxBuildHeight() is the exclusive top (getMinBuildHeight() + height),
+        // i.e. the design's (getMaxY() + 1.0) bound; the -1.0/+0 slack keeps the
+        // box a superset of the full world column.
+        return new AABB(
+                chunkX * 16.0 - pad, level.getMinBuildHeight() - 1.0, chunkZ * 16.0 - pad,
+                chunkX * 16.0 + 16.0 + pad, level.getMaxBuildHeight(), chunkZ * 16.0 + 16.0 + pad);
     }
 
     /**
@@ -234,18 +296,27 @@ public final class CollisionDetector {
      * (inflated) hitbox, skipping already-penetrated entities and the shooter
      * (设计文档 §穿透去重 — 实体).
      *
-     * @param entities   candidate {@link LivingEntity} instances near the path
-     * @param bullet     the bullet record (supplies shooter + dedup set)
-     * @param prevPos    step start
-     * @param curPos     step end
-     * @param bulletSize the bullet radius (inflates each hitbox before clipping)
+     * @param entities    candidate {@link LivingEntity} instances near the path
+     * @param bullet      the bullet record (supplies shooter + dedup set)
+     * @param prevPos     step start
+     * @param curPos      step end
+     * @param bulletSize  the bullet radius (inflates each hitbox before clipping)
+     * @param searchAABB  the bullet's step search box (prefilter for chunk-wide candidate lists)
      * @return the nearest entity hit, or {@link CollisionResult#none()}
      */
     private static CollisionResult findNearestEntity(
-            List<LivingEntity> entities, BulletRecord bullet, Vec3 prevPos, Vec3 curPos, double bulletSize) {
+            List<LivingEntity> entities, BulletRecord bullet, Vec3 prevPos, Vec3 curPos,
+            double bulletSize, AABB searchAABB) {
         CollisionResult nearest = CollisionResult.none();
         for (LivingEntity entity : entities) {
             if (isSkippableEntity(entity, bullet)) {
+                continue;
+            }
+            // Cheap prefilter: chunk-wide candidate lists include entities far from
+            // this bullet's step; skip them before allocating the inflated hitbox.
+            // searchAABB is already inflated by (bulletSize + margin), so an entity
+            // whose uninflated box does not intersect it can never be hit.
+            if (!searchAABB.intersects(entity.getBoundingBox())) {
                 continue;
             }
             Optional<Vec3> hitOpt = entity.getBoundingBox().inflate(bulletSize).clip(prevPos, curPos);
