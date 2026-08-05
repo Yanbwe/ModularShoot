@@ -254,6 +254,6 @@ public final class PluginOverlayCompositor {
                         .map(e -> new CompositeTextureBuilder.OverlayLayer(
                                 e.texture(), e.alignment(), e.fit(), e.tint(), e.blend(), e.outline()))
                         .toList(),
-                gunOutlines);
+                List.copyOf(gunOutlines));
     }
 }

@@ -60,6 +60,14 @@ class CompositeTextureBuilderTest {
         return Math.max(dx, dy);
     }
 
+    /** Chebyshev distance of (x, y) to the 2x2 square at (3,3)-(4,4);
+     *  0 for pixels inside the square. */
+    private static int square2Distance(int x, int y) {
+        int dx = Math.max(3 - x, Math.max(0, x - 4));
+        int dy = Math.max(3 - y, Math.max(0, y - 4));
+        return Math.max(dx, dy);
+    }
+
     /** Builds a solid-colour image. */
     private static NativeImage solid(int w, int h, int abgr) {
         NativeImage img = new NativeImage(w, h, false);
@@ -83,6 +91,12 @@ class CompositeTextureBuilderTest {
 
     private static void assertPixel(NativeImage img, int x, int y, int expectedAbgr, String what) {
         assertEquals(expectedAbgr, img.getPixelRGBA(x, y), what + " at (" + x + "," + y + ")");
+    }
+
+    /** Asserts a channel value within a rounding tolerance of ±1. */
+    private static void assertChannel(int actual, int expected, String what) {
+        assertTrue(Math.abs(actual - expected) <= 1,
+                what + ": expected " + expected + " ±1, got " + actual);
     }
 
     // --- alignment (fit = NONE) ---
@@ -509,6 +523,138 @@ class CompositeTextureBuilderTest {
                     assertPixel(img, x, y, expected, "snapshot-based ring pixel");
                 }
             }
+        }
+    }
+
+    // --- B1: source-over compositing on translucent bases ---
+
+    @Test
+    void normalMatchesLegacySourceOverOnTranslucentBase() {
+        // Semi-transparent red base (255,0,0,128) with a semi-transparent
+        // green source (0,255,0,128) in normal mode: standard source-over
+        // gives (r,g,b,a) = (85,170,0,192). The old general formula (which
+        // dropped the dstA weighting and the 1/outA normalisation) returned
+        // (127,128,0,192) — the source was darkened by its own alpha.
+        int out = CompositeTextureBuilder.blendPixel(
+                FastColor.ABGR32.color(128, 0, 0, 255),   // base: a=128, r=255
+                FastColor.ABGR32.color(128, 0, 255, 0),   // source: a=128, g=255
+                OverlayBlend.NORMAL);
+        assertEquals(192, FastColor.ABGR32.alpha(out), "out alpha");
+        assertChannel(FastColor.ABGR32.red(out), 85, "red channel");
+        assertChannel(FastColor.ABGR32.green(out), 170, "green channel");
+        assertChannel(FastColor.ABGR32.blue(out), 0, "blue channel");
+    }
+
+    @Test
+    void normalKeepsColorOnTransparentBase() {
+        // Fully transparent base + semi-transparent green source (alpha 128)
+        // in normal mode: the source must keep its full colour — the old
+        // formula darkened green to 128 because it mixed C with the
+        // transparent base weighted by srcA alone.
+        int out = CompositeTextureBuilder.blendPixel(
+                FastColor.ABGR32.color(0, 0, 0, 0),       // fully transparent base
+                FastColor.ABGR32.color(128, 0, 255, 0),   // source: a=128, g=255
+                OverlayBlend.NORMAL);
+        assertEquals(128, FastColor.ABGR32.alpha(out), "out alpha stays 128");
+        assertChannel(FastColor.ABGR32.red(out), 0, "red channel");
+        assertChannel(FastColor.ABGR32.green(out), 255, "green channel keeps full intensity");
+        assertChannel(FastColor.ABGR32.blue(out), 0, "blue channel");
+    }
+
+    // --- S1: tint clamping ---
+
+    @Test
+    void tintClampsOutOfRange() {
+        // White × tint [2.0, -1.0, 0.5, 0.5]: red 510 and green -255 must be
+        // clamped to 255 and 0. Without the clamp the bare-shift ABGR packer
+        // lets red's overflow bit pollute the green byte (r=254, g=1).
+        int out = tinted(WHITE, new Vector4f(2.0F, -1.0F, 0.5F, 0.5F));
+        assertEquals(255, FastColor.ABGR32.red(out), "red clamped to 255");
+        assertEquals(0, FastColor.ABGR32.green(out), "green clamped to 0");
+        assertEquals(128, FastColor.ABGR32.blue(out), "blue halved");
+        assertEquals(128, FastColor.ABGR32.alpha(out), "alpha halved");
+    }
+
+    // --- S2: outline width clamping ---
+
+    @Test
+    void outlineWidthClampedToCanvas() {
+        // A width of 100 exceeds the largest Chebyshev distance on this 8x8
+        // canvas (7), so it is clamped to the equivalent 7: every pixel
+        // outside the square — including the corners — is painted, and the
+        // result matches a width-7 run byte for byte. (Without the clamp a
+        // huge width would balloon the (2w+1)² neighbourhood scan.)
+        try (NativeImage img = squareCanvas();
+             NativeImage reference = squareCanvas()) {
+            CompositeTextureBuilder.outlineLayer(img, spec(1.0F, 0.0F, 0.0F, 1.0F, 100));
+            CompositeTextureBuilder.outlineLayer(reference, spec(1.0F, 0.0F, 0.0F, 1.0F, 7));
+            for (int y = 0; y < 8; y++) {
+                for (int x = 0; x < 8; x++) {
+                    assertPixel(img, x, y, reference.getPixelRGBA(x, y),
+                            "clamped width matches width 7");
+                }
+            }
+        }
+        // Explicit shape check: the whole ring carries the stroke colour.
+        try (NativeImage img = squareCanvas()) {
+            CompositeTextureBuilder.outlineLayer(img, spec(1.0F, 0.0F, 0.0F, 1.0F, 100));
+            for (int y = 0; y < 8; y++) {
+                for (int x = 0; x < 8; x++) {
+                    boolean inside = x >= 2 && x < 6 && y >= 2 && y < 6;
+                    assertPixel(img, x, y, inside ? WHITE : OUTLINE_RED,
+                            inside ? "square interior" : "ring pixel");
+                }
+            }
+        }
+    }
+
+    @Test
+    void outlineLayerIsTwoPassNoCascade() {
+        // 8x8 canvas with an opaque 2x2 white square at (3,3)-(4,4) and a
+        // width-2 stroke: pixels painted by the first pass must never trigger
+        // a second pass, so everything farther than 2 from the square (the
+        // corners sit at Chebyshev distance 3) stays fully transparent.
+        NativeImage img = solid(8, 8, TRANSPARENT);
+        for (int y = 3; y < 5; y++) {
+            for (int x = 3; x < 5; x++) {
+                img.setPixelRGBA(x, y, WHITE);
+            }
+        }
+        try (img) {
+            CompositeTextureBuilder.outlineLayer(img, spec(1.0F, 0.0F, 0.0F, 1.0F, 2));
+            for (int y = 0; y < 8; y++) {
+                for (int x = 0; x < 8; x++) {
+                    int d = square2Distance(x, y);
+                    int expected = d == 0 ? WHITE : d <= 2 ? OUTLINE_RED : TRANSPARENT;
+                    assertPixel(img, x, y, expected, "two-pass ring pixel");
+                }
+            }
+        }
+    }
+
+    // --- outline + fit interplay ---
+
+    @Test
+    void outlinedLayerFillsWithStroke() {
+        // 4x4 overlay holding a solid 2x2 green core with a transparent
+        // margin, stroked with a 1px red ring along the alpha edge (the ring
+        // lands on the overlay's outer row/column), then stretched over an
+        // 8x8 transparent base with fit = FILL: the ring scales with the fill
+        // and the canvas edge pixels — including the corners — carry the
+        // stroke colour.
+        NativeImage overlay = solid(4, 4, TRANSPARENT);
+        for (int y = 1; y < 3; y++) {
+            for (int x = 1; x < 3; x++) {
+                overlay.setPixelRGBA(x, y, OVERLAY_GREEN);
+            }
+        }
+        try (NativeImage base = solid(8, 8, TRANSPARENT); overlay) {
+            CompositeTextureBuilder.outlineLayer(overlay, spec(1.0F, 0.0F, 0.0F, 1.0F, 1));
+            CompositeTextureBuilder.blendOnto(base, overlay, layer(OverlayAlignment.TOP_LEFT, OverlayFit.FILL));
+            assertPixel(base, 0, 0, OUTLINE_RED, "top-left corner carries stroke");
+            assertPixel(base, 7, 0, OUTLINE_RED, "top-right corner carries stroke");
+            assertPixel(base, 0, 7, OUTLINE_RED, "bottom-left corner carries stroke");
+            assertPixel(base, 7, 7, OUTLINE_RED, "bottom-right corner carries stroke");
         }
     }
 }

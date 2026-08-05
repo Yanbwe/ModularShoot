@@ -328,6 +328,20 @@ public final class CompositeTextureBuilder {
     }
 
     /**
+     * Clamps a computed channel value into the 0..255 byte range.
+     *
+     * <p>{@link FastColor.ABGR32#color} packs channel values with bare
+     * shifts (no masking), so an out-of-range value would carry into the
+     * neighbouring byte and corrupt the packed pixel.</p>
+     *
+     * @param value the computed channel value
+     * @return {@code value} clamped to 0..255
+     */
+    private static int clampChannel(int value) {
+        return Math.max(0, Math.min(255, value));
+    }
+
+    /**
      * Blends a source (overlay) pixel over a destination (base) pixel using
      * the standard "over" compositing operator for non-premultiplied alpha.
      *
@@ -341,9 +355,16 @@ public final class CompositeTextureBuilder {
      * <p>Fast paths: a fully transparent overlay ({@code alpha == 0}) returns
      * the base unchanged; a fully opaque overlay in normal mode returns the
      * overlay unchanged. The general case computes the blended colour
-     * {@code C} (per blend mode) and then mixes it with the base colour
-     * weighted by alpha, which correctly handles semi-transparent overlays
-     * over both opaque and transparent bases.</p>
+     * {@code C} (per blend mode) and then composites it over the base with
+     * standard source-over alpha blending: the result colour is
+     * {@code (C * srcA + D * dstA * (1 - srcA)) / outA} with
+     * {@code outA = srcA + dstA * (1 - srcA)}, i.e. both colours are weighted
+     * by their alpha contributions and normalised by the combined output
+     * alpha. When the base is opaque ({@code dstA = 1}) this degenerates to
+     * {@code C * srcA + D * (1 - srcA)}, the legacy formula; in general the
+     * dstA weighting and normalisation keep semi-transparent sources
+     * colour-accurate over translucent bases instead of darkening them by
+     * their own alpha.</p>
      *
      * <p>Package-private for unit testing; the pixel math is pure.</p>
      *
@@ -386,10 +407,12 @@ public final class CompositeTextureBuilder {
             default -> { cr = sr; cg = sg; cb = sb; } // NORMAL
         }
         float oneMinusSrcA = 1.0F - srcA;
+        // Always > 0: srcA > 0 is guaranteed by the fast paths above.
         float outA = srcA + dstA * oneMinusSrcA;
-        int or = Math.round((cr * srcA + dr * oneMinusSrcA) * 255.0F);
-        int og = Math.round((cg * srcA + dg * oneMinusSrcA) * 255.0F);
-        int ob = Math.round((cb * srcA + db * oneMinusSrcA) * 255.0F);
+        float invOutA = 1.0F / outA;
+        int or = Math.round((cr * srcA + dr * dstA * oneMinusSrcA) * invOutA * 255.0F);
+        int og = Math.round((cg * srcA + dg * dstA * oneMinusSrcA) * invOutA * 255.0F);
+        int ob = Math.round((cb * srcA + db * dstA * oneMinusSrcA) * invOutA * 255.0F);
         return FastColor.ABGR32.color(Math.round(outA * 255.0F), ob, og, or);
     }
 
@@ -414,10 +437,10 @@ public final class CompositeTextureBuilder {
         for (int y = 0; y < img.getHeight(); y++) {
             for (int x = 0; x < img.getWidth(); x++) {
                 int p = img.getPixelRGBA(x, y);
-                int r = Math.round(FastColor.ABGR32.red(p) * tint.x());
-                int g = Math.round(FastColor.ABGR32.green(p) * tint.y());
-                int b = Math.round(FastColor.ABGR32.blue(p) * tint.z());
-                int a = Math.round(FastColor.ABGR32.alpha(p) * tint.w());
+                int r = clampChannel(Math.round(FastColor.ABGR32.red(p) * tint.x()));
+                int g = clampChannel(Math.round(FastColor.ABGR32.green(p) * tint.y()));
+                int b = clampChannel(Math.round(FastColor.ABGR32.blue(p) * tint.z()));
+                int a = clampChannel(Math.round(FastColor.ABGR32.alpha(p) * tint.w()));
                 img.setPixelRGBA(x, y, FastColor.ABGR32.color(a, b, g, r));
             }
         }
@@ -474,13 +497,16 @@ public final class CompositeTextureBuilder {
      * @param spec the outline colour (RGB in 0..1), opacity and width
      */
     static void outlineLayer(NativeImage img, OutlineSpec spec) {
-        int width = spec.width();
-        if (width <= 0) {
-            LOGGER.warn("Outline width {} is not positive; outline skipped for layer", width);
-            return;
-        }
         int w = img.getWidth();
         int h = img.getHeight();
+        // The Chebyshev distance between any two pixels of a w×h canvas is at
+        // most max(w,h)-1, so a larger width is clamped with no semantic
+        // change — this also keeps the (2w+1)² neighbourhood scan bounded.
+        int width = Math.min(spec.width(), Math.max(w, h) - 1);
+        if (width <= 0) {
+            LOGGER.warn("Outline width {} is not positive; outline skipped for layer", spec.width());
+            return;
+        }
         boolean[] marks = new boolean[w * h];
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
@@ -491,10 +517,10 @@ public final class CompositeTextureBuilder {
             }
         }
         int color = FastColor.ABGR32.color(
-                Math.round(spec.alpha() * 255.0F),
-                Math.round(spec.color().z() * 255.0F),
-                Math.round(spec.color().y() * 255.0F),
-                Math.round(spec.color().x() * 255.0F));
+                clampChannel(Math.round(spec.alpha() * 255.0F)),
+                clampChannel(Math.round(spec.color().z() * 255.0F)),
+                clampChannel(Math.round(spec.color().y() * 255.0F)),
+                clampChannel(Math.round(spec.color().x() * 255.0F)));
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
                 if (marks[y * w + x]) {
@@ -551,16 +577,18 @@ public final class CompositeTextureBuilder {
         List<OutlineSpec> sorted = new ArrayList<>(outlines);
         sorted.sort(Comparator.comparingInt(OutlineSpec::width).reversed());
         for (OutlineSpec spec : sorted) {
-            int width = spec.width();
+            // Clamped to the largest Chebyshev distance on the canvas, exactly
+            // as in outlineLayer; keeps the neighbourhood scan bounded.
+            int width = Math.min(spec.width(), Math.max(w, h) - 1);
             if (width <= 0) {
-                LOGGER.warn("Gun outline width {} is not positive; outline skipped", width);
+                LOGGER.warn("Gun outline width {} is not positive; outline skipped", spec.width());
                 continue;
             }
             int color = FastColor.ABGR32.color(
-                    Math.round(spec.alpha() * 255.0F),
-                    Math.round(spec.color().z() * 255.0F),
-                    Math.round(spec.color().y() * 255.0F),
-                    Math.round(spec.color().x() * 255.0F));
+                    clampChannel(Math.round(spec.alpha() * 255.0F)),
+                    clampChannel(Math.round(spec.color().z() * 255.0F)),
+                    clampChannel(Math.round(spec.color().y() * 255.0F)),
+                    clampChannel(Math.round(spec.color().x() * 255.0F)));
             for (int y = 0; y < h; y++) {
                 for (int x = 0; x < w; x++) {
                     if (alphaSnapshot[y * w + x] == 0

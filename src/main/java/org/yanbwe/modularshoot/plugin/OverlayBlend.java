@@ -8,8 +8,9 @@ import net.minecraft.util.StringRepresentable;
  * during blending.
  *
  * <ul>
- *   <li>{@link #NORMAL} — ordinary alpha-over compositing; the overlay covers
- *       the base unchanged.</li>
+ *   <li>{@link #NORMAL} — standard source-over alpha compositing: the overlay
+ *       colour replaces the base colour where the overlay is opaque and blends
+ *       with it where it is translucent (the legacy behaviour).</li>
  *   <li>{@link #MULTIPLY} — the overlay colour is multiplied with the base,
  *       darkening the result.</li>
  *   <li>{@link #SCREEN} — inverse-multiplied with the base, brightening the
