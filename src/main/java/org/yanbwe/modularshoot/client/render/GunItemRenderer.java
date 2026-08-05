@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import java.util.UUID;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.geom.EntityModelSet;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
@@ -279,10 +280,12 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer imple
      * overlay layers and the whole-gun outlines in installation order.
      *
      * <p>Prefers the server-pushed snapshot in
-     * {@link ClientGunDataStore} when one has been received (the sync
-     * channel is authoritative and may lead the locally-written
-     * {@code gun_data} component); otherwise falls back to reading the
-     * plugin instances from the stack's own component.</p>
+     * {@link ClientGunDataStore} when one has been received <em>and</em> the
+     * rendered stack is the local player's main-hand gun (the snapshot is
+     * authoritative only for that gun, see {@link #isLocalMainHandStack});
+     * otherwise falls back to reading the plugin instances from the stack's
+     * own {@code gun_data} component — the correct data source for inventory
+     * GUI slots, dropped items and remote players' guns.</p>
      *
      * @param stack          the gun item stack
      * @param registryAccess the runtime registry view (from a loaded world)
@@ -292,10 +295,35 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer imple
      */
     private PluginOverlayCompositor.OverlayRenderData collectRenderData(ItemStack stack, RegistryAccess registryAccess) {
         ClientGunDataStore store = ClientGunDataStore.getInstance();
-        if (store.hasSyncData()) {
+        if (store.hasSyncData() && isLocalMainHandStack(stack)) {
             return PluginOverlayCompositor.collectRenderDataFromSync(store.getInstalledPlugins(), registryAccess);
         }
         return PluginOverlayCompositor.collectRenderData(ModularShootAPI.getInstalledPlugins(stack), registryAccess);
+    }
+
+    /**
+     * Whether the rendered stack is the local player's main-hand item.
+     *
+     * <p>The {@link ClientGunDataStore} snapshot is authoritative only for
+     * the local player's main hand. Every other render site — other slots in
+     * the inventory GUI, dropped item entities, remote players' third-person
+     * models — must read the stack's own {@code gun_data} component instead;
+     * otherwise all guns in the inventory would show the main-hand gun's
+     * overlays and flicker as the sync data's lifecycle (main-hand switch)
+     * clears and repopulates the store.</p>
+     *
+     * <p>Identity comparison: the vanilla pipeline hands the inventory-held
+     * {@link ItemStack} instance to {@link #renderByItem} for both first
+     * person (from {@code Player#getMainHandItem}) and GUI slots (from the
+     * inventory list), so {@code ==} matches exactly the main-hand stack and
+     * nothing else.</p>
+     *
+     * @param stack the stack being rendered
+     * @return {@code true} when the stack is the local player's main-hand item
+     */
+    private static boolean isLocalMainHandStack(ItemStack stack) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        return player != null && player.getMainHandItem() == stack;
     }
 
     /**
