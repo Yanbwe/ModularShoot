@@ -6,7 +6,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageType;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.bullet.BulletRecord;
@@ -173,12 +172,13 @@ public final class DamageApplier {
      *
      * <p>Lookup order:</p>
      * <ol>
-     *   <li>{@link Level#getPlayerByUUID(UUID)} — finds online players on any
-     *       level. A non-null result means the shooter is an online player.</li>
-     *   <li>{@link ServerLevel#getEntity(UUID)} — falls back to a general
-     *       entity lookup for non-player shooters (mobs) that are loaded in
-     *       the server level. Only attempted when the level is a
-     *       {@link ServerLevel}.</li>
+     *   <li>{@link ServerLevel#getEntity(UUID)} — O(1) entity-index lookup on
+     *       the server level. Players are entities in the index, so this
+     *       covers online players and loaded mob shooters alike; the result
+     *       is semantically equivalent to the old two-step lookup.</li>
+     *   <li>{@link Level#getPlayerByUUID(UUID)} — kept only as a fallback for
+     *       non-server levels (客户端/集成方测试场景) where no entity index
+     *       exists.</li>
      * </ol>
      *
      * <p>Returns {@code null} when the shooter uuid is {@code null}, the
@@ -195,13 +195,14 @@ public final class DamageApplier {
         if (shooterUuid == null) {
             return null;
         }
-        Player player = level.getPlayerByUUID(shooterUuid);
-        if (player != null) {
-            return player;
-        }
+        // O(1) entity-index lookup on the server level — covers online players
+        // and loaded mob shooters alike (players are entities in the index).
+        // The O(players) getPlayerByUUID scan is kept only as a fallback for
+        // non-server levels (客户端/集成方测试场景), where no entity index
+        // exists.
         if (level instanceof ServerLevel serverLevel) {
             return serverLevel.getEntity(shooterUuid);
         }
-        return null;
+        return level.getPlayerByUUID(shooterUuid);
     }
 }
