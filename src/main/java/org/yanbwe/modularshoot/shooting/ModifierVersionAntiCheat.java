@@ -71,7 +71,12 @@ public final class ModifierVersionAntiCheat {
     public static boolean validate(ServerPlayer player, int packetVersion, int serverVersion) {
         Objects.requireNonNull(player, "player");
         UUID playerId = player.getUUID();
-        AntiCheatState state = antiCheatStates.getOrDefault(playerId, new AntiCheatState(0, serverVersion));
+        // getOrDefault would eagerly construct the default on every shot; get +
+        // null-check constructs it only when the player has no recorded state.
+        AntiCheatState state = antiCheatStates.get(playerId);
+        if (state == null) {
+            state = new AntiCheatState(0, serverVersion);
+        }
 
         if (packetVersion == serverVersion) {
             antiCheatStates.put(playerId, new AntiCheatState(0, serverVersion));

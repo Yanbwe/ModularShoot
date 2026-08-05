@@ -3,6 +3,7 @@ package org.yanbwe.modularshoot.trait;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -112,6 +113,18 @@ public final class TraitHookRegistry {
     private static volatile Map<TraitHookType, Set<ResourceLocation>> cachedTraitIdsByHookType = Map.of();
 
     /**
+     * Cached unmodifiable views of each hook list, published as a volatile
+     * snapshot. The underlying lists are {@link ArrayList}s that only grow
+     * during registration (mod init, single-threaded); each view delegates
+     * live to its list, so the snapshot only fixes the <em>wrapper</em>
+     * identity, not the contents. Rebuilt on every {@link #addHook} so the
+     * server tick threads never allocate a wrapper per (trait, hook) lookup
+     * (S4 pattern).
+     */
+    private static volatile Map<ResourceLocation, Map<TraitHookType, List<TraitCallbacks.TraitCallback>>> cachedHookViews =
+            Map.of();
+
+    /**
      * Maps each hook type to the callback interface class that callers must
      * pass to {@link #register}. Used for runtime type validation.
      */
@@ -166,25 +179,30 @@ public final class TraitHookRegistry {
     /**
      * Returns all callbacks registered for the given trait id and hook type.
      *
-     * <p>The returned list is an unmodifiable view of the internal callback
-     * list. It is empty when no callbacks are registered for the given
-     * combination. Callers that need a specific callback interface should
-     * use {@link #getHooks(ResourceLocation, TraitHookType, Class)} instead.</p>
+     * <p>Returns a cached unmodifiable <em>view</em> of the internal callback
+     * list, published as a volatile snapshot that is rebuilt only during
+     * registration (mod init, single-threaded). The same wrapper instance is
+     * returned on every call until the next {@link #register} call, so the
+     * hot path (bullet engine, per bullet per hook fire) performs zero wrapper
+     * allocations on lookup. The view delegates live to its underlying list,
+     * so the contents are always current. It is empty when no callbacks are
+     * registered for the given combination. Callers that need a specific
+     * callback interface should use
+     * {@link #getHooks(ResourceLocation, TraitHookType, Class)} instead.</p>
      *
      * @param traitId the trait definition id; must not be {@code null}
      * @param type    the hook type to query; must not be {@code null}
-     * @return an unmodifiable list of callbacks; empty when none registered
+     * @return an unmodifiable cached view of the callbacks; empty when none
+     *         registered
      */
     public static List<TraitCallbacks.TraitCallback> getHooks(
             ResourceLocation traitId, TraitHookType type) {
-        Objects.requireNonNull(traitId, "traitId");
-        Objects.requireNonNull(type, "type");
-        EnumMap<TraitHookType, List<TraitCallbacks.TraitCallback>> traitHooks = HOOKS.get(traitId);
+        Map<TraitHookType, List<TraitCallbacks.TraitCallback>> traitHooks = cachedHookViews.get(traitId);
         if (traitHooks == null) {
             return List.of();
         }
         List<TraitCallbacks.TraitCallback> hooks = traitHooks.get(type);
-        return hooks == null ? List.of() : Collections.unmodifiableList(hooks);
+        return hooks == null ? List.of() : hooks;
     }
 
     /**
@@ -339,6 +357,7 @@ public final class TraitHookRegistry {
         if (newHookType) {
             rebuildHookTypeIndex();
         }
+        rebuildHookViews();
     }
 
     /**
@@ -358,5 +377,21 @@ public final class TraitHookRegistry {
         Map<TraitHookType, Set<ResourceLocation>> immutable = new EnumMap<>(TraitHookType.class);
         index.forEach((type, ids) -> immutable.put(type, Set.copyOf(ids)));
         cachedTraitIdsByHookType = Map.copyOf(immutable);
+    }
+
+    /**
+     * Rebuilds the cached unmodifiable hook-list views from the current state
+     * of {@link #HOOKS}. Called on every registration (cold path); produces a
+     * safely published immutable snapshot of wrappers for the tick threads.
+     */
+    private static void rebuildHookViews() {
+        Map<ResourceLocation, Map<TraitHookType, List<TraitCallbacks.TraitCallback>>> views = new HashMap<>();
+        HOOKS.forEach((traitId, traitHooks) -> {
+            EnumMap<TraitHookType, List<TraitCallbacks.TraitCallback>> typeViews =
+                    new EnumMap<>(TraitHookType.class);
+            traitHooks.forEach((type, list) -> typeViews.put(type, Collections.unmodifiableList(list)));
+            views.put(traitId, typeViews);
+        });
+        cachedHookViews = Map.copyOf(views);
     }
 }
