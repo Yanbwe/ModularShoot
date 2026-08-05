@@ -136,6 +136,7 @@ class VisualCompositionServiceTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
     }
 

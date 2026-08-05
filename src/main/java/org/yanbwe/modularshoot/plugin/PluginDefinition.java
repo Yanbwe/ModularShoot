@@ -51,6 +51,10 @@ import org.yanbwe.modularshoot.registry.gun.TextureScaleMode;
  *       same shape as a gun definition's {@code bullet_style}.</li>
  *   <li>{@code texture_overlay} &mdash; optional texture stacked over the
  *       gun's base texture.</li>
+ *   <li>{@code gun_outline} &mdash; optional whole-gun outline: a stroke
+ *       painted around the silhouette of the final composited gun texture.
+ *       Multiple plugins' outlines stack concentrically, wider strokes
+ *       outside thinner ones.</li>
  *   <li>{@code name} &mdash; optional display name; supports colour codes
  *       ({@code §}).</li>
  *   <li>{@code brief} &mdash; optional one-line summary.</li>
@@ -71,6 +75,8 @@ import org.yanbwe.modularshoot.registry.gun.TextureScaleMode;
  * @param bulletStyle    optional projectile appearance override; empty when
  *                       the gun's own style is kept
  * @param textureOverlay optional texture overlay; empty when none is stacked
+ * @param gunOutline     optional whole-gun outline stroked around the final
+ *                       composited texture; empty when none is drawn
  * @param name           optional display name; supports colour codes
  * @param brief          optional one-line summary
  * @param description    optional long-form description
@@ -86,6 +92,7 @@ public record PluginDefinition(
         Optional<String> exclusiveGroup,
         Optional<BulletStyle> bulletStyle,
         Optional<TextureOverlay> textureOverlay,
+        Optional<OutlineSpec> gunOutline,
         Optional<String> name,
         Optional<String> brief,
         Optional<String> description,
@@ -102,6 +109,7 @@ public record PluginDefinition(
                     Codec.STRING.optionalFieldOf("exclusive_group").forGetter(PluginDefinition::exclusiveGroup),
                     BulletStyle.CODEC.optionalFieldOf("bullet_style").forGetter(PluginDefinition::bulletStyle),
                     TextureOverlay.CODEC.optionalFieldOf("texture_overlay").forGetter(PluginDefinition::textureOverlay),
+                    OutlineSpec.CODEC.optionalFieldOf("gun_outline").forGetter(PluginDefinition::gunOutline),
                     Codec.STRING.optionalFieldOf("name").forGetter(PluginDefinition::name),
                     Codec.STRING.optionalFieldOf("brief").forGetter(PluginDefinition::brief),
                     Codec.STRING.optionalFieldOf("description").forGetter(PluginDefinition::description),
