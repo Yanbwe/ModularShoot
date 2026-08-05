@@ -43,6 +43,10 @@ public final class BulletRecord {
     private final Set<UUID> penetratedEntities = new HashSet<>();
     private final Set<BlockPos> penetratedBlocks = new HashSet<>();
 
+    /** Cached unmodifiable views of the dedup sets (wrappers delegate live, created once). */
+    private final Set<UUID> penetratedEntitiesView = Collections.unmodifiableSet(penetratedEntities);
+    private final Set<BlockPos> penetratedBlocksView = Collections.unmodifiableSet(penetratedBlocks);
+
     /**
      * @param snapshot      the frozen attribute/trait snapshot
      * @param shooter       shooter uuid (may differ from snapshot for independent firing), or {@code null}
@@ -154,10 +158,12 @@ public final class BulletRecord {
      * arbitrarily corrupting the dedup bookkeeping that
      * {@link CollisionDetector} relies on.</p>
      *
+     * <p>The view is created once at construction and delegates live to the underlying set.</p>
+     *
      * @return an unmodifiable view of the penetrated-entity uuid set
      */
     public Set<UUID> getPenetratedEntities() {
-        return Collections.unmodifiableSet(penetratedEntities);
+        return penetratedEntitiesView;
     }
 
     /**
@@ -168,10 +174,12 @@ public final class BulletRecord {
      * that need to record a newly-penetrated block must use
      * {@link #addPenetratedBlock} — the only sanctioned write path.</p>
      *
+     * <p>The view is created once at construction and delegates live to the underlying set.</p>
+     *
      * @return an unmodifiable view of the penetrated-block position set
      */
     public Set<BlockPos> getPenetratedBlocks() {
-        return Collections.unmodifiableSet(penetratedBlocks);
+        return penetratedBlocksView;
     }
 
     /**
