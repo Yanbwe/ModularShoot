@@ -1,6 +1,7 @@
 package org.yanbwe.modularshoot.client.render;
 
 import com.mojang.blaze3d.platform.NativeImage;
+import java.util.List;
 import java.util.Optional;
 import net.minecraft.util.FastColor;
 import org.joml.Vector3f;
@@ -30,6 +31,8 @@ class CompositeTextureBuilderTest {
 
     private static final Vector4f WHITE_TINT = new Vector4f(1.0F, 1.0F, 1.0F, 1.0F);
     private static final int OUTLINE_RED = FastColor.ABGR32.color(255, 0, 0, 255);
+    private static final int OUTLINE_GOLD = FastColor.ABGR32.color(255, 0, 255, 255);
+    private static final int OUTLINE_BLUE = FastColor.ABGR32.color(255, 255, 0, 0);
 
     /** Builds an {@link OutlineSpec} with the given RGB colour and width. */
     private static OutlineSpec spec(float r, float g, float b, float alpha, int width) {
@@ -47,6 +50,14 @@ class CompositeTextureBuilderTest {
             }
         }
         return img;
+    }
+
+    /** Chebyshev distance of (x, y) to the 4x4 square at (2,2)-(5,5);
+     *  0 for pixels inside the square. */
+    private static int squareDistance(int x, int y) {
+        int dx = Math.max(2 - x, Math.max(0, x - 5));
+        int dy = Math.max(2 - y, Math.max(0, y - 5));
+        return Math.max(dx, dy);
     }
 
     /** Builds a solid-colour image. */
@@ -391,6 +402,113 @@ class CompositeTextureBuilderTest {
             assertPixel(img, 2, 2, FastColor.ABGR32.color(255, 255, 0, 255), "tinted square pixel");
             assertPixel(img, 0, 1, FastColor.ABGR32.color(255, 255, 0, 0), "blue outline left");
             assertPixel(img, 5, 5, FastColor.ABGR32.color(255, 255, 0, 0), "blue outline corner");
+        }
+    }
+
+    // --- whole-gun outlines (applyGunOutlines) ---
+
+    @Test
+    void emptyListNoOp() {
+        // No outlines: every pixel stays byte-identical.
+        try (NativeImage img = squareCanvas();
+             NativeImage reference = squareCanvas()) {
+            CompositeTextureBuilder.applyGunOutlines(img, List.of());
+            for (int y = 0; y < 8; y++) {
+                for (int x = 0; x < 8; x++) {
+                    assertPixel(img, x, y, reference.getPixelRGBA(x, y), "byte-identical pixel");
+                }
+            }
+        }
+    }
+
+    @Test
+    void singleOutlineRingsTheCompositedShape() {
+        // 8x8 canvas with an opaque 4x4 white square at (2,2)-(5,5): a 2px
+        // ring of outline red covers every pixel outside the square — the
+        // canvas corners sit exactly at Chebyshev distance 2 — while the
+        // square interior keeps its own colour. (There is no pixel farther
+        // than 2 away on this canvas; the "farther pixels stay transparent"
+        // property is asserted in outlinesBasedOnOriginalAlphaSnapshot with a
+        // width-1 ring.)
+        try (NativeImage img = squareCanvas()) {
+            CompositeTextureBuilder.applyGunOutlines(img, List.of(spec(1.0F, 0.0F, 0.0F, 1.0F, 2)));
+            for (int y = 0; y < 8; y++) {
+                for (int x = 0; x < 8; x++) {
+                    boolean inside = squareDistance(x, y) == 0;
+                    assertPixel(img, x, y, inside ? WHITE : OUTLINE_RED,
+                            inside ? "square interior" : "ring pixel");
+                }
+            }
+        }
+    }
+
+    @Test
+    void twoOutlinesNestConcentrically() {
+        // Red width-3 ring + gold width-1 ring, caller-sorted widest-first:
+        // gold hugs the square at distance 1, red fills distances 2-3 and the
+        // square interior keeps its colour.
+        List<OutlineSpec> sorted = List.of(spec(1.0F, 0.0F, 0.0F, 1.0F, 3), spec(1.0F, 1.0F, 0.0F, 1.0F, 1));
+        try (NativeImage img = squareCanvas()) {
+            CompositeTextureBuilder.applyGunOutlines(img, sorted);
+            for (int y = 0; y < 8; y++) {
+                for (int x = 0; x < 8; x++) {
+                    int d = squareDistance(x, y);
+                    int expected = d == 0 ? WHITE : d == 1 ? OUTLINE_GOLD : OUTLINE_RED;
+                    assertPixel(img, x, y, expected, "nested ring pixel");
+                }
+            }
+        }
+        // Unsorted input [gold, red] must produce the identical result: the
+        // implementation sorts by width descending before painting.
+        List<OutlineSpec> shuffled = List.of(spec(1.0F, 1.0F, 0.0F, 1.0F, 1), spec(1.0F, 0.0F, 0.0F, 1.0F, 3));
+        try (NativeImage img = squareCanvas();
+             NativeImage reference = squareCanvas()) {
+            CompositeTextureBuilder.applyGunOutlines(reference, sorted);
+            CompositeTextureBuilder.applyGunOutlines(img, shuffled);
+            for (int y = 0; y < 8; y++) {
+                for (int x = 0; x < 8; x++) {
+                    assertPixel(img, x, y, reference.getPixelRGBA(x, y), "unsorted matches sorted");
+                }
+            }
+        }
+    }
+
+    @Test
+    void sameWidthLaterWins() {
+        // Red and blue both width 2 cover the identical ring. The stable sort
+        // keeps the caller's [red, blue] order, so red paints first and blue
+        // paints over it — every ring pixel ends up blue.
+        try (NativeImage img = squareCanvas()) {
+            CompositeTextureBuilder.applyGunOutlines(img,
+                    List.of(spec(1.0F, 0.0F, 0.0F, 1.0F, 2), spec(0.0F, 0.0F, 1.0F, 1.0F, 2)));
+            for (int y = 0; y < 8; y++) {
+                for (int x = 0; x < 8; x++) {
+                    boolean inside = squareDistance(x, y) == 0;
+                    assertPixel(img, x, y, inside ? WHITE : OUTLINE_BLUE,
+                            inside ? "square interior" : "ring pixel");
+                }
+            }
+        }
+    }
+
+    @Test
+    void outlinesBasedOnOriginalAlphaSnapshot() {
+        // Two width-1 rings: the gold ring must be decided against the
+        // ORIGINAL silhouette only. If the second layer were judged against
+        // the already-painted image, the red ring (alpha 255) would widen the
+        // silhouette and gold would spread to distance 2. Correct behaviour:
+        // the whole ring is exactly 1 pixel wide, entirely gold, and pixels
+        // two or more away stay fully transparent.
+        try (NativeImage img = squareCanvas()) {
+            CompositeTextureBuilder.applyGunOutlines(img,
+                    List.of(spec(1.0F, 0.0F, 0.0F, 1.0F, 1), spec(1.0F, 1.0F, 0.0F, 1.0F, 1)));
+            for (int y = 0; y < 8; y++) {
+                for (int x = 0; x < 8; x++) {
+                    int d = squareDistance(x, y);
+                    int expected = d == 0 ? WHITE : d == 1 ? OUTLINE_GOLD : TRANSPARENT;
+                    assertPixel(img, x, y, expected, "snapshot-based ring pixel");
+                }
+            }
         }
     }
 }

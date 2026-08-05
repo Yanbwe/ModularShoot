@@ -4,6 +4,8 @@ import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.logging.LogUtils;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import net.minecraft.client.Minecraft;
@@ -67,6 +69,16 @@ import org.yanbwe.modularshoot.plugin.OverlayFit;
  * caller (it is {@link AutoCloseable}); its {@code upload()} call, however,
  * must happen on the render thread.</p>
  *
+ * <p><b>Whole-gun outlines:</b> after all overlays are blended, an optional
+ * list of {@link OutlineSpec} gun outlines is painted around the composited
+ * silhouette by {@link #applyGunOutlines}. Outlines are drawn widest-first
+ * (a stable sort keeps the caller's install order when widths tie, so the
+ * later-installed outline paints over the earlier one), which makes narrower
+ * rings nest concentrically inside wider ones. Every layer's decision is
+ * based on a snapshot of the composited alpha taken before any outline is
+ * painted, so an earlier ring never widens the silhouette that later rings
+ * hug. Each layer overwrites the pixels it marks.</p>
+ *
  * @see PluginOverlayCompositor
  */
 public final class CompositeTextureBuilder {
@@ -99,19 +111,7 @@ public final class CompositeTextureBuilder {
 
     /**
      * Composites a list of overlay layers onto a base texture, returning a
-     * single blended {@link NativeImage}.
-     *
-     * <p>Overlays are applied in list order: the first overlay is blended on
-     * top of the base, the second on top of that result, and so on. This
-     * means the <em>last</em> overlay in the list ends up on top. Callers
-     * should pass the list produced by
-     * {@link PluginOverlayCompositor#collectOverlayLayers}, which is sorted
-     * low-layer-to-high so higher layers naturally render above lower
-     * ones.</p>
-     *
-     * <p>The returned image is newly allocated and <strong>not</strong>
-     * closed by this method. The caller owns it and must close it after
-     * uploading (or when discarding it) to avoid native memory leaks.</p>
+     * single blended {@link NativeImage}, without any whole-gun outlines.
      *
      * @param baseTexture the gun's base (or shoot) texture path
      * @param overlays    the sorted overlay layers, bottom-to-top
@@ -123,6 +123,44 @@ public final class CompositeTextureBuilder {
     public static NativeImage composite(
             ResourceLocation baseTexture,
             List<OverlayLayer> overlays) {
+        return composite(baseTexture, overlays, List.of());
+    }
+
+    /**
+     * Composites a list of overlay layers onto a base texture, then paints
+     * the given whole-gun outlines around the composited silhouette, returning
+     * a single blended {@link NativeImage}.
+     *
+     * <p>Overlays are applied in list order: the first overlay is blended on
+     * top of the base, the second on top of that result, and so on. This
+     * means the <em>last</em> overlay in the list ends up on top. Callers
+     * should pass the list produced by
+     * {@link PluginOverlayCompositor#collectOverlayLayers}, which is sorted
+     * low-layer-to-high so higher layers naturally render above lower
+     * ones.</p>
+     *
+     * <p>Gun outlines are painted after all overlays by
+     * {@link #applyGunOutlines} — see its contract for the draw order (width
+     * descending, stable tie-breaking, alpha-snapshot based) and the class
+     * javadoc for the rationale.</p>
+     *
+     * <p>The returned image is newly allocated and <strong>not</strong>
+     * closed by this method. The caller owns it and must close it after
+     * uploading (or when discarding it) to avoid native memory leaks.</p>
+     *
+     * @param baseTexture the gun's base (or shoot) texture path
+     * @param overlays    the sorted overlay layers, bottom-to-top
+     * @param gunOutlines the whole-gun outlines, painted widest-first after
+     *                    the overlays; may be empty
+     * @return the composited image, or {@code null} when the base texture
+     *         cannot be loaded (an error is logged); missing overlay
+     *         textures are skipped with a warning
+     */
+    @Nullable
+    public static NativeImage composite(
+            ResourceLocation baseTexture,
+            List<OverlayLayer> overlays,
+            List<OutlineSpec> gunOutlines) {
 
         NativeImage base = loadTexture(baseTexture);
         if (base == null) {
@@ -144,6 +182,7 @@ public final class CompositeTextureBuilder {
                 overlay.close();
             }
         }
+        applyGunOutlines(base, gunOutlines);
         return base;
     }
 
@@ -480,6 +519,109 @@ public final class CompositeTextureBuilder {
                 }
             }
         }
+    }
+
+    /**
+     * Paints a list of whole-gun outline strokes around the composited alpha
+     * silhouette, in place, with concentric nesting.
+     *
+     * <p><b>Draw order:</b> outlines are sorted by width descending, so wider
+     * rings are painted first and narrower rings nest inside them. The sort is
+     * stable: when widths tie, the caller's install order is preserved and the
+     * later-installed outline paints over the earlier one (last one wins).</p>
+     *
+     * <p><b>Alpha snapshot:</b> outline detection is always based on the
+     * original composited silhouette (an {@code int[]} alpha snapshot taken
+     * before any outline is painted), so each ring hugs the same shape and
+     * never widens the silhouette for the next ring. Within a layer, pixels
+     * may be read-and-written in the same pass because the decision reads
+     * only the snapshot. Each layer overwrites the pixels it marks; later
+     * layers (narrower rings) naturally cover earlier ones.</p>
+     *
+     * <p>A non-positive {@code width} logs a warning and paints nothing.
+     * An empty list is a no-op.</p>
+     *
+     * <p>Package-private for unit testing; the pixel math is pure.</p>
+     *
+     * @param img      the composited image, modified in place
+     * @param outlines the whole-gun outline specs, any order; painted
+     *                 widest-first
+     */
+    static void applyGunOutlines(NativeImage img, List<OutlineSpec> outlines) {
+        if (outlines.isEmpty()) {
+            return;
+        }
+        int w = img.getWidth();
+        int h = img.getHeight();
+        // Alpha snapshot: outline detection is always based on the original
+        // composited silhouette so that narrower rings nest inside wider ones
+        // instead of each ring widening the silhouette for the next.
+        int[] alphaSnapshot = new int[w * h];
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                alphaSnapshot[y * w + x] = FastColor.ABGR32.alpha(img.getPixelRGBA(x, y));
+            }
+        }
+        // Stable sort by width descending: List.sort is stable, so ties keep
+        // the caller's install order and later installs paint over earlier
+        // ones.
+        List<OutlineSpec> sorted = new ArrayList<>(outlines);
+        sorted.sort(Comparator.comparingInt(OutlineSpec::width).reversed());
+        for (OutlineSpec spec : sorted) {
+            int width = spec.width();
+            if (width <= 0) {
+                LOGGER.warn("Gun outline width {} is not positive; outline skipped", width);
+                continue;
+            }
+            int color = FastColor.ABGR32.color(
+                    Math.round(spec.alpha() * 255.0F),
+                    Math.round(spec.color().z() * 255.0F),
+                    Math.round(spec.color().y() * 255.0F),
+                    Math.round(spec.color().x() * 255.0F));
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    if (alphaSnapshot[y * w + x] == 0
+                            && hasAlphaNeighborInSnapshot(alphaSnapshot, w, h, x, y, width)) {
+                        img.setPixelRGBA(x, y, color);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Checks whether any pixel within a square neighbourhood of radius
+     * {@code width} around {@code (x, y)} has non-zero alpha in the given
+     * alpha snapshot (including the pixel itself). Neighbourhood cells
+     * outside the image bounds are skipped.
+     *
+     * <p>Counterpart of {@link #hasAlphaNeighbor} that reads a plain alpha
+     * snapshot array instead of a live {@link NativeImage}, so outline
+     * detection is immune to pixels painted by earlier outline passes.</p>
+     *
+     * @param alpha the per-pixel alpha snapshot, row-major, 0..255
+     * @param w     the snapshot width in pixels
+     * @param h     the snapshot height in pixels
+     * @param x     the centre x coordinate
+     * @param y     the centre y coordinate
+     * @param width the neighbourhood radius in pixels
+     * @return {@code true} when an alpha &gt; 0 pixel exists within the
+     *         neighbourhood
+     */
+    private static boolean hasAlphaNeighborInSnapshot(int[] alpha, int w, int h, int x, int y, int width) {
+        for (int dy = -width; dy <= width; dy++) {
+            for (int dx = -width; dx <= width; dx++) {
+                int nx = x + dx;
+                int ny = y + dy;
+                if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+                    continue;
+                }
+                if (alpha[ny * w + nx] > 0) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
