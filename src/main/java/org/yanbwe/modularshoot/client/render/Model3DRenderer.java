@@ -133,6 +133,9 @@ public final class Model3DRenderer {
     /** Full-bright fallback when the client level is unavailable (e.g. main menu). */
     private static final int FULL_BRIGHT = LightTexture.FULL_BRIGHT;
 
+    /** White identity tint used when a render object supplies no composed tint. */
+    private static final Vector4f WHITE_TINT = new Vector4f(1.0f, 1.0f, 1.0f, 1.0f);
+
     /** Reusable block position for light lookups (render thread only). */
     private static final BlockPos.MutableBlockPos LIGHT_POS = new BlockPos.MutableBlockPos();
 
@@ -181,7 +184,7 @@ public final class Model3DRenderer {
         // Composed tint (null = white identity sentinel) multiplied into the
         // model's vertex colour (设计规格 §4.5).
         Vector4f tint = renderObject.getComposedTint() != null
-                ? renderObject.getComposedTint() : new Vector4f(1.0f, 1.0f, 1.0f, 1.0f);
+                ? renderObject.getComposedTint() : WHITE_TINT;
 
         poseStack.pushPose();
         applyTransforms(poseStack, renderObject.getDirection(), renderObject.getScale());

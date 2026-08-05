@@ -10,6 +10,11 @@ import java.util.Optional;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import org.joml.Vector4f;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.component.PluginInstance;
 import org.yanbwe.modularshoot.network.GunSyncS2CPacket;
 import org.yanbwe.modularshoot.plugin.OutlineSpec;
@@ -55,6 +60,7 @@ import org.yanbwe.modularshoot.plugin.TextureOverlay;
  * @see TextureOverlay
  * @see CompositeTextureBuilder
  */
+@EventBusSubscriber(modid = ModularShoot.MODID, value = Dist.CLIENT)
 public final class PluginOverlayCompositor {
 
     private PluginOverlayCompositor() {
@@ -110,11 +116,13 @@ public final class PluginOverlayCompositor {
      * (value semantics) plus the {@link RegistryAccess} identity. The render
      * data is player-independent and fully derived from datapack definitions,
      * so the per-frame rebuild in {@link GunItemRenderer} is pure repetition —
-     * the same gun stack resolves to the same data every frame. A {@code /reload}
-     * rebuilds the dynamic registries, producing a new {@code RegistryAccess}
-     * instance and thus a natural cache miss; the LRU bound (64 entries) keeps
-     * the key's strong reference to the registry access bounded across world
-     * changes.
+     * the same gun stack resolves to the same data every frame. In 1.21.1 a
+     * {@code /reload} does not swap the {@code RegistryAccess} instance nor
+     * change already-loaded plugin definitions, so the warm-cache content stays
+     * correct. The cache's lifetime is bounded by LRU eviction and logout
+     * clearing (see {@link #onPlayerLogout}); keys are defensively copied at
+     * construction so a mutable list passed by a caller can never mutate an
+     * in-cache key.
      */
     private record RenderDataKey(List<ResourceLocation> pluginIds, RegistryAccess registryAccess) {
     }
@@ -128,6 +136,17 @@ public final class PluginOverlayCompositor {
                     return size() > MAX_CACHE_ENTRIES;
                 }
             });
+
+    /**
+     * Clears the render-data cache on client logout, releasing the strong
+     * references to the world's {@link RegistryAccess} held by cache keys.
+     *
+     * @param event the client player logging-out event
+     */
+    @SubscribeEvent
+    public static void onPlayerLogout(ClientPlayerNetworkEvent.LoggingOut event) {
+        RENDER_DATA_CACHE.clear();
+    }
 
     /**
      * Collects overlay layers from a gun's installed plugins, sorted by
@@ -258,10 +277,12 @@ public final class PluginOverlayCompositor {
      * the plugin-id list (value semantics) plus the {@link RegistryAccess}
      * identity, because the render data is player-independent and fully
      * derived from datapack definitions — the same plugin-id list resolves to
-     * the same data every call. A {@code /reload} rebuilds the dynamic
-     * registries, producing a new {@code RegistryAccess} instance and thus a
-     * natural cache miss; the LRU bound (64 entries) keeps the key's strong
-     * reference to the registry access bounded across world changes.</p>
+     * the same data every call. In 1.21.1 a {@code /reload} does not swap the
+     * {@code RegistryAccess} instance nor change already-loaded plugin
+     * definitions, so the warm-cache content stays correct. The cache's
+     * lifetime is bounded by LRU eviction and logout clearing
+     * ({@link #onPlayerLogout}); keys are defensively copied at
+     * construction.</p>
      *
      * @param pluginIds      the ordered plugin definition ids
      * @param registryAccess the runtime registry view (from a loaded world)
@@ -270,7 +291,7 @@ public final class PluginOverlayCompositor {
     private static OverlayRenderData collectRenderDataByIds(
             List<ResourceLocation> pluginIds,
             RegistryAccess registryAccess) {
-        RenderDataKey key = new RenderDataKey(pluginIds, registryAccess);
+        RenderDataKey key = new RenderDataKey(List.copyOf(pluginIds), registryAccess);
         OverlayRenderData cached = RENDER_DATA_CACHE.get(key);
         if (cached != null) {
             return cached;
