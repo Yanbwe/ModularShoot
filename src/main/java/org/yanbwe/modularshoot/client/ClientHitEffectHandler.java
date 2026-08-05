@@ -21,10 +21,9 @@ import org.yanbwe.modularshoot.network.BulletHitS2CPacket.HitType;
  * <p>The server is the sole authority on hit resolution and damage; this
  * handler only renders visual feedback and never mutates game state. The
  * effect type is selected by {@link HitType}: entity hits spawn
- * damage-indicator particles plus a generic hurt sound, block hits spawn
- * block-break particles tinted by the struck block's state plus a
- * stone-hit sound, and pierce hits spawn crit particles plus a crit
- * sound.</p>
+ * damage-indicator particles (no sound), block hits spawn block-break
+ * particles tinted by the struck block's state plus a stone-hit sound, and
+ * pierce hits spawn crit particles plus a crit sound.</p>
  *
  * <p><b>Client-only.</b> Referenced solely from the S→C payload handler in
  * {@link org.yanbwe.modularshoot.network.ModularShootPayloads}, invoked only
@@ -74,15 +73,17 @@ public final class ClientHitEffectHandler {
     }
 
     /**
-     * Entity-hit effect: damage-indicator particles plus a generic hurt
-     * sound (设计文档 §命中实体).
+     * Entity-hit effect: damage-indicator particles only (设计文档 §命中实体).
+     *
+     * <p>No sound is played for entity hits — the vanilla generic hurt sound
+     * previously used as a placeholder was removed because it overlapped the
+     * hit entity's own hurt sound and sounded like a player being hurt.</p>
      *
      * @param level  the client world
      * @param hitPos the hit point
      */
     private static void playEntityHitEffect(ClientLevel level, Vec3 hitPos) {
         spawnParticles(level, ParticleTypes.DAMAGE_INDICATOR, hitPos);
-        playSound(level, hitPos, SoundEvents.GENERIC_HURT, SoundSource.NEUTRAL);
     }
 
     /**
