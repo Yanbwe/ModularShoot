@@ -7,6 +7,7 @@ import org.jetbrains.annotations.Nullable;
 import org.joml.Vector4f;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.network.ClientBulletSnapshot;
+import org.yanbwe.modularshoot.registry.gun.BulletStyle;
 
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -159,6 +160,21 @@ public record BulletS2CPacket(
         return new BulletS2CPacket(newBullets, updatedBullets, removedBulletIds, forceFullSync);
     }
 
+    /**
+     * Maps a render-mode serialized name to its enum ordinal for wire
+     * encoding. Unknown names (defensive: the server always writes one of the
+     * two known modes) map to {@code BILLBOARD} so the wire never carries an
+     * out-of-range ordinal.
+     */
+    private static byte renderModeOrdinal(String serializedName) {
+        for (BulletStyle.RenderMode mode : BulletStyle.RenderMode.values()) {
+            if (mode.getSerializedName().equals(serializedName)) {
+                return (byte) mode.ordinal();
+            }
+        }
+        return (byte) BulletStyle.RenderMode.BILLBOARD.ordinal();
+    }
+
     // --- FullBulletEntry codec ------------------------------------------
 
     /**
@@ -209,7 +225,9 @@ public record BulletS2CPacket(
         buf.writeDouble(entry.dirZ());
         encodeNullableResourceLocation(buf, entry.texture());
         encodeNullableResourceLocation(buf, entry.modelLocation());
-        buf.writeUtf(entry.renderMode());
+        // Varint enum ordinal instead of a UTF string: the two render modes are
+        // fixed in code (unreleased mod — no cross-version compat concern).
+        buf.writeByte(renderModeOrdinal(entry.renderMode()));
         buf.writeFloat(entry.renderScale());
         buf.writeInt(entry.shooterEntityId());
         ClientBulletSnapshot.STREAM_CODEC.encode(buf, entry.snapshot());
@@ -225,7 +243,7 @@ public record BulletS2CPacket(
         }
         buf.writeVarInt(entry.layers().size());
         for (FullBulletEntry.LayerEntryFull l : entry.layers()) {
-            buf.writeUtf(l.renderMode());
+            buf.writeByte(renderModeOrdinal(l.renderMode()));
             encodeNullableResourceLocation(buf, l.texture());
             encodeNullableResourceLocation(buf, l.model());
             buf.writeBoolean(l.followRotation());
@@ -258,7 +276,7 @@ public record BulletS2CPacket(
         double dirZ = buf.readDouble();
         ResourceLocation texture = decodeNullableResourceLocation(buf);
         ResourceLocation modelLocation = decodeNullableResourceLocation(buf);
-        String renderMode = buf.readUtf();
+        String renderMode = BulletStyle.RenderMode.values()[buf.readByte()].getSerializedName();
         float renderScale = buf.readFloat();
         int shooterEntityId = buf.readInt();
         ClientBulletSnapshot snapshot = ClientBulletSnapshot.STREAM_CODEC.decode(buf);
@@ -270,7 +288,7 @@ public record BulletS2CPacket(
         int layerCount = buf.readVarInt();
         List<FullBulletEntry.LayerEntryFull> layers = new ArrayList<>(Math.max(0, layerCount));
         for (int i = 0; i < layerCount; i++) {
-            String layerRenderMode = buf.readUtf();
+            String layerRenderMode = BulletStyle.RenderMode.values()[buf.readByte()].getSerializedName();
             ResourceLocation layerTexture = decodeNullableResourceLocation(buf);
             ResourceLocation layerModel = decodeNullableResourceLocation(buf);
             boolean followRotation = buf.readBoolean();

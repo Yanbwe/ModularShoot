@@ -24,7 +24,7 @@ import org.jetbrains.annotations.Nullable;
  *   <li>{@code double} — hit x</li>
  *   <li>{@code double} — hit y</li>
  *   <li>{@code double} — hit z</li>
- *   <li>{@code String} (UTF) — {@link HitType} enum name</li>
+ *   <li>{@code byte} — {@link HitType} enum ordinal</li>
  *   <li>{@code int} — hit entity id ({@code -1} when not an entity hit)</li>
  *   <li>{@code boolean} presence + {@code ResourceLocation} — 命中音效 ID（未配置时 presence 为 false）</li>
  * </ol>
@@ -58,11 +58,11 @@ public record BulletHitS2CPacket(
      * Kind of hit a bullet made, used by the client to select the correct
      * impact effect.
      *
-     * <p>Encoded on the wire as its {@link Enum#name() enum name} via
-     * {@link RegistryFriendlyByteBuf#writeUtf(String)}; decoded back with
-     * {@link #valueOf(String)}. Name-based encoding is robust against enum
-     * constant reordering — adding, removing, or reordering constants does
-     * not break the wire protocol, unlike ordinal-based encoding.</p>
+     * <p>Encoded on the wire as its {@link Enum#ordinal() enum ordinal} via
+     * {@link RegistryFriendlyByteBuf#writeByte(int)}; decoded back with
+     * {@code HitType.values()[byte]}. The mod is unreleased, so declaration
+     * order is stable and ordinal-based encoding needs no version guard — the
+     * decode side trusts the server to never send an out-of-range ordinal.</p>
      */
     public enum HitType {
         /** The bullet struck an entity (damage applied server-side). */
@@ -103,7 +103,7 @@ public record BulletHitS2CPacket(
         buf.writeDouble(packet.hitX);
         buf.writeDouble(packet.hitY);
         buf.writeDouble(packet.hitZ);
-        buf.writeUtf(packet.hitType.name());
+        buf.writeByte((byte) packet.hitType.ordinal());
         buf.writeInt(packet.hitEntityId);
         encodeNullableResourceLocation(buf, packet.soundId);
     }
@@ -120,7 +120,7 @@ public record BulletHitS2CPacket(
         double hitX = buf.readDouble();
         double hitY = buf.readDouble();
         double hitZ = buf.readDouble();
-        HitType hitType = HitType.valueOf(buf.readUtf());
+        HitType hitType = HitType.values()[buf.readByte()];
         int hitEntityId = buf.readInt();
         ResourceLocation soundId = decodeNullableResourceLocation(buf);
         return new BulletHitS2CPacket(bulletId, hitX, hitY, hitZ, hitType, hitEntityId, soundId);
