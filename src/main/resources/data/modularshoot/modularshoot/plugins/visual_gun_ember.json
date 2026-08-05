@@ -1,0 +1,18 @@
+{
+  "tags": ["c:accessory"],
+  "priority": 90,
+  "item_icon": "modularshoot:textures/bullet/test_fireball.png",
+  "name": "§c枪械余烬（叠加视觉演示）",
+  "brief": "枪械红色染色 + 火焰图层 add 混合 + 红色宽描边",
+  "description": "演示插件叠加视觉增强：图层 tint 乘色、add 混合、图层描边、整枪 gun_outline",
+  "color": "#FF5555",
+  "texture_overlay": {
+    "texture": "modularshoot:textures/bullet/test_layer_fire.png",
+    "layer": 5,
+    "fit": "contain",
+    "tint": [1.0, 0.4, 0.3, 1.0],
+    "blend": "add",
+    "outline": { "color": [1.0, 0.9, 0.4], "alpha": 1.0, "width": 1 }
+  },
+  "gun_outline": { "color": [1.0, 0.2, 0.1], "alpha": 0.9, "width": 3 }
+}

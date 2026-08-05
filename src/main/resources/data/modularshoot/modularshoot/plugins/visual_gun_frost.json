@@ -1,0 +1,17 @@
+{
+  "tags": ["c:accessory"],
+  "priority": 85,
+  "item_icon": "modularshoot:textures/bullet/test_orb_tracking.png",
+  "name": "§b枪械寒霜（叠加视觉演示）",
+  "brief": "枪械蓝色染色 + 寒冷图层 screen 混合 + 金色细描边",
+  "description": "与枪械余烬同时安装时演示 gun_outline 多层同心描边（红宽环 + 金细环）",
+  "color": "#55AAFF",
+  "texture_overlay": {
+    "texture": "modularshoot:textures/bullet/test_orb_tracking.png",
+    "layer": 6,
+    "fit": "contain",
+    "tint": [0.5, 0.7, 1.0, 1.0],
+    "blend": "screen"
+  },
+  "gun_outline": { "color": [1.0, 0.85, 0.3], "alpha": 1.0, "width": 1 }
+}
