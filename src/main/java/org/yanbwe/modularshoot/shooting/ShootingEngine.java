@@ -22,6 +22,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.common.NeoForge;
 import org.yanbwe.modularshoot.ModularShoot;
+import org.yanbwe.modularshoot.attribute.AttributeResolver;
 import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 import org.yanbwe.modularshoot.bullet.BulletManager;
 import org.yanbwe.modularshoot.bullet.BulletRecord;
@@ -53,10 +54,11 @@ import org.yanbwe.modularshoot.variant.VariantPoolService;
  *       canceled event aborts the shot without consuming the fire-rate
  *       cooldown.</li>
  *   <li><b>Attribute snapshot</b> — reads the final values of all ten
- *       framework attributes from the player, reads the gun's inherent
- *       boolean traits, resolves the damage type (per-gun state preset or
- *       framework default), and freezes everything into a
- *       {@link BulletSnapshot}.</li>
+ *       framework attributes from the player, each resolved through its
+ *       {@code attribute_meta} entry's {@code binds} target (逻辑属性 id →
+ *       binds 目标原版属性 → 实体最终值), reads the gun's inherent boolean
+ *       traits, resolves the damage type (per-gun state preset or framework
+ *       default), and freezes everything into a {@link BulletSnapshot}.</li>
  *   <li><b>Spread per pellet</b> — for every pellet, derives an independent
  *       bullet direction from the player's server-side look angle and
  *       applies elliptical spread via {@link SpreadCalculator} (每颗独立
@@ -256,28 +258,40 @@ public final class ShootingEngine {
     }
 
     /**
-     * Reads the final values of all ten framework attributes from the player
-     * and returns them keyed by attribute id.
+     * Reads the final values of all ten framework attributes from the player,
+     * resolving each logical attribute id through its {@code attribute_meta}
+     * entry's {@code binds} target before reading the entity's final value
+     * (逻辑属性 id → binds 目标原版属性 → 实体最终值，设计文档 §属性元数据 binds 机制).
      *
-     * <p>Uses a {@link LinkedHashMap} so the iteration order is deterministic
+     * <p><strong>Degradation semantics:</strong> any missing link in the
+     * resolution chain — metadata entry absent, {@code binds} target
+     * unregistered, or the bound attribute not mounted on the player —
+     * degrades to {@code 0.0} without throwing, matching the degradation
+     * contract of {@link org.yanbwe.modularshoot.degradation.AttributeBindsDegradationHandler}.</p>
+     *
+     * <p>The snapshot keys stay the logical attribute ids (never the bound
+     * target ids): downstream consumers such as {@code PenetrationHandler},
+     * {@code CollisionDetector}, {@code BulletTickHandler} and
+     * {@link #applySpread} all read the snapshot by logical id. Uses a
+     * {@link LinkedHashMap} so the iteration order is deterministic
      * (insertion order), which makes snapshot debugging and log output
      * stable.</p>
      *
      * @param player the player to read attributes from
-     * @return a mutable map of attribute id → final double value
+     * @return a mutable map of logical attribute id → final double value
      */
     private static Map<ResourceLocation, Double> collectAttributeStats(ServerPlayer player) {
         Map<ResourceLocation, Double> stats = new LinkedHashMap<>();
-        stats.put(HIT_DAMAGE_ID, player.getAttributeValue(ModularShootAttributes.HIT_DAMAGE));
-        stats.put(FIRE_RATE_ID, player.getAttributeValue(ModularShootAttributes.FIRE_RATE));
-        stats.put(RANGE_ID, player.getAttributeValue(ModularShootAttributes.RANGE));
-        stats.put(ACCURACY_YAW_ID, player.getAttributeValue(ModularShootAttributes.ACCURACY_YAW));
-        stats.put(ACCURACY_PITCH_ID, player.getAttributeValue(ModularShootAttributes.ACCURACY_PITCH));
-        stats.put(ENTITY_PENETRATION_ID, player.getAttributeValue(ModularShootAttributes.ENTITY_PENETRATION));
-        stats.put(BULLET_SPEED_ID, player.getAttributeValue(ModularShootAttributes.BULLET_SPEED));
-        stats.put(BULLET_SIZE_ID, player.getAttributeValue(ModularShootAttributes.BULLET_SIZE));
-        stats.put(BLOCK_PENETRATION_ID, player.getAttributeValue(ModularShootAttributes.BLOCK_PENETRATION));
-        stats.put(PELLET_COUNT_ID, player.getAttributeValue(ModularShootAttributes.PELLET_COUNT));
+        stats.put(HIT_DAMAGE_ID, AttributeResolver.readFinalValue(player, HIT_DAMAGE_ID, player.registryAccess()));
+        stats.put(FIRE_RATE_ID, AttributeResolver.readFinalValue(player, FIRE_RATE_ID, player.registryAccess()));
+        stats.put(RANGE_ID, AttributeResolver.readFinalValue(player, RANGE_ID, player.registryAccess()));
+        stats.put(ACCURACY_YAW_ID, AttributeResolver.readFinalValue(player, ACCURACY_YAW_ID, player.registryAccess()));
+        stats.put(ACCURACY_PITCH_ID, AttributeResolver.readFinalValue(player, ACCURACY_PITCH_ID, player.registryAccess()));
+        stats.put(ENTITY_PENETRATION_ID, AttributeResolver.readFinalValue(player, ENTITY_PENETRATION_ID, player.registryAccess()));
+        stats.put(BULLET_SPEED_ID, AttributeResolver.readFinalValue(player, BULLET_SPEED_ID, player.registryAccess()));
+        stats.put(BULLET_SIZE_ID, AttributeResolver.readFinalValue(player, BULLET_SIZE_ID, player.registryAccess()));
+        stats.put(BLOCK_PENETRATION_ID, AttributeResolver.readFinalValue(player, BLOCK_PENETRATION_ID, player.registryAccess()));
+        stats.put(PELLET_COUNT_ID, AttributeResolver.readFinalValue(player, PELLET_COUNT_ID, player.registryAccess()));
         return stats;
     }
 
