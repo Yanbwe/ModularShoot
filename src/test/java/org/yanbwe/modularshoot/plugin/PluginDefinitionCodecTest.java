@@ -2,6 +2,7 @@ package org.yanbwe.modularshoot.plugin;
 
 import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
+import java.util.Optional;
 import net.minecraft.resources.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
@@ -16,6 +17,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@code adds_variants} field: a namespaced "variant id → base weight" map
  * appended to the gun's per-shot variant pool (设计规格 §6.2 来源表：插件向
  * 枪的池子追加变体 id + base_weight), defaulting to an empty map when omitted.
+ * Also covers the {@code visual_priority} field: an optional visual
+ * base-election priority that falls back to {@code priority} when absent.
  */
 class PluginDefinitionCodecTest {
 
@@ -76,5 +79,43 @@ class PluginDefinitionCodecTest {
                 "first key keeps its declared weight");
         assertEquals(1.5, definition.addsVariants().get(ResourceLocation.parse("modularshoot:big")), 1.0E-9,
                 "second key keeps its declared weight");
+    }
+
+    @Test
+    void visualPriorityAbsentDefaultsToEmpty() {
+        PluginDefinition definition = parse("{\"item_icon\": \"m:icon\"}");
+        assertTrue(definition.visualPriority().isEmpty(),
+                "visual_priority should default to empty when omitted");
+    }
+
+    @Test
+    void visualPriorityParsesExplicitValue() {
+        PluginDefinition definition = parse(
+                "{\"item_icon\": \"m:icon\", \"visual_priority\": 120}");
+        assertEquals(Optional.of(120), definition.visualPriority(),
+                "explicit visual_priority should be kept as-is");
+    }
+
+    @Test
+    void visualPriorityOrFallbackUsesExplicitValueWhenPresent() {
+        PluginDefinition definition = parse(
+                "{\"item_icon\": \"m:icon\", \"priority\": 5, \"visual_priority\": 120}");
+        assertEquals(120, definition.visualPriorityOrFallback(),
+                "explicit visual_priority wins over priority");
+    }
+
+    @Test
+    void visualPriorityOrFallbackFallsBackToPriorityWhenAbsent() {
+        PluginDefinition definition = parse(
+                "{\"item_icon\": \"m:icon\", \"priority\": 5}");
+        assertEquals(5, definition.visualPriorityOrFallback(),
+                "absent visual_priority falls back to priority");
+    }
+
+    @Test
+    void visualPriorityOrFallbackDefaultsToZeroWhenBothAbsent() {
+        PluginDefinition definition = parse("{\"item_icon\": \"m:icon\"}");
+        assertEquals(0, definition.visualPriorityOrFallback(),
+                "both absent yields the priority default of 0");
     }
 }
