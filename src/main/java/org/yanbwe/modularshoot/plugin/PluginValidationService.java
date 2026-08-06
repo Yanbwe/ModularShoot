@@ -4,8 +4,11 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import net.minecraft.core.RegistryAccess;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginInstance;
@@ -91,8 +94,9 @@ public final class PluginValidationService {
      *                       installed plugins' definitions
      * @return {@link ValidationResult#success()} when no conflict exists or
      *         the candidate has no exclusive group; otherwise a failing
-     *         {@link ValidationResult} whose message names the conflicting
-     *         group
+     *         {@link ValidationResult} whose message names the already-installed
+     *         plugin's readable name (falling back to the group id), localized
+     *         via {@code modularshoot.install.error.exclusive_group}
      */
     public static ValidationResult checkExclusiveGroup(
             ItemStack gun,
@@ -115,9 +119,16 @@ public final class PluginValidationService {
             }
             Optional<String> installedGroup = installedDef.get().exclusiveGroup();
             if (installedGroup.isPresent() && installedGroup.get().equals(group)) {
-                return ValidationResult.error(
-                        "Plugin belongs to exclusive group '" + group
-                                + "' which is already occupied by an installed plugin");
+                // P3 fix: 冲突报错带上已安装插件的可读名——玩家看到
+                // "与已安装插件 §b精密枪管 互斥" 而不是原始英文 + 技术组 id。
+                // Component.literal 保留 § 格式码（name 字段支持颜色代码）；
+                // 名字缺失时回退显示互斥组 id。
+                String displayName = installedDef.get().name()
+                        .filter(s -> !s.isEmpty())
+                        .orElse(group);
+                return ValidationResult.error(Component.translatable(
+                        "modularshoot.install.error.exclusive_group",
+                        Component.literal(displayName)));
             }
         }
         return ValidationResult.success();
@@ -132,17 +143,34 @@ public final class PluginValidationService {
      * §自定义安装校验), remaining validators are not run once a failure is
      * observed.</p>
      *
-     * @param gun      the target gun item stack passed to each validator
-     * @param pluginId the candidate plugin definition id passed to each
-     *                 validator
+     * <p>Exception isolation: a validator that throws an exception is logged
+     * and skipped; the remaining validators still run and the failure
+     * short-circuit is unaffected (抛异常的第三方 validator 被记录并跳过，
+     * 继续执行其余 validator，不影响首败短路).</p>
+     *
+     * @param gun            the target gun item stack passed to each validator
+     * @param pluginId       the candidate plugin definition id passed to each
+     *                       validator
+     * @param player         the player performing the installation, passed to
+     *                       each validator for player-state checks
+     * @param registryAccess the runtime registry view passed to each validator
+     *                       for data-driven checks
      * @return {@link Optional#empty()} when all registered validators pass
      *         (or when none are registered); otherwise an {@link Optional}
      *         containing the first failing {@link ValidationResult}, whose
      *         error message should be shown to the player
      */
-    public static Optional<ValidationResult> runCustomValidators(ItemStack gun, ResourceLocation pluginId) {
+    public static Optional<ValidationResult> runCustomValidators(
+            ItemStack gun, ResourceLocation pluginId, Player player, RegistryAccess registryAccess) {
         for (PluginValidator validator : VALIDATORS) {
-            ValidationResult result = validator.validate(gun, pluginId);
+            ValidationResult result;
+            try {
+                result = validator.validate(player, gun, pluginId, registryAccess);
+            } catch (Exception e) {
+                ModularShoot.LOGGER.error(
+                        "PluginValidator threw an exception; skipping this validator", e);
+                continue;
+            }
             if (!result.valid()) {
                 return Optional.of(result);
             }

@@ -118,7 +118,8 @@ class VisualCompositionServiceTest {
                 Map.of(),
                 Map.of(),
                 Optional.of(style),
-                Map.of());
+                Map.of(),
+                Optional.empty());
     }
 
     /** Builds a {@link PluginDefinition} with the given priority and bullet style. */
@@ -140,7 +141,8 @@ class VisualCompositionServiceTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
-                Map.of());
+                Map.of(),
+                Optional.empty());
     }
 
     private static GunData gunData(ResourceLocation gunId, List<org.yanbwe.modularshoot.component.PluginInstance> plugins) {

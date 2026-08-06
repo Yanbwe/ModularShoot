@@ -7,6 +7,7 @@ import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import org.yanbwe.modularshoot.ModularShoot;
 
 /**
  * Registry and execution hub for {@link ShootPredicate}s.
@@ -70,6 +71,11 @@ public final class ShootPredicateRegistry {
      * §射击时序步骤三), remaining predicates are not run once a failure is
      * observed. When no predicates are registered the shot trivially passes.</p>
      *
+     * <p>Exception isolation: a predicate that throws an exception is logged
+     * and skipped; the remaining predicates still run and the failure
+     * short-circuit is unaffected (抛异常的第三方 predicate 被记录并跳过，
+     * 继续执行其余 predicate，不影响首败短路).</p>
+     *
      * @param player the player attempting to shoot; must not be {@code null}
      * @param gun    the gun item stack being fired; must not be {@code null}
      * @return {@link ShootPredicateResult#success()} when all registered
@@ -81,7 +87,15 @@ public final class ShootPredicateRegistry {
         Objects.requireNonNull(player, "player");
         Objects.requireNonNull(gun, "gun");
         for (ShootPredicate predicate : PREDICATES) {
-            ShootPredicateResult result = predicate.test(player, gun);
+            ShootPredicateResult result;
+            try {
+                result = predicate.test(player, gun);
+            } catch (Exception e) {
+                ModularShoot.LOGGER.error(
+                        "ShootPredicate threw an exception; skipping this predicate (player={})",
+                        player, e);
+                continue;
+            }
             if (!result.isSuccess()) {
                 return result;
             }

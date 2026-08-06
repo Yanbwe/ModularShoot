@@ -10,15 +10,10 @@ import org.jetbrains.annotations.Nullable;
  * <p>Returned by every method in {@link PluginUninstallService}. The
  * {@code success} flag tells the caller whether the plugin was actually
  * removed; a {@code false} value means the plugin was skipped for one of
- * the following reasons:</p>
- * <ul>
- *   <li>the stack is not a {@code modularshoot:gun} item or carries no
- *       {@code gun_data} component;</li>
- *   <li>no installed plugin matches the given {@code instanceUuid};</li>
- *   <li>the plugin is {@code locked} and {@code force} was not
- *       requested;</li>
- *   <li>a listener cancelled the {@code PrePluginUninstallEvent}.</li>
- * </ul>
+ * the reasons enumerated in {@link Reason}. Callers that need to react to
+ * a specific failure (e.g. retry with {@code force} when the plugin is
+ * locked) should inspect {@link #reason()} instead of guessing from the
+ * {@code success} flag alone.</p>
  *
  * <p>When {@code success} is {@code false} the {@code pluginId} may be
  * {@code null} (e.g. when the plugin could not be found at all). The
@@ -33,10 +28,30 @@ import org.jetbrains.annotations.Nullable;
  * @param instanceUuid the instance uuid of the plugin that was (or was
  *                     attempted to be) uninstalled, or {@code null} for the
  *                     no-candidate random-uninstall case
+ * @param reason       the classification of the outcome; see {@link Reason}
  */
 public record UninstallResult(
         boolean success,
         @Nullable ResourceLocation pluginId,
-        @Nullable UUID instanceUuid
+        @Nullable UUID instanceUuid,
+        Reason reason
 ) {
+
+    /**
+     * Classifies the outcome of a single uninstall attempt.
+     */
+    public enum Reason {
+        /** 确实移除。 */
+        SUCCESS,
+        /** 非枪或无 gun_data 组件。 */
+        NOT_GUN_OR_NO_DATA,
+        /** 未找到该实例 UUID。 */
+        UUID_NOT_FOUND,
+        /** 插件锁定且未请求 force。 */
+        LOCKED,
+        /** PrePluginUninstallEvent 被监听器取消。 */
+        CANCELED,
+        /** 随机卸载无候选（空列表或全部锁定且未 force）。 */
+        NO_CANDIDATE
+    }
 }

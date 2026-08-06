@@ -37,7 +37,8 @@ class BulletHitSoundResolverTest {
                 Map.of(),
                 sounds,
                 Optional.empty(),
-                Map.of());
+                Map.of(),
+                Optional.empty());
     }
 
     @Test

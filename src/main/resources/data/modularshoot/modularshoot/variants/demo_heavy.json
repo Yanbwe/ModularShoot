@@ -1,4 +1,4 @@
 {
-  "weight_hint": 0.2,
+  "base_weight": 0.2,
   "stats": { "modularshoot:hit_damage": 25.0 }
 }

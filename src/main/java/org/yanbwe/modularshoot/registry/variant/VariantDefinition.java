@@ -12,7 +12,7 @@ import org.yanbwe.modularshoot.registry.gun.BulletStyle;
  * table (机制四 §6.1, 第 7 张 DataPackRegistry). Each variant bundles the
  * mutually-exclusive single-value fields ({@code damage_type},
  * {@code bullet_style_override}) with mergeable ones ({@code traits},
- * {@code stats}) plus a weight hint, so a single per-shot roll can rewrite a
+ * {@code stats}) plus a base weight, so a single per-shot roll can rewrite a
  * {@link org.yanbwe.modularshoot.bullet.BulletSnapshot} coherently.
  *
  * <p>The registry key of a variant is <strong>not</strong> part of this
@@ -24,7 +24,7 @@ import org.yanbwe.modularshoot.registry.gun.BulletStyle;
  *
  * <pre>{@code
  * {
- *   "weight_hint": 3,
+ *   "base_weight": 3,
  *   "traits": { "examplemod:fire": true },
  *   "stats": { "modularshoot:hit_damage": 15.0 },
  *   "damage_type": "minecraft:in_fire",
@@ -33,10 +33,11 @@ import org.yanbwe.modularshoot.registry.gun.BulletStyle;
  * }</pre>
  *
  * <ul>
- *   <li>{@code weight_hint} — optional, defaults to {@code 0.0}. Base weight
- *       used only when <em>no</em> gun/plugin declares this variant in its
- *       pool (典型场景：仅由 {@code registerVariantContributor} 引入的变体);
- *       declared gun/plugin weights are authoritative and take precedence
+ *   <li>{@code base_weight} — optional, defaults to {@code 0.0}. This is the
+ *       <strong>authoritative</strong> weight (not a hint), used only when
+ *       <em>no</em> gun/plugin declares this variant in its pool (典型场景：
+ *       仅由 {@code registerVariantContributor} 引入的变体); declared
+ *       gun/plugin weights take precedence and are used verbatim
  *       (设计决策 1，规格 §6.1/§6.2 开放点).</li>
  *   <li>{@code traits} — optional, defaults to the empty map. Boolean traits
  *       merged into the snapshot at apply time; unlisted traits are kept.</li>
@@ -56,7 +57,8 @@ import org.yanbwe.modularshoot.registry.gun.BulletStyle;
  * differentiation is the shoot-effect contributors' job (机制三), not the
  * variant's.</p>
  *
- * @param weightHint          base weight used when nothing else declares this
+ * @param baseWeight          authoritative base weight (not a hint) used when
+ *                            nothing else declares this
  *                            variant in the per-shot pool; default {@code 0.0}
  * @param traits              boolean traits merged into the snapshot on apply;
  *                            empty when absent
@@ -68,7 +70,7 @@ import org.yanbwe.modularshoot.registry.gun.BulletStyle;
  *                            when present; empty when absent
  */
 public record VariantDefinition(
-        double weightHint,
+        double baseWeight,
         Map<ResourceLocation, Boolean> traits,
         Map<ResourceLocation, Double> stats,
         Optional<ResourceLocation> damageType,
@@ -76,7 +78,7 @@ public record VariantDefinition(
 ) {
     public static final Codec<VariantDefinition> CODEC = RecordCodecBuilder.create(
             instance -> instance.group(
-                    Codec.DOUBLE.optionalFieldOf("weight_hint", 0.0).forGetter(VariantDefinition::weightHint),
+                    Codec.DOUBLE.optionalFieldOf("base_weight", 0.0).forGetter(VariantDefinition::baseWeight),
                     Codec.unboundedMap(ResourceLocation.CODEC, Codec.BOOL)
                             .optionalFieldOf("traits", Map.of()).forGetter(VariantDefinition::traits),
                     Codec.unboundedMap(ResourceLocation.CODEC, Codec.DOUBLE)

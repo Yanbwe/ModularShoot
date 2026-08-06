@@ -6,7 +6,8 @@
   "client": [
     "client.HumanoidModelMixin",
     "client.ItemRendererMixin",
-    "client.LivingEntitySwingMixin"
+    "client.LivingEntitySwingMixin",
+    "client.PlayerAttackStrengthMixin"
   ],
   "injectors": {
     "defaultRequire": 0

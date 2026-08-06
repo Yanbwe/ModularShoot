@@ -60,12 +60,19 @@ public final class ClientShootSender {
      * constant-time null test, the key-down check is a field read, and only
      * then do we touch the inventory and data components.</p>
      *
+     * <p>Opening any screen (inventory, chat, third-party GUIs) suspends shoot
+     * requests; the attack key alone is not sufficient.</p>
+     *
      * @param event the pre client-tick event (unused beyond its presence)
      */
     @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Pre event) {
         Minecraft minecraft = Minecraft.getInstance();
         if (!isInGame(minecraft) || !minecraft.options.keyAttack.isDown()) {
+            return;
+        }
+        // 打开任意 GUI（背包/聊天/合成/第三方模组界面）时暂停发送射击请求。
+        if (minecraft.screen != null) {
             return;
         }
         sendShootRequest(minecraft.player);

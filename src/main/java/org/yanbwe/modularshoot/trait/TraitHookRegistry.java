@@ -292,6 +292,21 @@ public final class TraitHookRegistry {
     }
 
     /**
+     * Clears all registered hooks and cached views (test isolation only;
+     * not part of the public extension contract).
+     *
+     * <p>The registry is a static singleton, so unit tests must reset it
+     * between cases to avoid cross-test interference (same pattern as
+     * {@code ShootEffectRegistry.clear()}).</p>
+     */
+    public static void clear() {
+        HOOKS.clear();
+        cachedTraitIds = Set.of();
+        cachedTraitIdsByHookType = Map.of();
+        cachedHookViews = Map.of();
+    }
+
+    /**
      * Verifies that the callback's runtime type matches the interface
      * expected for the given hook type.
      *

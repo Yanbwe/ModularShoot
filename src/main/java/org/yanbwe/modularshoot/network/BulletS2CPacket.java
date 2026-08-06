@@ -51,8 +51,10 @@ import net.minecraft.resources.ResourceLocation;
  * and simpler client logic.</p>
  *
  * <p><b>Force-full-sync:</b> when {@link #forceFullSync()} is {@code true},
- * the client clears its entire render-object map and rebuilds from
- * {@link #newBullets()} alone — {@link #updatedBullets()} and
+ * the client reconciles its render-object map against
+ * {@link #newBullets()} as a diff update — existing ids are updated in place
+ * (keeping their interpolation pair), new ids are created, and ids absent
+ * from the set are removed. {@link #updatedBullets()} and
  * {@link #removedBulletIds()} are ignored. The service triggers this
  * periodically (every {@code FULL_SYNC_INTERVAL_TICKS}) to recover from
  * packet loss, and on player join.</p>
@@ -70,11 +72,11 @@ import net.minecraft.resources.ResourceLocation;
  *                        bullets the client should update
  * @param removedBulletIds ids of bullets that have expired since the last
  *                        sync; the client should destroy these render objects
- * @param forceFullSync   {@code true} when the client should clear its entire
- *                        render-object map and rebuild from
- *                        {@link #newBullets()} alone (periodic drift
- *                        recovery / initial sync); {@code false} for a normal
- *                        incremental delta packet
+ * @param forceFullSync   {@code true} when the client should reconcile its
+ *                        render-object map against {@link #newBullets()} as a
+ *                        diff update (periodic drift recovery / initial
+ *                        sync); {@code false} for a normal incremental delta
+ *                        packet
  */
 public record BulletS2CPacket(
         List<FullBulletEntry> newBullets,
@@ -100,9 +102,10 @@ public record BulletS2CPacket(
 
     /**
      * Creates a force-full-sync packet representing the complete set of
-     * in-flight bullets for a dimension. The client clears its render-object
-     * map and rebuilds from {@code bullets} alone. Used for periodic drift
-     * recovery and initial sync.
+     * in-flight bullets for a dimension. The client reconciles its
+     * render-object map against {@code bullets} as a diff update (existing
+     * ids updated in place, new ids created, absent ids removed). Used for
+     * periodic drift recovery and initial sync.
      *
      * @param bullets every active bullet visible to the receiving player
      * @return a force-full-sync (reconciling) packet

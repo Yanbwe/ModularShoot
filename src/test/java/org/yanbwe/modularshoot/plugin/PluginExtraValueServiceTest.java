@@ -45,7 +45,8 @@ class PluginExtraValueServiceTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
-                Map.of());
+                Map.of(),
+                Optional.empty());
     }
 
     /** Builds an installed plugin instance for the given plugin id. */

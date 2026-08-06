@@ -79,6 +79,11 @@ public final class AttributeMetaDatapackLoader {
      * a warning marker is returned so the caller can decide on degradation
      * (subtask 13).</p>
      *
+     * <p>This method is the single entry point for {@code binds} validation:
+     * the warning is emitted exactly once, during the post-reload summary in
+     * {@link DatapackReloadListener} — the cross-reference validator does not
+     * re-check {@code binds} (post-reload 汇总时统一输出，交叉校验不再重复).</p>
+     *
      * @param logicalId the logical id of the entry (the registry key path
      *                  from {@code attribute_meta/<logical_id>.json}); used
      *                  in the warning message for traceability

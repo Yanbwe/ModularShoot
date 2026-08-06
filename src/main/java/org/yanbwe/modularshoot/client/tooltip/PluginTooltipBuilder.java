@@ -21,6 +21,7 @@ import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.degradation.PluginTypeDegradationHandler;
 import org.yanbwe.modularshoot.plugin.PluginDefinition;
+import org.yanbwe.modularshoot.plugin.PluginRegistry;
 import org.yanbwe.modularshoot.plugin.PluginTypeDefinition;
 import org.yanbwe.modularshoot.plugin.PluginTypeRegistry;
 
@@ -44,6 +45,9 @@ import org.yanbwe.modularshoot.plugin.PluginTypeRegistry;
  *       {@link PluginTypeDegradationHandler#getDegradedInstallTarget()}
  *       (设计文档 §种类定义丢失降级, line 2361).</li>
  *   <li>{@code <brief>} — grey one-line summary when present.</li>
+ *   <li>{@code 互斥: <names>} — grey line listing every other plugin in the
+ *       same {@code exclusive_group}, shown before installation so conflicts
+ *       are visible in advance (M12 fix).</li>
  *   <li>{@code <按 [Shift] 展开标签>} — hint line; replaced by the tag list
  *       when Shift is held.</li>
  * </ul>
@@ -117,6 +121,13 @@ public final class PluginTooltipBuilder {
         } else {
             PluginDefinition def = defOpt.get();
             lines.add(buildInstallTargetLine(def, registryAccess));
+            // P3 fix: one-line grey install guide so players know how to
+            // actually attach the plugin (right-click inside a container).
+            lines.add(Component.translatable("modularshoot.tooltip.install_hint")
+                    .withStyle(ChatFormatting.GRAY));
+            // M12 fix: surface the exclusive group before installation so a
+            // later "mutually exclusive" failure never comes as a surprise.
+            buildExclusiveGroupLine(lines, pluginId, def, registryAccess);
             addBriefLine(lines, def);
             addTagSection(lines, def);
         }
@@ -231,6 +242,59 @@ public final class PluginTooltipBuilder {
     // ------------------------------------------------------------------
     // Brief & tag section
     // ------------------------------------------------------------------
+
+    /**
+     * Adds the exclusive-group line when the plugin belongs to a mutual
+     * exclusion group (设计文档 §插件互斥组).
+     *
+     * <p>Collects the readable names of every other registered plugin sharing
+     * the same {@code exclusiveGroup} (name via {@link TooltipUtils#resolveText},
+     * falling back to the plugin id path) and shows them joined by "、" so
+     * conflicts are visible before installation (M12 fix). When the group
+     * contains only this plugin, the raw group id is shown instead. Plugins
+     * without an exclusive group produce no line.</p>
+     *
+     * @param lines          the tooltip line accumulator
+     * @param pluginId       this plugin's own definition id (excluded from the
+     *                       peer list)
+     * @param def            the plugin definition
+     * @param registryAccess the runtime registry view
+     */
+    private static void buildExclusiveGroupLine(
+            List<Component> lines, ResourceLocation pluginId, PluginDefinition def,
+            RegistryAccess registryAccess) {
+        Optional<String> groupOpt = def.exclusiveGroup();
+        if (groupOpt.isEmpty()) {
+            return;
+        }
+        String group = groupOpt.get();
+        List<String> names = new ArrayList<>();
+        for (ResourceLocation otherId : PluginRegistry.getAllPluginIds(registryAccess)) {
+            if (otherId.equals(pluginId)) {
+                continue;
+            }
+            PluginRegistry.getPlugin(registryAccess, otherId).ifPresent(otherDef -> {
+                if (otherDef.exclusiveGroup().map(group::equals).orElse(false)) {
+                    String raw = otherDef.name().filter(s -> !s.isEmpty()).orElse(otherId.getPath());
+                    names.add(raw);
+                }
+            });
+        }
+        // Join the peer names with "、", resolving lang: prefixes per name; a
+        // group with no peers degrades to the raw group id.
+        MutableComponent arg = Component.empty();
+        for (int i = 0; i < names.size(); i++) {
+            if (i > 0) {
+                arg.append(Component.literal("、"));
+            }
+            arg.append(TooltipUtils.resolveText(names.get(i)));
+        }
+        if (names.isEmpty()) {
+            arg = Component.literal(group);
+        }
+        lines.add(Component.translatable("modularshoot.tooltip.exclusive_group", arg)
+                .withStyle(ChatFormatting.GRAY));
+    }
 
     /**
      * Adds the grey brief summary line when the plugin definition carries a

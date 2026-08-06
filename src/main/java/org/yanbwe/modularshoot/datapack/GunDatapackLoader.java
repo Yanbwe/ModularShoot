@@ -56,9 +56,9 @@ public final class GunDatapackLoader {
      *   <li>{@code texture} is non-null</li>
      *   <li>{@code shoot_texture} (if present) differs from
      *       {@code texture}</li>
-     *   <li>{@code stats}/{@code traits}/{@code slots} keys are fully
-     *       namespaced (not using the default {@code minecraft}
-     *       namespace)</li>
+     *   <li>{@code stats}/{@code traits}/{@code slots} keys do not carry an
+     *       explicit {@code minecraft:} prefix (bare keys resolve to the
+     *       {@code modularshoot} namespace)</li>
      *   <li>{@code stats} values are finite (not NaN or Infinite)</li>
      *   <li>{@code slots} counts are non-negative</li>
      *   <li>{@code sounds} slot names are non-empty</li>
@@ -132,15 +132,18 @@ public final class GunDatapackLoader {
     }
 
     /**
-     * Checks that stats/traits/slots keys are fully namespaced — i.e. do
-     * not use the default {@code minecraft} namespace, which usually means
-     * the author forgot to prefix the key with their mod id (设计文档
+     * Checks that stats/traits/slots keys do not carry an explicit
+     * {@code minecraft:} prefix. Bare keys resolve to the
+     * {@code modularshoot} namespace at decode time
+     * ({@link GunDefinition} {@code MODULARSHOOT_KEY}), so a key in the
+     * default namespace can only come from an explicit
+     * {@code minecraft:} prefix — almost never intended (设计文档
      * §键名必须完全命名空间化).
      *
      * @param gunId the gun id for the warning message
      * @param gun   the gun definition to check
      * @return a warning message listing offending keys, empty if all keys
-     *         are explicitly namespaced
+     *         carry a non-default namespace
      */
     private static Optional<String> checkNamespacing(
             ResourceLocation gunId, GunDefinition gun) {

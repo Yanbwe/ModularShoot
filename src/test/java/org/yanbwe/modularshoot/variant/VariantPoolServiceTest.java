@@ -73,7 +73,8 @@ class VariantPoolServiceTest {
                 Map.of(),
                 Map.of(),
                 Optional.empty(),
-                variants);
+                variants,
+                Optional.empty());
     }
 
     /** Builds an empty-instance {@link GunData} (no plugins → no registry lookups). */
@@ -224,8 +225,8 @@ class VariantPoolServiceTest {
 
     @Test
     void contributorOnlyVariantSharesPoolWithNormalFallback() {
-        // 仅由贡献者引入的变体：池中以自身 weight_hint 作为基础权重兜底（设计决策 1）。
-        // 内存定义 weightHint = 3.0，贡献者再加 ADD_VALUE +1.0 → 最终权重 4.0。
+        // 仅由贡献者引入的变体：池中以自身 base_weight 作为基础权重兜底（设计决策 1）。
+        // 内存定义 baseWeight = 3.0，贡献者再加 ADD_VALUE +1.0 → 最终权重 4.0。
         // 枪械未声明池 → 普通弹兜底 1.0 同在 → 池 = {A: 4.0, 普通弹: 1.0}，
         // A 命中率 80%、普通弹（empty）20%——两者都必须出现。
         FakeService fake = new FakeService();

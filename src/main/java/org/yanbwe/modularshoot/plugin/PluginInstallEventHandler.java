@@ -1,15 +1,17 @@
 package org.yanbwe.modularshoot.plugin;
 
 import java.util.Objects;
-import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.entity.SlotAccess;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ClickAction;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.event.ItemStackedOnOtherEvent;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.item.ModularShootItems;
@@ -28,8 +30,10 @@ import org.yanbwe.modularshoot.registry.gun.GunSounds;
  * <ul>
  *   <li>Right-click + plugin-on-gun → validate, and on success write results
  *       via {@link Slot#set} / {@link SlotAccess#set}, cancel the event,
- *       and play a sound. On failure the event is left uncancelled so the
- *       vanilla swap proceeds normally.</li>
+ *       and play a sound. On failure the event is cancelled too, which
+ *       suppresses the vanilla swap so the plugin and gun stay in their
+ *       original slots; the localized failure reason is shown in the action
+ *       bar (P3 fix).</li>
  *   <li>All other cursor/slot combinations → ignored.</li>
  * </ul>
  *
@@ -92,80 +96,138 @@ public final class PluginInstallEventHandler {
      * {@link Slot#set}, the consumed plugin copy is placed onto the cursor via
      * {@link SlotAccess#set}, the event is cancelled, and a sound plays
      * (server-side only, synced to the client — W7 fix).
-     * On failure the event is left uncancelled so vanilla swap proceeds.</p>
+     * On failure the event is cancelled as well so the vanilla item swap is
+     * suppressed and both items stay in their original slots; the localized
+     * rejection reason is shown in the action bar (P3 fix).</p>
      *
      * @param event the stacking event fired by the container menu
      */
     @SubscribeEvent
-    public void onItemStackedOnOther(net.neoforged.neoforge.event.ItemStackedOnOtherEvent event) {
+    public void onItemStackedOnOther(ItemStackedOnOtherEvent event) {
         Player player = event.getPlayer();
 
-        // Creative-mode guard (W5 fix): ItemStackedOnOtherEvent fires only on
-        // the client inside the creative menu, so a server-side install never
-        // happens and the result would not persist. Skip entirely for creative
-        // players, following the event Javadoc's own advice.
-        if (player.isCreative()) {
+        // Pre-install guard chain (creative guard, click action, plugin stack,
+        // gun stack, slot modification) — see shouldHandle.
+        if (!shouldHandle(player, event)) {
             return;
         }
 
         Slot slot = event.getSlot();
         SlotAccess access = event.getCarriedSlotAccess();
+        ItemStack carriedItem = event.getCarriedItem();
+        ItemStack stackedOnItem = event.getStackedOnItem();
+
+        // Attempt installation (operates on copies, never mutates originals).
+        PluginInstallService.InstallResult result = PluginInstallService.installPlugin(
+                stackedOnItem, carriedItem, player, player.level().registryAccess());
+
+        if (result.success()) {
+            applyInstallResult(event, player, slot, access, stackedOnItem, result);
+        } else {
+            rejectInstall(event, player, result);
+        }
+    }
+
+    /**
+     * Runs the pre-install guard chain for a stacking event.
+     *
+     * <p>Filter order (matching the Javadoc of
+     * {@link #onItemStackedOnOther}): creative-mode guard, right-click only,
+     * carried item is a {@code modularshoot:plugin}, slot item is a
+     * {@code modularshoot:gun}, slot allows modification.</p>
+     *
+     * @param player the player involved in the stacking event
+     * @param event  the stacking event fired by the container menu
+     * @return {@code true} when the event should proceed to installation,
+     *         {@code false} when it should be ignored
+     */
+    private static boolean shouldHandle(Player player, ItemStackedOnOtherEvent event) {
+        // Creative-mode guard (W5 fix): ItemStackedOnOtherEvent fires only on
+        // the client inside the creative menu, so a server-side install never
+        // happens and the result would not persist. Skip entirely for creative
+        // players, following the event Javadoc's own advice.
+        // P3 fix: give the player explicit feedback instead of a silent no-op —
+        // the creative menu's stacking event is client-only, so the action-bar
+        // hint is sent only on the client side (the server never executes this
+        // path for creative stacking).
+        if (player.isCreative()) {
+            if (player.level().isClientSide()) {
+                player.displayClientMessage(
+                        Component.translatable("modularshoot.install.creative_unsupported"), true);
+            }
+            return false;
+        }
 
         // Only handle right-click.
         if (event.getClickAction() != ClickAction.SECONDARY) {
-            return;
+            return false;
         }
         // Carried item must be a modularshoot:plugin with plugin_data.
-        ItemStack carriedItem = event.getCarriedItem();
-        if (!isPluginStack(carriedItem)) {
-            return;
+        if (!isPluginStack(event.getCarriedItem())) {
+            return false;
         }
         // Slot item must be a modularshoot:gun.
-        ItemStack stackedOnItem = event.getStackedOnItem();
-        if (!stackedOnItem.is(ModularShootItems.GUN_ITEM.get())) {
-            return;
+        if (!event.getStackedOnItem().is(ModularShootItems.GUN_ITEM.get())) {
+            return false;
         }
         // Slot must allow modification (Apotheosis guard).
-        if (!slot.allowModification(player)) {
-            return;
+        return event.getSlot().allowModification(player);
+    }
+
+    /**
+     * Writes a successful install back into the container and cancels the
+     * event.
+     *
+     * <p>The modified gun copy is placed into the slot via {@link Slot#set}
+     * and the consumed plugin copy onto the cursor via {@link SlotAccess#set};
+     * cancelling suppresses the vanilla item swap. Data-driven sound feedback
+     * (W7 fix): the pitch is drawn independently on each side (client and
+     * server random sources are unrelated, so there is no alignment promise),
+     * but the sound is only played on the server side (and synced to the
+     * client) to avoid a doubled audible effect from the bilateral event
+     * firing. The sound event itself is read from the gun definition's
+     * {@code sounds.plugin_install} slot; unconfigured slots stay silent.</p>
+     *
+     * @param event         the stacking event to cancel
+     * @param player        the player performing the install
+     * @param slot          the slot holding the gun
+     * @param access        the carried slot access for the plugin
+     * @param stackedOnItem the gun stack (source of the install sound lookup)
+     * @param result        the successful install result
+     */
+    private static void applyInstallResult(ItemStackedOnOtherEvent event, Player player,
+            Slot slot, SlotAccess access, ItemStack stackedOnItem,
+            PluginInstallService.InstallResult result) {
+        slot.set(result.installedGun());
+        access.set(result.consumedPlugin());
+        event.setCanceled(true);
+        float pitch = 1.5F + 0.35F * (1 - 2 * player.getRandom().nextFloat());
+        if (!player.level().isClientSide()) {
+            playInstallSound(player, stackedOnItem, pitch);
         }
+    }
 
-        RegistryAccess registryAccess = player.level().registryAccess();
-
-        // Attempt installation (operates on copies, never mutates originals).
-        PluginInstallService.InstallResult result =
-                PluginInstallService.installPlugin(stackedOnItem, carriedItem, player, registryAccess);
-
-        if (result.success()) {
-            // Write the modified copies back to the container.
-            slot.set(result.installedGun());
-            access.set(result.consumedPlugin());
-            // Suppress the vanilla item swap.
-            event.setCanceled(true);
-            // Data-driven sound feedback (W7 fix): the pitch is drawn on both
-            // sides to keep the player's random source aligned (the install
-            // uuid derivation in PluginInstallService relies on bilateral
-            // random synchronization), but the sound is only played on the
-            // server side (and synced to the client) to avoid a doubled
-            // audible effect from the bilateral event firing. The sound event
-            // itself is read from the gun definition's sounds.plugin_install
-            // slot; unconfigured slots stay silent.
-            float pitch = 1.5F + 0.35F * (1 - 2 * player.getRandom().nextFloat());
-            if (!player.level().isClientSide()) {
-                playInstallSound(player, stackedOnItem, pitch);
-            }
-        } else {
-            // Install failed — do NOT cancel. Let vanilla swap proceed.
-            // Notify the player via action bar on the server side.
-            if (!player.level().isClientSide()) {
-                Component message = Component.translatable(INSTALL_FAILED_KEY);
-                if (result.errorMessage().isPresent()) {
-                    message = Component.empty()
-                            .append(message)
-                            .append(Component.literal(": " + result.errorMessage().get()));
-                }
-                player.displayClientMessage(message, true);
-            }
+    /**
+     * Cancels the event on failure, suppressing the vanilla item swap.
+     *
+     * <p>P3 fix: the plugin and gun stay in their original slots instead of
+     * confusingly exchanging places. The localized rejection reason is shown
+     * in the action bar on the server side. The {@value #INSTALL_FAILED_KEY}
+     * lang value already ends with a colon, so the error message is appended
+     * directly without an extra ": " separator.</p>
+     *
+     * @param event  the stacking event to cancel
+     * @param player the player to notify
+     * @param result the failed install result
+     */
+    private static void rejectInstall(ItemStackedOnOtherEvent event, Player player,
+            PluginInstallService.InstallResult result) {
+        event.setCanceled(true);
+        if (!player.level().isClientSide()) {
+            Component message = Component.translatable(INSTALL_FAILED_KEY)
+                    .append(result.errorMessage()
+                            .orElse(Component.translatable("modularshoot.install.error.generic")));
+            player.displayClientMessage(message, true);
         }
     }
 
@@ -192,9 +254,12 @@ public final class PluginInstallEventHandler {
      * 调用（同步给客户端），保持 W7 的"仅服务端播放避免双端重复"约定。扩展模组
      * 需要自定义安装音效可监听 {@code PostPluginInstallEvent}。</p>
      *
+     * <p>枪械定义声明 {@code sound_range} 时按固定可闻半径播放（与
+     * {@code ShootingEngine.playShootSound} 一致），缺省用音效事件自带 range。</p>
+     *
      * @param player 执行安装的玩家
      * @param gun    被安装插件的枪械 ItemStack
-     * @param pitch  随机音调（W7 双端随机源对齐约定，由调用方计算）
+     * @param pitch  随机音调（由调用方计算；双端各自独立抽取、无对齐承诺，仅服务端播放）
      */
     private static void playInstallSound(Player player, ItemStack gun, float pitch) {
         GunData data = gun.get(ModularShootDataComponents.GUN_DATA.get());
@@ -202,9 +267,13 @@ public final class PluginInstallEventHandler {
             return;
         }
         GunRegistry.getGun(player.level().registryAccess(), data.gunId())
-                .flatMap(def -> GunSounds.get(def, INSTALL_SOUND_SLOT))
-                .map(id -> BuiltInRegistries.SOUND_EVENT.get(id))
-                .filter(Objects::nonNull)
+                .flatMap(def -> GunSounds.get(def, INSTALL_SOUND_SLOT)
+                        .map(id -> BuiltInRegistries.SOUND_EVENT.get(id))
+                        .filter(Objects::nonNull)
+                        .map(soundEvent -> GunSounds.getRange(def)
+                                .map(range -> SoundEvent.createFixedRangeEvent(
+                                        soundEvent.getLocation(), range))
+                                .orElse(soundEvent)))
                 .ifPresent(sound -> player.playSound(sound, 1.0F, pitch));
     }
 }

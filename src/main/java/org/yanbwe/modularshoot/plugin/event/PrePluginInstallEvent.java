@@ -21,6 +21,17 @@ import net.neoforged.bus.api.ICancellableEvent;
  * left untouched, and {@code ATTRIBUTE_MODIFIERS} is <strong>not</strong>
  * refreshed. No {@link PostPluginInstallEvent} is fired for this plugin.</p>
  *
+ * <p>Bilateral semantics: the installation flow runs once on each logical
+ * side &mdash; the client and the server each execute the full pipeline and
+ * each fire this event (一次右键双端各触发一次, 双端独立裁决). Only a
+ * <strong>server-side</strong> cancellation prevents the final installation;
+ * a client-side cancellation only aborts the local preview and is overwritten
+ * by the server's container sync. The instance uuid generated during the
+ * installation flow (see {@link PostPluginInstallEvent#getInstanceUuid()}) is
+ * derived independently on each side and therefore differs across sides
+ * &mdash; do not use it for cross-side bookkeeping; rely on the
+ * {@code gun_data} synced from the server instead.</p>
+ *
  * <p>Listeners that only need to observe a completed installation should listen
  * to {@link PostPluginInstallEvent} instead.</p>
  *

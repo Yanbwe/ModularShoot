@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
  * Manages the three-phase load order of the ModularShoot registration
  * pipeline (设计文档 §加载顺序, line 2299).
  *
- * <p>The framework populates its six dynamic registries in a strict
+ * <p>The framework populates its seven dynamic registries in a strict
  * sequence of phases:</p>
  * <ol>
  *   <li>{@link LoadPhase#PRESET} &mdash; framework preset content: the

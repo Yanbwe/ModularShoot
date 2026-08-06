@@ -27,8 +27,8 @@ import org.yanbwe.modularshoot.network.ShootAnimSyncService;
  * crossbow charge/hold animation never plays for guns. This Mixin bridges
  * that gap by reading the per-player {@code shootAnimTimer} (maintained by
  * {@link PlayerShootStateManager}) <em>after</em> the vanilla animation
- * calculations run, and forcibly overriding both arms' rotation to the
- * vanilla crossbow-draw pose while the timer is positive.</p>
+ * calculations run, and applying a short recoil pulse to both arms while
+ * the timer is positive.</p>
  *
  * <p><b>Injection point:</b> {@code TAIL} of {@code HumanoidModel.setupAnim}.
  * This fires after every vanilla arm-pose calculation. For the local player
@@ -43,11 +43,16 @@ import org.yanbwe.modularshoot.network.ShootAnimSyncService;
  * {@code PlayerModel}'s copyFrom lines execute &mdash; the sleeves correctly
  * inherit the modified arm rotations.</p>
  *
- * <p><b>Angle source:</b> the keyframe values replicate
- * {@code AnimationUtils.animateCrossbowCharge} from vanilla, interpolated by
- * {@code progress = timer / SHOOT_ANIM_PEAK}. The primary arm (holding the
- * gun) holds a fixed pose; the secondary arm (pulling the string) interpolates
- * from a partial draw to a full draw as {@code progress} approaches 1.</p>
+ * <p><b>Pose curve:</b> a short recoil pulse rather than a held draw. With
+ * {@code t = timer / SHOOT_ANIM_PEAK} the displacement is maximal on the shot
+ * tick ({@code t = 1}, the timer peaks when a shot fires) and decays to 0 as
+ * the timer runs out; {@code kick = t * t} makes it settle within a few ticks.
+ * The primary arm (holding the gun) keeps its fixed gun-hold pose with an
+ * upward muzzle kick added at the shot tick; the secondary arm jerks slightly
+ * and relaxes back to its natural pose. The old crossbow-draw interpolation
+ * is deliberately removed: at fire rates of 4/s or more every shot resets the
+ * timer, so a draw-based curve froze the arms in the fully-drawn pose forever
+ * (装填语义, not firing semantics).</p>
  *
  * <p><b>Degradation:</b> if this Mixin fails to load (e.g. a signature
  * mismatch with another mod), the animation simply does not play and the
@@ -60,14 +65,17 @@ import org.yanbwe.modularshoot.network.ShootAnimSyncService;
 @Mixin(HumanoidModel.class)
 public abstract class HumanoidModelMixin {
 
-    /** Vanilla crossbow-charge primary-arm x-rotation keyframe (from {@code AnimationUtils.animateCrossbowCharge}). */
-    private static final float CROSSBOW_CHARGE_ARM_XROT = -0.97079635f;
+    /** 持枪臂（primary）无后坐时的基础 xRot：横枪姿态（沿用原弩持枪关键帧值）。 */
+    private static final float SHOOT_HOLD_ARM_XROT = -0.97079635f;
 
-    /** Vanilla crossbow-charge secondary-arm y-rotation start keyframe. */
-    private static final float CROSSBOW_CHARGE_SECONDARY_YROT_START = 0.4f;
+    /** 开火瞬间枪口上抬幅度：叠加在基础 xRot 上（xRot 更负 = 手臂上扬），随 kick 衰减回位。 */
+    private static final float SHOOT_RECOIL_ARM_XROT_KICK = 0.45f;
 
-    /** Vanilla crossbow-charge secondary-arm y-rotation end keyframe (full draw). */
-    private static final float CROSSBOW_CHARGE_SECONDARY_YROT_END = 0.85f;
+    /** 辅助臂（secondary）后收脉冲的 yRot 幅度（开火瞬间微收的扭转，随 kick 衰减回自然姿态）。 */
+    private static final float SHOOT_RECOIL_SECONDARY_YROT = 0.35f;
+
+    /** 辅助臂（secondary）后收脉冲的 xRot 幅度（开火瞬间随枪微抬，随 kick 衰减回自然姿态）。 */
+    private static final float SHOOT_RECOIL_SECONDARY_XROT = -0.35f;
 
     @Shadow
     @Final
@@ -80,14 +88,14 @@ public abstract class HumanoidModelMixin {
     /**
      * Runs at the tail of {@code HumanoidModel.setupAnim}: when the rendered
      * entity is a player with a positive shoot-animation timer <em>and</em>
-     * holding a framework gun in their main hand, overrides both arms to the
-     * crossbow-draw pose. Otherwise does nothing.
+     * holding a framework gun in their main hand, applies the short recoil
+     * pulse to both arms. Otherwise does nothing.
      *
-     * <p>The main-hand gun guard (W22) ensures the crossbow pose is only
+     * <p>The main-hand gun guard (W22) ensures the recoil pose is only
      * applied while the player is actually holding a gun. Without this guard,
      * switching to a non-gun item while the timer is still decaying would
-     * leave the vanilla crossbow-draw pose applied to a non-shooting
-     * animation, which looks broken.</p>
+     * leave the recoil pose applied to a non-shooting animation, which looks
+     * broken.</p>
      *
      * @param entity          the living entity being animated (erased generic {@code T})
      * @param limbSwing       vanilla limb-swing phase (unused)
@@ -108,43 +116,42 @@ public abstract class HumanoidModelMixin {
             return; // timer == 0: do not interfere, keep vanilla animation
         }
         if (!ModularShootAPI.isGun(player.getMainHandItem())) {
-            return; // main hand is not a gun: do not apply crossbow draw pose
+            return; // main hand is not a gun: do not apply shoot recoil pose
         }
-        applyCrossbowDrawPose(player, timer);
+        applyShootRecoilPose(player, timer);
     }
 
     /**
-     * Forces both arms into the vanilla crossbow-charge pose, interpolated by
-     * {@code progress = timer / SHOOT_ANIM_PEAK}.
+     * Applies a short recoil pulse to both arms, driven by
+     * {@code t = timer / SHOOT_ANIM_PEAK} ({@code 1} = shot tick, {@code 0} =
+     * animation end) with {@code kick = t * t} for a fast decay &mdash; the
+     * displacement is maximal on the shot tick and settles within a few ticks.
      *
-     * <p>The primary arm (the player's main hand, holding the gun) is set to
-     * the fixed crossbow-hold keyframe. The secondary arm (the off hand,
-     * conceptually pulling the string) interpolates from a partial draw
-     * ({@code progress = 0}) to a full draw ({@code progress = 1}). When the
-     * player just fired, {@code timer = SHOOT_ANIM_PEAK} so {@code progress = 1}
-     * and the pose is fully drawn; as the timer decays the pose relaxes.</p>
+     * <p>The primary arm (the player's main hand, holding the gun) keeps the
+     * fixed gun-hold pose (yRot {@code ±0.8}, xRot {@value #SHOOT_HOLD_ARM_XROT})
+     * with an upward muzzle kick added to xRot at the shot tick: the muzzle
+     * rises at the moment of firing and settles back to the hold as
+     * {@code kick} decays (开火瞬间枪口上抬、随 kick 衰减回位).</p>
      *
-     * <p>Angle values replicate {@code AnimationUtils.animateCrossbowCharge}
-     * from vanilla 1.21.1, with {@code progress} substituted for the vanilla
-     * charge-progress {@code h}.</p>
+     * <p>The secondary arm (the off hand) jerks slightly at the shot tick and
+     * relaxes back to its natural pose ({@code 0}) as {@code kick} decays &mdash;
+     * a short jerk instead of the old crossbow-draw interpolation, which at
+     * high fire rates froze the arms in the fully-drawn pose forever.</p>
      *
      * @param player the player whose arms to pose
      * @param timer  the player's current shoot-animation timer (in ticks, {@code > 0})
      */
-    private void applyCrossbowDrawPose(Player player, float timer) {
-        float progress = Mth.clamp(timer / ShootAnimSyncService.SHOOT_ANIM_PEAK, 0.0f, 1.0f);
+    private void applyShootRecoilPose(Player player, float timer) {
+        float t = Mth.clamp(timer / ShootAnimSyncService.SHOOT_ANIM_PEAK, 0.0f, 1.0f); // 1=开火瞬间（timer=峰值）→ 0=动画结束
+        float kick = t * t; // 快速衰减：前几 tick 位移大、随后迅速回位
         boolean rightHanded = player.getMainArm() == HumanoidArm.RIGHT;
         ModelPart primary = rightHanded ? this.rightArm : this.leftArm;
         ModelPart secondary = rightHanded ? this.leftArm : this.rightArm;
-        // Replicates AnimationUtils.animateCrossbowCharge(rightArm, leftArm, entity, bl):
-        //   primary.yRot  = bl ? -0.8F : 0.8F
-        //   primary.xRot  = -0.97079635F
-        //   secondary.yRot = Mth.lerp(h, 0.4F, 0.85F) * (bl ? 1 : -1)
-        //   secondary.xRot = Mth.lerp(h, -0.97079635F, -PI/2)
+        // 持枪手：横枪基值（yRot ±0.8）不变；xRot 在基值上叠后坐脉冲（更负 = 枪口上抬），随 kick 衰减回位
         primary.yRot = rightHanded ? -0.8f : 0.8f;
-        primary.xRot = CROSSBOW_CHARGE_ARM_XROT;
-        secondary.yRot = Mth.lerp(progress, CROSSBOW_CHARGE_SECONDARY_YROT_START, CROSSBOW_CHARGE_SECONDARY_YROT_END)
-                * (rightHanded ? 1 : -1);
-        secondary.xRot = Mth.lerp(progress, CROSSBOW_CHARGE_ARM_XROT, (float) (-Math.PI / 2));
+        primary.xRot = SHOOT_HOLD_ARM_XROT - kick * SHOOT_RECOIL_ARM_XROT_KICK;
+        // 辅助手：开火瞬间微收（后收脉冲），随 kick 衰减回自然姿态（0）
+        secondary.yRot = Mth.lerp(kick, 0.0f, SHOOT_RECOIL_SECONDARY_YROT) * (rightHanded ? 1 : -1);
+        secondary.xRot = Mth.lerp(kick, 0.0f, SHOOT_RECOIL_SECONDARY_XROT);
     }
 }

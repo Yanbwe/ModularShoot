@@ -1,5 +1,6 @@
 package org.yanbwe.modularshoot.plugin;
 
+import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import java.util.List;
@@ -33,7 +34,12 @@ import org.yanbwe.modularshoot.registry.gun.TextureScaleMode;
  *   <li>{@code tags} &mdash; tag ids used for category intersection matching;
  *       defaults to an empty list.</li>
  *   <li>{@code priority} &mdash; conflict priority; defaults to {@code 0}. Not
- *       inherited from the category.</li>
+ *       inherited from the category. Also the fallback for visual base
+ *       election when {@code visual_priority} is absent.</li>
+ *   <li>{@code visual_priority} &mdash; optional visual base-election
+ *       priority; defaults to the {@code priority} value. Only consulted when
+ *       electing the visual base among plugins' bullet styles &mdash; it never
+ *       affects trait-conflict resolution.</li>
  *   <li>{@code item_icon} &mdash; required texture path shown in the
  *       inventory.</li>
  *   <li>{@code texture_scale} &mdash; optional, defaults to {@code auto}.
@@ -75,7 +81,9 @@ import org.yanbwe.modularshoot.registry.gun.TextureScaleMode;
  * </ul>
  *
  * @param tags           tag ids for category intersection matching
- * @param priority       conflict priority; not inherited from the category
+ * @param priority       conflict priority; not inherited from the category;
+ *                       also the visual base-election fallback when
+ *                       {@code visual_priority} is absent
  * @param itemIcon       required inventory icon texture path
  * @param textureScale   item-icon geometry scaling with texture resolution;
  *                       defaults to {@code auto}
@@ -97,6 +105,10 @@ import org.yanbwe.modularshoot.registry.gun.TextureScaleMode;
  * @param addsVariants   optional variant id → base weight map appended to the
  *                       gun's per-shot variant pool (设计规格 §6.2); empty
  *                       when the plugin adds no variants
+ * @param visualPriority visual base-election priority, only used when electing
+ *                       the visual base among plugins' bullet styles; empty
+ *                       falls back to {@code priority} (see
+ *                       {@link #visualPriorityOrFallback()})
  */
 public record PluginDefinition(
         List<ResourceLocation> tags,
@@ -114,7 +126,8 @@ public record PluginDefinition(
         Optional<String> brief,
         Optional<String> description,
         Optional<String> color,
-        Map<ResourceLocation, Double> addsVariants
+        Map<ResourceLocation, Double> addsVariants,
+        Optional<Integer> visualPriority
 ) {
     public static final Codec<PluginDefinition> CODEC = RecordCodecBuilder.create(
             instance -> instance.group(
@@ -135,9 +148,30 @@ public record PluginDefinition(
                     Codec.STRING.optionalFieldOf("brief").forGetter(PluginDefinition::brief),
                     Codec.STRING.optionalFieldOf("description").forGetter(PluginDefinition::description),
                     Codec.STRING.optionalFieldOf("color").forGetter(PluginDefinition::color),
-                    Codec.unboundedMap(ResourceLocation.CODEC, Codec.DOUBLE)
-                            .optionalFieldOf("adds_variants", Map.of())
-                            .forGetter(PluginDefinition::addsVariants)
-            ).apply(instance, PluginDefinition::new)
+                    // Kind1.group 的参数上限是 16（DFU 8.0.16），record 有 17 个
+                    // 组件：把 adds_variants 与 visual_priority 嵌套为一组 Pair 合并
+                    // 成第 16 个 group 参数，两个键仍写入同一张扁平 JSON map。
+                    instance.group(
+                            Codec.unboundedMap(ResourceLocation.CODEC, Codec.DOUBLE)
+                                    .optionalFieldOf("adds_variants", Map.of())
+                                    .forGetter(PluginDefinition::addsVariants),
+                            Codec.INT.optionalFieldOf("visual_priority")
+                                    .forGetter(PluginDefinition::visualPriority)
+                    ).apply(instance, Pair::new)
+            ).apply(instance, (tags, priority, itemIcon, textureScale, modifiers, traits, exclusiveGroup,
+                    bulletStyle, textureOverlay, gunOutline, extraValues, name, brief, description, color,
+                    lastPair) -> new PluginDefinition(tags, priority, itemIcon, textureScale, modifiers, traits,
+                    exclusiveGroup, bulletStyle, textureOverlay, gunOutline, extraValues, name, brief, description,
+                    color, lastPair.getFirst(), lastPair.getSecond()))
     );
+
+    /**
+     * 视觉选举优先级：显式声明时用 visual_priority，否则回退 priority。
+     *
+     * @return the priority used when this plugin's bullet style base competes
+     *         in visual base election
+     */
+    public int visualPriorityOrFallback() {
+        return visualPriority.orElse(priority);
+    }
 }

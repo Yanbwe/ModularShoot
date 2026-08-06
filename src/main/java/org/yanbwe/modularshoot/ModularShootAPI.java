@@ -22,6 +22,7 @@ import org.yanbwe.modularshoot.datapack.RegistrationCoordinator;
 import org.yanbwe.modularshoot.item.ModularShootItems;
 import org.yanbwe.modularshoot.plugin.PluginDefinition;
 import org.yanbwe.modularshoot.plugin.PluginExtraValueService;
+import org.yanbwe.modularshoot.plugin.PluginInstallService;
 import org.yanbwe.modularshoot.plugin.PluginLockService;
 import org.yanbwe.modularshoot.plugin.PluginTypeDefinition;
 import org.yanbwe.modularshoot.plugin.PluginTypeRegistry;
@@ -61,7 +62,8 @@ import org.yanbwe.modularshoot.variant.VariantContributorRegistry;
  *
  * <p>The class is not instantiable. Callers reference methods directly, e.g.:</p>
  * <pre>{@code
- * ModularShootAPI.registerPluginValidator((gun, pluginId) -> ValidationResult.success());
+ * ModularShootAPI.registerPluginValidator(
+ *         (player, gun, pluginId, registryAccess) -> ValidationResult.success());
  * ModularShootAPI.getGunId(gun);
  * ModularShootAPI.getInstalledPlugins(gun);
  * ModularShootAPI.uninstallPlugin(gun, uuid, player, false, true);
@@ -73,7 +75,10 @@ import org.yanbwe.modularshoot.variant.VariantContributorRegistry;
  * receive only well-formed inputs. The {@code player} parameter of the
  * uninstall family is explicitly {@link Nullable} and is therefore not
  * null-checked here; the underlying service handles a {@code null} player by
- * silently discarding returned items.</p>
+ * silently discarding returned items. In contrast,
+ * {@link #installPlugin(ItemStack, ItemStack, Player)} requires a non-null
+ * player because installation needs the player's random source and the
+ * runtime {@link RegistryAccess} derived from {@code player.level()}.</p>
  */
 public final class ModularShootAPI {
 
@@ -516,6 +521,41 @@ public final class ModularShootAPI {
                 gun, player, force, returnItems, registryAccess);
     }
 
+    // ---- Install API ----------------------------------------------------
+
+    /**
+     * Programmatically installs a plugin (automation, admin tools, quest
+     * rewards, etc.).
+     *
+     * <p>Delegates to
+     * {@link PluginInstallService#installPlugin(ItemStack, ItemStack, Player, RegistryAccess)};
+     * the player must be non-null (installation needs the random source and
+     * the runtime {@link RegistryAccess}, both derived from
+     * {@code player.level()}). The result carries the modified gun copy and
+     * the consumed plugin copy; the caller is responsible for writing them
+     * back to the container/inventory (following the container-right-click
+     * install path's {@code slot.set} pattern). The input stacks are never
+     * mutated (设计文档 §系统四 安装交互 — Apotheosis 不可变风格).</p>
+     *
+     * @param gun         the target gun item stack (not modified)
+     * @param pluginStack the plugin item stack carrying {@code PluginData}
+     *                    (not modified)
+     * @param player      the player performing the installation; must not be
+     *                    {@code null}
+     * @return an {@link PluginInstallService.InstallResult}; on success it
+     *         carries the modified copies
+     * @throws NullPointerException when any parameter is {@code null}
+     *                              (consistent with the other facade methods)
+     */
+    public static PluginInstallService.InstallResult installPlugin(
+            ItemStack gun, ItemStack pluginStack, Player player) {
+        Objects.requireNonNull(gun, "gun");
+        Objects.requireNonNull(pluginStack, "pluginStack");
+        Objects.requireNonNull(player, "player");
+        RegistryAccess registryAccess = player.level().registryAccess();
+        return PluginInstallService.installPlugin(gun, pluginStack, player, registryAccess);
+    }
+
     // ---- Lock API -------------------------------------------------------
 
     /**
@@ -902,7 +942,7 @@ public final class ModularShootAPI {
      * fire-bullet doubling trinket is useless on guns with a zero base weight),
      * and {@code ADD_MULTIPLIED_TOTAL} scales the final weight. A variant id
      * that no gun/plugin declares still enters the pool when the contributor
-     * introduces it, using the variant's own {@code weight_hint} as its base
+     * introduces it, using the variant's own {@code base_weight} as its base
      * weight (default {@code 0.0} — a weight-less contribution stays zero and
      * is excluded from the roll); ids already declared by the gun
      * ({@code variants}) or an installed plugin ({@code adds_variants}) keep

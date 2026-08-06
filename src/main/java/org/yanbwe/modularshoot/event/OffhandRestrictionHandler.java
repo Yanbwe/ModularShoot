@@ -19,7 +19,8 @@ import org.yanbwe.modularshoot.item.ModularShootItems;
  * attribute bonuses and mislead the player. To keep behaviour predictable regardless
  * of how the item ends up in the offhand (F-key swap, command, dispenser, etc.) the
  * framework polls every server tick: when a gun is detected in the offhand it is
- * immediately ejected as an item entity and the player is told why.</p>
+ * returned to the player in priority order (inventory, then main hand) and only
+ * dropped as an item entity when neither can hold it, with an action-bar notice.</p>
  *
  * <p>Server-side only. The client tick is ignored via a {@code level().isClientSide()}
  * guard so inventory state is authored on the authoritative side only, matching the
@@ -41,7 +42,9 @@ public final class OffhandRestrictionHandler {
      *
      * <p>Using {@link PlayerTickEvent.Pre} lets us strip the gun before the rest of
      * the tick (attribute re-evaluation, interaction checks) observes it in the
-     * offhand, so the restricted state never propagates into downstream logic.</p>
+     * offhand, so the restricted state never propagates into downstream logic.
+     * Return priority is inventory → main hand → drop, so an accidental F-key
+     * swap never loses the gun unless both slots are genuinely full.</p>
      *
      * @param event the pre-tick event carrying the ticking player
      */
@@ -59,14 +62,26 @@ public final class OffhandRestrictionHandler {
             return;
         }
 
-        // Remove the gun from the offhand slot first so the dropped entity owns the
-        // stack exclusively (no aliasing with the inventory list reference).
+        // P7 fix：优先归还（背包 → 主手），背包也满才掉落。
+        // add() 失败时传入栈可能被部分合并，故传副本保护原栈；枪械 maxStack=1
+        // 无合并路径，copy 仅为通用防御（1.21.1 Inventory.add 语义）。
+        if (player.getInventory().add(offhand.copy())) {
+            // 背包放置成功（副本已 copyAndClear，原栈未动）——显式清空副手槽。
+            player.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
+            return;
+        }
+        if (player.getMainHandItem().isEmpty()) {
+            // 背包满：主手空则换到主手（不丢）。
+            player.setItemSlot(EquipmentSlot.MAINHAND, offhand);
+            player.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
+            return;
+        }
+        // 背包与主手都放不下：沿现有路径掉落 + 动作栏提示。
+        // 先移除副手槽的枪，使掉落实体独占该栈（不与物品栏引用别名）。
         player.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
-        // Eject the saved stack in front of the player. The boolean controls owner
-        // retention (false = no thrower, anyone may pick it up after the pickup
-        // delay); the 2-arg overload always throws along the look direction.
+        // 沿视线抛出；false = 无投掷者归属，拾取延迟后可被任何人拾取。
         player.drop(offhand, false);
-        // Notify the player via the action bar (transient, non-intrusive notice).
+        // 动作栏提示（瞬时、非侵入）。
         player.displayClientMessage(Component.translatable(OFFHAND_RESTRICTED_KEY), true);
     }
 }

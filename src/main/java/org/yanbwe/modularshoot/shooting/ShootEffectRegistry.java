@@ -7,6 +7,7 @@ import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.bullet.BulletSnapshot;
 
 /**
@@ -72,6 +73,10 @@ public final class ShootEffectRegistry {
      * the snapshot mutations of earlier ones. When no effects are registered
      * this is a no-op.</p>
      *
+     * <p>Exception isolation: an effect that throws an exception is logged
+     * and skipped; the remaining effects still run (抛异常的第三方 effect
+     * 被记录并跳过，继续执行其余 effect).</p>
+     *
      * @param player       the shooting player; must not be {@code null}
      * @param gun          the gun item stack being fired; must not be {@code null}
      * @param snapshot     this pellet's copied snapshot; must not be {@code null}
@@ -81,7 +86,12 @@ public final class ShootEffectRegistry {
     public static void applyEffects(Player player, ItemStack gun, BulletSnapshot snapshot,
                                     int pelletIndex, int totalPellets) {
         for (ShootEffect effect : EFFECTS) {
-            effect.apply(player, gun, snapshot, pelletIndex, totalPellets);
+            try {
+                effect.apply(player, gun, snapshot, pelletIndex, totalPellets);
+            } catch (Exception e) {
+                ModularShoot.LOGGER.error(
+                        "ShootEffect threw an exception; skipping this effect", e);
+            }
         }
     }
 

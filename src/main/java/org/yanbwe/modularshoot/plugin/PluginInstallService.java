@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.UUID;
 import net.minecraft.core.RegistryAccess;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -63,25 +64,38 @@ public final class PluginInstallService {
      * by one). The original input stacks are never mutated.</p>
      *
      * <p>On failure {@link #success()} is {@code false} and {@link #errorMessage()}
-     * explains the rejection. The output stacks are {@code null} on failure.</p>
+     * explains the rejection as a localizable {@link Component} (translation
+     * key or literal text). The output stacks are {@code null} on failure.</p>
      *
      * @param success        {@code true} when installation completed
      * @param installedGun   the modified gun copy, or {@code null} on failure
      * @param consumedPlugin the consumed plugin copy, or {@code null} on failure
-     * @param errorMessage   the rejection reason, or empty on success
+     * @param errorMessage   the localizable rejection reason component, or
+     *                       empty on success
      */
     public record InstallResult(
             boolean success,
             @Nullable ItemStack installedGun,
             @Nullable ItemStack consumedPlugin,
-            Optional<String> errorMessage
+            Optional<Component> errorMessage
     ) {
         public static InstallResult success(ItemStack gun, ItemStack plugin) {
             return new InstallResult(true, gun, plugin, Optional.empty());
         }
 
-        public static InstallResult failure(String error) {
+        public static InstallResult failure(Component error) {
             return new InstallResult(false, null, null, Optional.of(error));
+        }
+
+        /**
+         * Literal-string convenience overload, retained for compatibility:
+         * the string is wrapped in {@link Component#literal(String)}.
+         *
+         * @param error the plain-text rejection reason
+         * @return a failing {@link InstallResult} carrying the literal message
+         */
+        public static InstallResult failure(String error) {
+            return failure(Component.literal(error));
         }
     }
 
@@ -116,14 +130,15 @@ public final class PluginInstallService {
      *                       random source for category auto-selection
      * @param registryAccess the runtime registry view (from a loaded world)
      * @return an {@link InstallResult} carrying the modified copies on success,
-     *         or a failure with an error message
+     *         or a failure with a localizable {@link Component} error message
      */
     public static InstallResult installPlugin(
             ItemStack gun, ItemStack pluginStack, Player player, RegistryAccess registryAccess) {
         // a. Read the plugin id from the plugin stack's component.
         PluginData pluginData = pluginStack.get(ModularShootDataComponents.PLUGIN_DATA.get());
         if (pluginData == null) {
-            return InstallResult.failure("Item is not a plugin");
+            return InstallResult.failure(
+                    Component.translatable("modularshoot.install.error.not_plugin"));
         }
         ResourceLocation pluginId = pluginData.pluginId();
 
@@ -132,13 +147,15 @@ public final class PluginInstallService {
         //     which would surface as the misleading "No matching slot available"
         //     message. Fail fast with an explicit reason instead (S29 fix).
         if (!gun.has(ModularShootDataComponents.GUN_DATA.get())) {
-            return InstallResult.failure("Target gun has no gun_data component");
+            return InstallResult.failure(
+                    Component.translatable("modularshoot.install.error.no_gun_data"));
         }
 
         // b-h. Validate every gate and select the target category.
         SelectionOutcome outcome = validateAndSelect(gun, pluginId, player, registryAccess);
         if (!outcome.result().valid()) {
-            return InstallResult.failure(outcome.result().errorMessage().orElse("Install failed"));
+            return InstallResult.failure(outcome.result().errorMessage()
+                    .orElse(Component.translatable("modularshoot.install.error.generic")));
         }
 
         // i-o. Work on copies so the originals are never mutated (Apotheosis pattern).
@@ -174,19 +191,22 @@ public final class PluginInstallService {
                 PluginMatchingService.getMatchingTypes(gun, pluginId, registryAccess);
         // c. No match → fail.
         if (candidates.isEmpty()) {
-            return new SelectionOutcome(ValidationResult.error("No matching slot available"), null);
+            return new SelectionOutcome(ValidationResult.error(
+                    Component.translatable("modularshoot.install.error.no_slot")), null);
         }
         // d. Auto-select one category from the candidates; the selected id
         //    is returned directly, eliminating the previous reverse-lookup.
         Optional<ResourceLocation> selectedTypeId =
                 PluginMatchingService.selectPluginType(candidates, randomFrom(player));
         if (selectedTypeId.isEmpty()) {
-            return new SelectionOutcome(ValidationResult.error("No matching slot available"), null);
+            return new SelectionOutcome(ValidationResult.error(
+                    Component.translatable("modularshoot.install.error.no_slot")), null);
         }
         // e. Look up the plugin definition for the exclusive-group check.
         Optional<PluginDefinition> pluginDef = PluginRegistry.getPlugin(registryAccess, pluginId);
         if (pluginDef.isEmpty()) {
-            return new SelectionOutcome(ValidationResult.error("Plugin definition not found"), null);
+            return new SelectionOutcome(ValidationResult.error(
+                    Component.translatable("modularshoot.install.error.definition_not_found")), null);
         }
         // f. Exclusive-group conflict check.
         ValidationResult exclusiveResult =
@@ -196,7 +216,7 @@ public final class PluginInstallService {
         }
         // g. Custom validators registered by third-party mods.
         Optional<ValidationResult> customResult =
-                PluginValidationService.runCustomValidators(gun, pluginId);
+                PluginValidationService.runCustomValidators(gun, pluginId, player, registryAccess);
         if (customResult.isPresent()) {
             return new SelectionOutcome(customResult.get(), null);
         }
@@ -204,7 +224,8 @@ public final class PluginInstallService {
         PrePluginInstallEvent preEvent = new PrePluginInstallEvent(player, gun, pluginId);
         NeoForge.EVENT_BUS.post(preEvent);
         if (preEvent.isCanceled()) {
-            return new SelectionOutcome(ValidationResult.error("Installation blocked by a listener"), null);
+            return new SelectionOutcome(ValidationResult.error(
+                    Component.translatable("modularshoot.install.error.blocked")), null);
         }
         return new SelectionOutcome(ValidationResult.success(), selectedTypeId.get());
     }
@@ -223,10 +244,13 @@ public final class PluginInstallService {
      * state (设计文档 lines 502-510).</p>
      *
      * <p>The instance uuid is derived from the player's random source via
-     * {@link #deriveInstanceUuid} rather than {@link UUID#randomUUID()} so
-     * that the client and server sides — which each fire
-     * {@link net.neoforged.neoforge.event.ItemStackedOnOtherEvent}
-     * independently — produce the same uuid (W4 fix).</p>
+     * {@link #deriveInstanceUuid} rather than {@link UUID#randomUUID()} for
+     * per-side stability only. The client and server each own an independent
+     * random source (Minecraft does not sync entity RNGs), so both sides
+     * derive <em>different</em> uuids; the server-side write is authoritative
+     * and the client's transiently mismatched {@code gun_data} is overwritten
+     * by container synchronization. The derive step is therefore
+     * <em>not</em> a cross-side agreement mechanism.</p>
      *
      * @param gun            the gun item stack to update (mutated)
      * @param pluginStack    the plugin item stack to consume (shrunk by one)
@@ -240,11 +264,12 @@ public final class PluginInstallService {
             ResourceLocation selectedTypeId, Player player, RegistryAccess registryAccess) {
         // i. Generate a unique instance id for this installation. The uuid is
         //    derived from the player's random source (not UUID.randomUUID())
-        //    so that both the client and server sides — which each fire
-        //    ItemStackedOnOtherEvent independently — produce the same uuid.
-        //    This eliminates the transient mismatch window where the client's
-        //    gun_data would carry a different instance uuid than the server's
-        //    authoritative copy until the server syncs back (W4 fix).
+        //    for per-side stability. Note: the client and server each own an
+        //    independent random source (Minecraft does not sync entity RNGs),
+        //    so the two sides produce DIFFERENT instance uuids; the client's
+        //    gun_data is transiently mismatched until the server's
+        //    authoritative copy syncs back via container synchronization. The
+        //    server-side uuid is the final record.
         UUID instanceUuid = deriveInstanceUuid(player);
         // j. Create the immutable plugin instance (locked defaults to false).
         PluginInstance instance = PluginInstance.create(pluginId, instanceUuid, selectedTypeId);
@@ -270,14 +295,16 @@ public final class PluginInstallService {
     }
 
     /**
-     * Creates a {@link Random} seeded from the player's server-controlled
+     * Creates a {@link Random} seeded from the player's
      * {@link net.minecraft.util.RandomSource RandomSource}.
      *
      * <p>{@link PluginMatchingService#selectPluginType} accepts a
      * {@code java.util.Random}, while {@link Player#getRandom()} returns a
      * {@code RandomSource}. Seeding a new {@code Random} from the player's
-     * random source preserves server control over the outcome (the seed is
-     * drawn from the authoritative server random) while bridging the type gap.
+     * random source bridges the type gap while drawing from the side-local
+     * random sequence. Note the client and server random sources are
+     * independent, so the category auto-selection may differ between sides;
+     * the server-side result is authoritative and wins after container sync.
      * The seed is consumed once per install attempt.</p>
      *
      * @param player the player whose random source seeds the new {@code Random}
@@ -291,20 +318,20 @@ public final class PluginInstallService {
      * Derives a deterministic instance uuid from the player's random source.
      *
      * <p>{@link net.neoforged.neoforge.event.ItemStackedOnOtherEvent} fires
-     * independently on both the client and server sides. Using
-     * {@link UUID#randomUUID()} would produce two different uuids — one per
-     * side — leaving the client's {@code gun_data} with a transiently
-     * mismatched instance uuid until the server's authoritative copy syncs
-     * back via container synchronization. Deriving the uuid from the player's
-     * {@link net.minecraft.util.RandomSource RandomSource} ensures both sides
-     * consume the same random sequence (the player random is shared/synced
-     * for this code path) and therefore produce the <em>same</em> uuid,
-     * eliminating the mismatch window.</p>
+     * independently on both the client and server sides. The uuid is derived
+     * from the player's random source rather than {@link UUID#randomUUID()}
+     * so that consecutive installs within one logical side draw from a
+     * stable, side-local sequence. It does <strong>not</strong> produce the
+     * same uuid across sides: the client and server each own an independent
+     * {@link net.minecraft.util.RandomSource RandomSource} (Minecraft never
+     * syncs entity RNGs), so both sides generate different instance uuids.
+     * The client's {@code gun_data} is transiently mismatched until the
+     * server's authoritative copy syncs back via container synchronization;
+     * the server-side uuid is the final record.</p>
      *
      * <p>The player random is advanced by exactly two {@code nextLong()}
-     * calls per install. Because both sides execute the identical code path
-     * (including the {@link #randomFrom} seed draw in the selection phase),
-     * the random sequences stay aligned.</p>
+     * calls per install on each side; the two sides' sequences are unrelated,
+     * which is expected — derive exists only for per-side stability.</p>
      *
      * @param player the player whose random source derives the uuid
      * @return a new uuid built from two longs drawn from the player's random

@@ -6,6 +6,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
+import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.trait.RemoveReason;
 import org.yanbwe.modularshoot.trait.TraitCallbacks;
 import org.yanbwe.modularshoot.trait.TraitHookRegistry;
@@ -34,6 +35,10 @@ import org.yanbwe.modularshoot.trait.TraitHookType;
  * shared {@link BulletSnapshot}, enabling chain effects such as ramping
  * damage across penetration hits (设计文档 §onHit 链式影响).</p>
  *
+ * <p>Exception isolation: a third-party hook that throws an exception is
+ * logged and skipped, leaving the remaining hooks and the bullet pipeline
+ * unaffected (抛异常的第三方钩子被记录并跳过，不影响其余钩子与子弹管线).</p>
+ *
  * <p>This class is not instantiable.</p>
  *
  * @see TraitHookRegistry
@@ -61,7 +66,13 @@ public final class BulletHookInvoker {
             List<TraitCallbacks.TraitTickCallback> hooks = TraitHookRegistry.getHooks(
                     traitId, TraitHookType.ON_TICK, TraitCallbacks.TraitTickCallback.class);
             for (TraitCallbacks.TraitTickCallback hook : hooks) {
-                hook.onTick(bullet, snapshot);
+                try {
+                    hook.onTick(bullet, snapshot);
+                } catch (Exception e) {
+                    ModularShoot.LOGGER.error(
+                            "Trait hook {} (type {}) threw an exception; skipping this hook",
+                            traitId, TraitHookType.ON_TICK, e);
+                }
             }
         }
     }
@@ -83,7 +94,13 @@ public final class BulletHookInvoker {
             List<TraitCallbacks.TraitHitCallback> hooks = TraitHookRegistry.getHooks(
                     traitId, TraitHookType.ON_HIT, TraitCallbacks.TraitHitCallback.class);
             for (TraitCallbacks.TraitHitCallback hook : hooks) {
-                hook.onHit(bullet, snapshot, target);
+                try {
+                    hook.onHit(bullet, snapshot, target);
+                } catch (Exception e) {
+                    ModularShoot.LOGGER.error(
+                            "Trait hook {} (type {}) threw an exception; skipping this hook",
+                            traitId, TraitHookType.ON_HIT, e);
+                }
             }
         }
     }
@@ -104,7 +121,13 @@ public final class BulletHookInvoker {
             List<TraitCallbacks.TraitBlockHitCallback> hooks = TraitHookRegistry.getHooks(
                     traitId, TraitHookType.ON_BLOCK_HIT, TraitCallbacks.TraitBlockHitCallback.class);
             for (TraitCallbacks.TraitBlockHitCallback hook : hooks) {
-                hook.onBlockHit(bullet, snapshot, pos, face);
+                try {
+                    hook.onBlockHit(bullet, snapshot, pos, face);
+                } catch (Exception e) {
+                    ModularShoot.LOGGER.error(
+                            "Trait hook {} (type {}) threw an exception; skipping this hook",
+                            traitId, TraitHookType.ON_BLOCK_HIT, e);
+                }
             }
         }
     }
@@ -126,7 +149,13 @@ public final class BulletHookInvoker {
             List<TraitCallbacks.TraitExpireCallback> hooks = TraitHookRegistry.getHooks(
                     traitId, TraitHookType.ON_EXPIRE, TraitCallbacks.TraitExpireCallback.class);
             for (TraitCallbacks.TraitExpireCallback hook : hooks) {
-                hook.onExpire(bullet, snapshot);
+                try {
+                    hook.onExpire(bullet, snapshot);
+                } catch (Exception e) {
+                    ModularShoot.LOGGER.error(
+                            "Trait hook {} (type {}) threw an exception; skipping this hook",
+                            traitId, TraitHookType.ON_EXPIRE, e);
+                }
             }
         }
     }
@@ -148,7 +177,13 @@ public final class BulletHookInvoker {
             List<TraitCallbacks.TraitRemoveCallback> hooks = TraitHookRegistry.getHooks(
                     traitId, TraitHookType.ON_REMOVE, TraitCallbacks.TraitRemoveCallback.class);
             for (TraitCallbacks.TraitRemoveCallback hook : hooks) {
-                hook.onRemove(bullet, snapshot, reason);
+                try {
+                    hook.onRemove(bullet, snapshot, reason);
+                } catch (Exception e) {
+                    ModularShoot.LOGGER.error(
+                            "Trait hook {} (type {}) threw an exception; skipping this hook",
+                            traitId, TraitHookType.ON_REMOVE, e);
+                }
             }
         }
     }

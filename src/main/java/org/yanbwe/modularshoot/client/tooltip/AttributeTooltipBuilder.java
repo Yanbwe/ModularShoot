@@ -251,10 +251,12 @@ public final class AttributeTooltipBuilder {
     /**
      * Builds a single tooltip line for an attribute entry.
      *
-     * <p>Format: {@code "  <name>: <value>"} where the name is coloured with
-     * the metadata {@code color} (via the vanilla attribute's
+     * <p>Format: {@code "  <name>: <value> [unit]"} where the name is coloured
+     * with the metadata {@code color} (via the vanilla attribute's
      * {@code descriptionId} translation key) and the value is grey
-     * (设计文档 lines 1479-1483).</p>
+     * (设计文档 lines 1479-1483). When the metadata declares a {@code unit}
+     * translation key (e.g. {@code modularshoot.unit.per_second}), the
+     * translated unit is appended after the value in the same grey style.</p>
      *
      * @param entry the attribute entry to render
      * @return a {@link Component} line
@@ -265,11 +267,16 @@ public final class AttributeTooltipBuilder {
         String valueText = TooltipUtils.formatValue(entry.value());
 
         MutableComponent nameComp = resolveAttributeName(meta.binds()).withColor(nameColor);
-        return Component.empty()
+        MutableComponent line = Component.empty()
                 .append(Component.literal("  "))
                 .append(nameComp)
                 .append(Component.literal(": "))
                 .append(Component.literal(valueText).withStyle(ChatFormatting.GRAY));
+        // 单位是翻译键（如 modularshoot.unit.per_second），渲染在数值之后，样式与数值一致。
+        meta.unit().ifPresent(unit ->
+                line.append(Component.literal(" ").withStyle(ChatFormatting.GRAY))
+                        .append(Component.translatable(unit).withStyle(ChatFormatting.GRAY)));
+        return line;
     }
 
     /**

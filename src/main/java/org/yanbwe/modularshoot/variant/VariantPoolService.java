@@ -34,7 +34,7 @@ import org.yanbwe.modularshoot.registry.variant.VariantRegistry;
  * plugin's {@code adds_variants} (same variant declared by several sources
  * sums via {@code merge(id, v, Double::sum)}), and variant ids introduced by
  * {@code registerVariantContributor} weight modifiers — the latter fall back
- * to the variant's own {@code weight_hint} when nobody declared them. Each
+ * to the variant's own {@code base_weight} when nobody declared them. Each
  * candidate's final weight comes from the three-stage pure function
  * {@link #calculateWeight}; a single roll then picks one variant for one
  * pellet (逐弹丸语义, 规格 §6.4 — the shooting engine calls
@@ -110,7 +110,7 @@ public class VariantPoolService {
      * </ol>
      *
      * @param baseWeight the base weight declared by gun/plugin (or the
-     *                   variant's {@code weight_hint} fallback)
+     *                   variant's {@code base_weight} fallback)
      * @param modifiers  the contributor weight modifiers for this variant,
      *                   in registration order; may be empty
      * @return the final weight; {@code 0.0} when the base is zero and no
@@ -341,7 +341,7 @@ public class VariantPoolService {
      * {@code AttributeModifierService.addPluginModifiers}), summing shared
      * ids via {@code merge(id, v, Double::sum)}. Variant ids contributed
      * only via {@link VariantContributorRegistry#collect()} fall back to the
-     * variant's {@code weight_hint}; a missing variant definition is skipped
+     * variant's {@code base_weight}; a missing variant definition is skipped
      * with a WARN.
      *
      * @return a {@link LinkedHashMap} (declaration order) of variant id →
@@ -362,7 +362,7 @@ public class VariantPoolService {
         }
         for (ResourceLocation id : contribMods.keySet()) {
             if (pool.containsKey(id)) {
-                continue;   // 已由枪械/插件声明，声明权重权威，无需 weight_hint 兜底
+                continue;   // 已由枪械/插件声明，声明权重权威，无需 base_weight 兜底
             }
             Optional<VariantDefinition> def = lookupVariant(ra, id);
             if (def.isEmpty()) {
@@ -370,7 +370,7 @@ public class VariantPoolService {
                         "Variant {} contributed but not registered; skipping.", id);
                 continue;
             }
-            pool.put(id, def.get().weightHint());
+            pool.put(id, def.get().baseWeight());
         }
         return pool;
     }

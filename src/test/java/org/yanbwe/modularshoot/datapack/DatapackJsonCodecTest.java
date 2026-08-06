@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import net.minecraft.resources.ResourceLocation;
 import org.junit.jupiter.api.Test;
 import org.yanbwe.modularshoot.registry.Trait;
@@ -141,6 +142,20 @@ class DatapackJsonCodecTest {
                 "pellet_count defaults to a single pellet per shot (多弹丸规格 §3.2)");
         assertEquals(ResourceLocation.parse("modularshoot:pellet_count"), meta.binds(),
                 "pellet_count binds to its own built-in attribute body");
+    }
+
+    @Test
+    void fireRateMetaParsesUnit() {
+        AttributeMeta meta = parse("attribute_meta/fire_rate.json", AttributeMeta.CODEC);
+        assertEquals(Optional.of("modularshoot.unit.per_second"), meta.unit(),
+                "fire_rate declares a per-second unit translation key");
+    }
+
+    @Test
+    void metaWithoutUnitDefaultsToEmpty() {
+        AttributeMeta meta = parse("attribute_meta/pellet_count.json", AttributeMeta.CODEC);
+        assertEquals(Optional.empty(), meta.unit(),
+                "pellet_count declares no unit -> tooltip shows the bare value");
     }
 
     // --- states ---

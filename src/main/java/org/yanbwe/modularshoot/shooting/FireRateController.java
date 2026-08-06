@@ -141,6 +141,24 @@ public final class FireRateController {
     }
 
     /**
+     * 回滚本次放行写入的 last-shoot tick。
+     *
+     * <p>语义：被取消的射击不消耗冷却（设计文档 §步骤四），即本次射击
+     * 从未发生——移除该 gun 的最近射击记录，下一次请求按正常间隔重新计时。</p>
+     *
+     * @param playerId the player uuid
+     * @param gunId    the gun definition id
+     */
+    public static void rollbackLastShootTick(UUID playerId, ResourceLocation gunId) {
+        Objects.requireNonNull(playerId, "playerId");
+        Objects.requireNonNull(gunId, "gunId");
+        Map<ResourceLocation, Integer> perPlayer = lastShootTicks.get(playerId);
+        if (perPlayer != null) {
+            perPlayer.remove(gunId);
+        }
+    }
+
+    /**
      * Clears all fire-rate state for the given player.
      *
      * <p>Should be called when the player disconnects to avoid retaining

@@ -47,6 +47,8 @@ import org.yanbwe.modularshoot.state.StateWarnLogger;
  *   <li><b>Gun base/modifiers</b> (priority 0) &mdash; the
  *       {@link GunDefinition#bulletStyle()} of the firing gun.</li>
  *   <li><b>Installed plugin base/modifiers</b> (priority =
+ *       {@link PluginDefinition#visualPriorityOrFallback()} &mdash; the
+ *       plugin's {@code visual_priority} when declared, falling back to
  *       {@link PluginDefinition#priority()}) &mdash; each installed plugin's
  *       {@link PluginDefinition#bulletStyle()} in install order. Within a
  *       base-winner election, higher priority wins; equal priorities tie-break
@@ -375,7 +377,7 @@ public class VisualCompositionService {
                     installIdx++;
                     continue;
                 }
-                final int priority = pd.get().priority();
+                final int priority = pd.get().visualPriorityOrFallback();
                 final int capturedInstallIdx = installIdx;
                 pd.get().bulletStyle().ifPresent(style -> {
                     style.base().ifPresent(b -> baseCands.add(new BaseCandidate(b, priority, capturedInstallIdx, false)));

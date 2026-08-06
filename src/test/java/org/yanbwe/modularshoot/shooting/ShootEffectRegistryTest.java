@@ -82,6 +82,42 @@ class ShootEffectRegistryTest {
                 "an empty registry must not throw");
     }
 
+    // ------------------------------------------------------------------
+    // 第三方回调异常隔离：坏 effect 被记录并跳过，其余 effect 照常执行
+    // ------------------------------------------------------------------
+
+    @Test
+    void throwingEffectIsSkippedAndLaterEffectsStillRun() {
+        ShootEffectRegistry.register((player, gun, snapshot, pelletIndex, totalPellets) -> {
+            throw new IllegalStateException("deliberate test failure");
+        });
+        ShootEffectRegistry.register((player, gun, snapshot, pelletIndex, totalPellets) ->
+                appendMarker(snapshot, "A"));
+
+        BulletSnapshot snapshot = snapshot();
+        assertDoesNotThrow(() -> ShootEffectRegistry.applyEffects(null, null, snapshot, 0, 1),
+                "a throwing effect must not abort the per-pellet effect pipeline");
+        assertEquals("A", snapshot.getState(MARKER),
+                "the throwing effect is logged and skipped; the normal effect still runs");
+    }
+
+    @Test
+    void throwingEffectBetweenNormalEffectsStillRunsTheRest() {
+        ShootEffectRegistry.register((player, gun, snapshot, pelletIndex, totalPellets) ->
+                appendMarker(snapshot, "A"));
+        ShootEffectRegistry.register((player, gun, snapshot, pelletIndex, totalPellets) -> {
+            throw new IllegalStateException("deliberate test failure");
+        });
+        ShootEffectRegistry.register((player, gun, snapshot, pelletIndex, totalPellets) ->
+                appendMarker(snapshot, "B"));
+
+        BulletSnapshot snapshot = snapshot();
+        ShootEffectRegistry.applyEffects(null, null, snapshot, 0, 1);
+
+        assertEquals("AB", snapshot.getState(MARKER),
+                "effects registered before and after the throwing one all still run");
+    }
+
     /** Appends {@code mark} to the per-bullet state {@link #MARKER} chain. */
     private static void appendMarker(BulletSnapshot snapshot, String mark) {
         String current = snapshot.getState(MARKER);
