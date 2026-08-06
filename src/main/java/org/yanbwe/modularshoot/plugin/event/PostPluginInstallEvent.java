@@ -19,6 +19,15 @@ import net.neoforged.bus.api.Event;
  * installation when handling {@link PrePluginUninstallEvent} or
  * {@link PostPluginUninstallEvent}.</p>
  *
+ * <p>Bilateral semantics: the installation flow runs once on each logical
+ * side, so this event also fires once per side and carries the uuid derived
+ * on that side. Because the client and server each own an independent random
+ * source (Minecraft does not sync entity RNGs), the two sides derive
+ * different instance uuids; the server-side result is authoritative and the
+ * client's transient {@code gun_data} is overwritten by container sync. Treat
+ * the uuid as side-local &mdash; rely on the synced {@code gun_data} for
+ * cross-side bookkeeping.</p>
+ *
  * <p>This event is <strong>not</strong> cancelable. To prevent an installation,
  * listen to {@link PrePluginInstallEvent} instead.</p>
  *

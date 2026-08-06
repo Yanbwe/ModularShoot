@@ -223,10 +223,13 @@ public final class PluginInstallService {
      * state (设计文档 lines 502-510).</p>
      *
      * <p>The instance uuid is derived from the player's random source via
-     * {@link #deriveInstanceUuid} rather than {@link UUID#randomUUID()} so
-     * that the client and server sides — which each fire
-     * {@link net.neoforged.neoforge.event.ItemStackedOnOtherEvent}
-     * independently — produce the same uuid (W4 fix).</p>
+     * {@link #deriveInstanceUuid} rather than {@link UUID#randomUUID()} for
+     * per-side stability only. The client and server each own an independent
+     * random source (Minecraft does not sync entity RNGs), so both sides
+     * derive <em>different</em> uuids; the server-side write is authoritative
+     * and the client's transiently mismatched {@code gun_data} is overwritten
+     * by container synchronization. The derive step is therefore
+     * <em>not</em> a cross-side agreement mechanism.</p>
      *
      * @param gun            the gun item stack to update (mutated)
      * @param pluginStack    the plugin item stack to consume (shrunk by one)
@@ -240,11 +243,12 @@ public final class PluginInstallService {
             ResourceLocation selectedTypeId, Player player, RegistryAccess registryAccess) {
         // i. Generate a unique instance id for this installation. The uuid is
         //    derived from the player's random source (not UUID.randomUUID())
-        //    so that both the client and server sides — which each fire
-        //    ItemStackedOnOtherEvent independently — produce the same uuid.
-        //    This eliminates the transient mismatch window where the client's
-        //    gun_data would carry a different instance uuid than the server's
-        //    authoritative copy until the server syncs back (W4 fix).
+        //    for per-side stability. Note: the client and server each own an
+        //    independent random source (Minecraft does not sync entity RNGs),
+        //    so the two sides produce DIFFERENT instance uuids; the client's
+        //    gun_data is transiently mismatched until the server's
+        //    authoritative copy syncs back via container synchronization. The
+        //    server-side uuid is the final record.
         UUID instanceUuid = deriveInstanceUuid(player);
         // j. Create the immutable plugin instance (locked defaults to false).
         PluginInstance instance = PluginInstance.create(pluginId, instanceUuid, selectedTypeId);
@@ -270,14 +274,16 @@ public final class PluginInstallService {
     }
 
     /**
-     * Creates a {@link Random} seeded from the player's server-controlled
+     * Creates a {@link Random} seeded from the player's
      * {@link net.minecraft.util.RandomSource RandomSource}.
      *
      * <p>{@link PluginMatchingService#selectPluginType} accepts a
      * {@code java.util.Random}, while {@link Player#getRandom()} returns a
      * {@code RandomSource}. Seeding a new {@code Random} from the player's
-     * random source preserves server control over the outcome (the seed is
-     * drawn from the authoritative server random) while bridging the type gap.
+     * random source bridges the type gap while drawing from the side-local
+     * random sequence. Note the client and server random sources are
+     * independent, so the category auto-selection may differ between sides;
+     * the server-side result is authoritative and wins after container sync.
      * The seed is consumed once per install attempt.</p>
      *
      * @param player the player whose random source seeds the new {@code Random}
@@ -291,20 +297,20 @@ public final class PluginInstallService {
      * Derives a deterministic instance uuid from the player's random source.
      *
      * <p>{@link net.neoforged.neoforge.event.ItemStackedOnOtherEvent} fires
-     * independently on both the client and server sides. Using
-     * {@link UUID#randomUUID()} would produce two different uuids — one per
-     * side — leaving the client's {@code gun_data} with a transiently
-     * mismatched instance uuid until the server's authoritative copy syncs
-     * back via container synchronization. Deriving the uuid from the player's
-     * {@link net.minecraft.util.RandomSource RandomSource} ensures both sides
-     * consume the same random sequence (the player random is shared/synced
-     * for this code path) and therefore produce the <em>same</em> uuid,
-     * eliminating the mismatch window.</p>
+     * independently on both the client and server sides. The uuid is derived
+     * from the player's random source rather than {@link UUID#randomUUID()}
+     * so that consecutive installs within one logical side draw from a
+     * stable, side-local sequence. It does <strong>not</strong> produce the
+     * same uuid across sides: the client and server each own an independent
+     * {@link net.minecraft.util.RandomSource RandomSource} (Minecraft never
+     * syncs entity RNGs), so both sides generate different instance uuids.
+     * The client's {@code gun_data} is transiently mismatched until the
+     * server's authoritative copy syncs back via container synchronization;
+     * the server-side uuid is the final record.</p>
      *
      * <p>The player random is advanced by exactly two {@code nextLong()}
-     * calls per install. Because both sides execute the identical code path
-     * (including the {@link #randomFrom} seed draw in the selection phase),
-     * the random sequences stay aligned.</p>
+     * calls per install on each side; the two sides' sequences are unrelated,
+     * which is expected — derive exists only for per-side stability.</p>
      *
      * @param player the player whose random source derives the uuid
      * @return a new uuid built from two longs drawn from the player's random

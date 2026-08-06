@@ -144,14 +144,13 @@ public final class PluginInstallEventHandler {
             access.set(result.consumedPlugin());
             // Suppress the vanilla item swap.
             event.setCanceled(true);
-            // Data-driven sound feedback (W7 fix): the pitch is drawn on both
-            // sides to keep the player's random source aligned (the install
-            // uuid derivation in PluginInstallService relies on bilateral
-            // random synchronization), but the sound is only played on the
-            // server side (and synced to the client) to avoid a doubled
-            // audible effect from the bilateral event firing. The sound event
-            // itself is read from the gun definition's sounds.plugin_install
-            // slot; unconfigured slots stay silent.
+            // Data-driven sound feedback (W7 fix): the pitch is drawn
+            // independently on each side (client and server random sources
+            // are unrelated, so there is no alignment promise), but the sound
+            // is only played on the server side (and synced to the client) to
+            // avoid a doubled audible effect from the bilateral event firing.
+            // The sound event itself is read from the gun definition's
+            // sounds.plugin_install slot; unconfigured slots stay silent.
             float pitch = 1.5F + 0.35F * (1 - 2 * player.getRandom().nextFloat());
             if (!player.level().isClientSide()) {
                 playInstallSound(player, stackedOnItem, pitch);
@@ -199,7 +198,7 @@ public final class PluginInstallEventHandler {
      *
      * @param player 执行安装的玩家
      * @param gun    被安装插件的枪械 ItemStack
-     * @param pitch  随机音调（W7 双端随机源对齐约定，由调用方计算）
+     * @param pitch  随机音调（由调用方计算；双端各自独立抽取、无对齐承诺，仅服务端播放）
      */
     private static void playInstallSound(Player player, ItemStack gun, float pitch) {
         GunData data = gun.get(ModularShootDataComponents.GUN_DATA.get());
