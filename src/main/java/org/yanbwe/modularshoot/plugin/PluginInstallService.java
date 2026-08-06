@@ -196,7 +196,7 @@ public final class PluginInstallService {
         }
         // g. Custom validators registered by third-party mods.
         Optional<ValidationResult> customResult =
-                PluginValidationService.runCustomValidators(gun, pluginId);
+                PluginValidationService.runCustomValidators(gun, pluginId, player, registryAccess);
         if (customResult.isPresent()) {
             return new SelectionOutcome(customResult.get(), null);
         }

@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.component.GunData;
@@ -138,19 +139,24 @@ public final class PluginValidationService {
      * short-circuit is unaffected (抛异常的第三方 validator 被记录并跳过，
      * 继续执行其余 validator，不影响首败短路).</p>
      *
-     * @param gun      the target gun item stack passed to each validator
-     * @param pluginId the candidate plugin definition id passed to each
-     *                 validator
+     * @param gun            the target gun item stack passed to each validator
+     * @param pluginId       the candidate plugin definition id passed to each
+     *                       validator
+     * @param player         the player performing the installation, passed to
+     *                       each validator for player-state checks
+     * @param registryAccess the runtime registry view passed to each validator
+     *                       for data-driven checks
      * @return {@link Optional#empty()} when all registered validators pass
      *         (or when none are registered); otherwise an {@link Optional}
      *         containing the first failing {@link ValidationResult}, whose
      *         error message should be shown to the player
      */
-    public static Optional<ValidationResult> runCustomValidators(ItemStack gun, ResourceLocation pluginId) {
+    public static Optional<ValidationResult> runCustomValidators(
+            ItemStack gun, ResourceLocation pluginId, Player player, RegistryAccess registryAccess) {
         for (PluginValidator validator : VALIDATORS) {
             ValidationResult result;
             try {
-                result = validator.validate(gun, pluginId);
+                result = validator.validate(player, gun, pluginId, registryAccess);
             } catch (Exception e) {
                 ModularShoot.LOGGER.error(
                         "PluginValidator threw an exception; skipping this validator", e);
