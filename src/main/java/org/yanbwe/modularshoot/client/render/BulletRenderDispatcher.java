@@ -16,6 +16,7 @@ import org.joml.Vector4f;
 
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.bullet.BulletManager;
+import org.yanbwe.modularshoot.client.config.ModularShootClientConfig;
 import org.yanbwe.modularshoot.network.ClientBulletSnapshot;
 
 /**
@@ -120,6 +121,14 @@ public final class BulletRenderDispatcher {
         PoseStack poseStack = event.getPoseStack();
         MultiBufferSource bufferSource = Minecraft.getInstance().renderBuffers().bufferSource();
 
+        // Near-camera translucency (系统七 §近相机距离透明度): read the
+        // client config once per frame — edits made in the in-game config
+        // screen take effect on the next frame. When disabled, distanceAlpha
+        // stays 1.0 for every bullet and the fade is a no-op.
+        boolean nearTranslucency = ModularShootClientConfig.isNearTranslucencyEnabled();
+        double fadeDistance = ModularShootClientConfig.getFadeDistance();
+        float minOpacity = ModularShootClientConfig.getMinOpacity();
+
         for (BulletRenderObject renderObject : renderObjects) {
             // Fire visual-tick hooks so traits can mutate appearance before draw.
             // The snapshot supplies frozen stats/traits so hooks can make
@@ -128,7 +137,15 @@ public final class BulletRenderDispatcher {
             VisualTickHookDispatcher.dispatchVisualTick(snapshot, renderObject);
 
             Vec3 interpolatedPos = interpolatePosition(renderObject, partialTick);
-            renderByMode(renderObject, poseStack, bufferSource, partialTick, cameraPos, interpolatedPos);
+            // Distance fade is computed from the interpolated position (more
+            // accurate than the raw tick position at high bullet speeds).
+            float distanceAlpha = 1.0F;
+            if (nearTranslucency) {
+                distanceAlpha = DistanceAlphaCurve.computeAlpha(
+                        interpolatedPos.distanceToSqr(cameraPos), fadeDistance, minOpacity);
+            }
+            renderByMode(renderObject, poseStack, bufferSource, partialTick, cameraPos,
+                    interpolatedPos, distanceAlpha);
         }
     }
 
@@ -174,6 +191,10 @@ public final class BulletRenderDispatcher {
      *                        any sub-frame animation)
      * @param cameraPos       the camera world position (for billboard orientation)
      * @param interpolatedPos the bullet's interpolated world position
+     * @param distanceAlpha   the distance-based opacity multiplier in
+     *                        {@code [0.2, 1]} (系统七 §近相机距离透明度);
+     *                        applied to the base draw and every attach_layer
+     *                        draw, never written back to the render object
      */
     private static void renderByMode(
             BulletRenderObject renderObject,
@@ -181,7 +202,8 @@ public final class BulletRenderDispatcher {
             MultiBufferSource bufferSource,
             float partialTick,
             Vec3 cameraPos,
-            Vec3 interpolatedPos) {
+            Vec3 interpolatedPos,
+            float distanceAlpha) {
         String renderMode = renderObject.getRenderMode();
         // Camera-space offset: translate from camera origin to bullet world pos
         double offsetX = interpolatedPos.x - cameraPos.x;
@@ -193,9 +215,9 @@ public final class BulletRenderDispatcher {
 
         // 1. Base draw: renderScale × composedTint applied by the renderers.
         if (BulletRenderObject.RENDER_MODE_BILLBOARD.equals(renderMode)) {
-            BillboardRenderer.render(renderObject, poseStack, bufferSource, partialTick, cameraPos);
+            BillboardRenderer.render(renderObject, poseStack, bufferSource, partialTick, cameraPos, distanceAlpha);
         } else if (BulletRenderObject.RENDER_MODE_3D.equals(renderMode)) {
-            Model3DRenderer.render(renderObject, poseStack, bufferSource, partialTick, cameraPos);
+            Model3DRenderer.render(renderObject, poseStack, bufferSource, partialTick, cameraPos, distanceAlpha);
         }
 
         // 2. attach_layer draws: each layer pushes its own pose per follow
@@ -209,9 +231,14 @@ public final class BulletRenderDispatcher {
             // follow_scale: inherit the base renderScale; layer.scale on top
             float effectiveScale = layer.followScale()
                     ? renderObject.getScale() * layer.scale() : layer.scale();
-            // tint: null = white identity sentinel
+            // tint: null = white identity sentinel; copy-on-fade so the
+            // shared record value is never mutated
             Vector4f layerTint = layer.tint() != null
                     ? layer.tint() : WHITE_TINT;
+            if (distanceAlpha < 1.0F) {
+                layerTint = new Vector4f(layerTint.x, layerTint.y, layerTint.z,
+                        layerTint.w * distanceAlpha);
+            }
             if (BulletRenderObject.RENDER_MODE_BILLBOARD.equals(layer.renderMode())
                     && layer.texture() != null) {
                 BillboardRenderer.drawBillboard(

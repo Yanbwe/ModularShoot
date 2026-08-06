@@ -1,6 +1,7 @@
 package org.yanbwe.modularshoot.client.render;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -13,13 +14,16 @@ import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.ModelBlockRenderer;
+import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.client.resources.model.ModelManager;
 import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
@@ -130,6 +134,19 @@ public final class Model3DRenderer {
      */
     private static final RenderType RENDER_TYPE = RenderType.entityCutoutNoCull(TextureAtlas.LOCATION_BLOCKS);
 
+    /**
+     * Translucent render type for near-camera bullets (系统八
+     * §近相机距离透明度) — {@code entityTranslucent} with the block atlas, no
+     * face culling and {@code TRANSLUCENT_TRANSPARENCY} blending, used only
+     * when the distance fade makes the bullet visibly translucent. The
+     * boolean argument only controls the outline-shader property
+     * ({@code RenderType.CompositeState#createCompositeState(boolean)}); the
+     * cull state is hardcoded to {@code NO_CULL} in vanilla's
+     * {@code ENTITY_TRANSLUCENT} definition (RenderType.java:151-162).
+     */
+    private static final RenderType TRANSLUCENT_RENDER_TYPE =
+            RenderType.entityTranslucent(TextureAtlas.LOCATION_BLOCKS, false);
+
     /** Full-bright fallback when the client level is unavailable (e.g. main menu). */
     private static final int FULL_BRIGHT = LightTexture.FULL_BRIGHT;
 
@@ -154,23 +171,35 @@ public final class Model3DRenderer {
      * <p>The {@code poseStack} is expected to already be translated to the
      * bullet's interpolated camera-space position by
      * {@link BulletRenderDispatcher}; this method only applies orientation,
-     * scale and centering transforms before drawing. {@code partialTick} and
-     * {@code cameraPos} are accepted for pipeline symmetry with the billboard
-     * renderer but are not used here.</p>
+     * scale and centering transforms before drawing. {@code partialTick} is
+     * accepted for pipeline symmetry with the billboard renderer but is not
+     * used here.</p>
+     *
+     * <p><b>Near-camera translucency</b> (系统七 §近相机距离透明度): when
+     * {@code composedTint.w × distanceAlpha} drops below 1 the model is
+     * drawn through the translucent render type with per-quad alpha; bullets
+     * at full opacity keep the original cutout path unchanged. The tint held
+     * by the render object is never mutated.</p>
      *
      * @param renderObject  the bullet to render
      * @param poseStack     the camera-space pose stack, already translated to
      *                      the bullet position
      * @param bufferSource  the vertex buffer source for submitting geometry
      * @param partialTick   the frame partial tick (unused, reserved for parity)
-     * @param cameraPos     the camera world position (unused, reserved for parity)
+     * @param cameraPos     the camera world position (unused, reserved for
+     *                      parity — the dispatcher derives the distance fade
+     *                      from it and passes the resulting multiplier)
+     * @param distanceAlpha the distance-based opacity multiplier in
+     *                      {@code [0.2, 1]} from
+     *                      {@link DistanceAlphaCurve#computeAlpha}
      */
     public static void render(
             BulletRenderObject renderObject,
             PoseStack poseStack,
             MultiBufferSource bufferSource,
             float partialTick,
-            Vec3 cameraPos) {
+            Vec3 cameraPos,
+            float distanceAlpha) {
         ResourceLocation modelLocation = renderObject.getModelLocation();
         if (modelLocation == null) {
             return;
@@ -185,10 +214,20 @@ public final class Model3DRenderer {
         // model's vertex colour (设计规格 §4.5).
         Vector4f tint = renderObject.getComposedTint() != null
                 ? renderObject.getComposedTint() : WHITE_TINT;
+        // Multiplicative fade: an already-translucent tint stays translucent
+        // on top of the distance fade.
+        float finalAlpha = Math.min(1.0F, tint.w * distanceAlpha);
 
         poseStack.pushPose();
         applyTransforms(poseStack, renderObject.getDirection(), renderObject.getScale());
-        drawModel(bakedModel, poseStack, bufferSource, computeLight(renderObject.getPosition()), tint);
+        int light = computeLight(renderObject.getPosition());
+        if (finalAlpha >= 1.0F - 1e-3F) {
+            // Effectively opaque: keep the original cutout path (zero visual
+            // change for bullets beyond the fade distance).
+            drawModel(bakedModel, poseStack, bufferSource, light, tint);
+        } else {
+            drawModelTranslucent(bakedModel, poseStack, bufferSource, light, tint, finalAlpha);
+        }
         poseStack.popPose();
     }
 
@@ -343,6 +382,80 @@ public final class Model3DRenderer {
                 Math.max(0.0F, Math.min(1.0F, tint.z)),
                 light,
                 OverlayTexture.NO_OVERLAY);
+    }
+
+    /**
+     * Draws a baked model with per-quad alpha through the translucent render
+     * type (系统七 §近相机距离透明度).
+     *
+     * <p>The vanilla {@link ModelBlockRenderer#renderModel} has no alpha
+     * parameter — its internal {@code putBulkData} hardcodes {@code 1.0F}
+     * (ModelBlockRenderer.java:333) — so this method replicates its quad
+     * iteration (seed 42L, six directions plus the unsided pass, null block
+     * state) and submits each quad with the
+     * {@code putBulkData(pose, quad, r, g, b, a, light, overlay)} overload
+     * that carries alpha. Tinted quads receive the tint's RGB; untinted quads
+     * stay white, matching the original {@code renderModel} semantics.</p>
+     *
+     * @param bakedModel   the model to draw
+     * @param poseStack    the pose stack (already transformed)
+     * @param bufferSource the buffer source
+     * @param light        the packed light value
+     * @param tint         the vertex tint (each channel in [0,1])
+     * @param alpha        the final alpha for every quad, in [0,1]
+     */
+    private static void drawModelTranslucent(
+            BakedModel bakedModel,
+            PoseStack poseStack,
+            MultiBufferSource bufferSource,
+            int light,
+            Vector4f tint,
+            float alpha) {
+        VertexConsumer vertexConsumer = bufferSource.getBuffer(TRANSLUCENT_RENDER_TYPE);
+        PoseStack.Pose pose = poseStack.last();
+        RandomSource randomSource = RandomSource.create();
+        for (Direction direction : Direction.values()) {
+            randomSource.setSeed(42L);
+            renderQuadListTranslucent(pose, vertexConsumer, tint, alpha,
+                    bakedModel.getQuads(null, direction, randomSource), light);
+        }
+        randomSource.setSeed(42L);
+        renderQuadListTranslucent(pose, vertexConsumer, tint, alpha,
+                bakedModel.getQuads(null, null, randomSource), light);
+    }
+
+    /**
+     * Submits a list of quads with the given tint RGB and uniform alpha.
+     *
+     * @param pose      the pose for vertex transformation
+     * @param consumer  the vertex consumer (translucent render type)
+     * @param tint      the vertex tint; only applied to tinted quads
+     * @param alpha     the alpha written to every vertex, in [0,1]
+     * @param quads     the quads to draw
+     * @param light     the packed light value
+     */
+    private static void renderQuadListTranslucent(
+            PoseStack.Pose pose,
+            VertexConsumer consumer,
+            Vector4f tint,
+            float alpha,
+            List<BakedQuad> quads,
+            int light) {
+        for (BakedQuad quad : quads) {
+            float r;
+            float g;
+            float b;
+            if (quad.isTinted()) {
+                r = Math.max(0.0F, Math.min(1.0F, tint.x));
+                g = Math.max(0.0F, Math.min(1.0F, tint.y));
+                b = Math.max(0.0F, Math.min(1.0F, tint.z));
+            } else {
+                r = 1.0F;
+                g = 1.0F;
+                b = 1.0F;
+            }
+            consumer.putBulkData(pose, quad, r, g, b, alpha, light, OverlayTexture.NO_OVERLAY);
+        }
     }
 
     /**
