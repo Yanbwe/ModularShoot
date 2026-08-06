@@ -1,0 +1,8 @@
+{
+  "default_value": false,
+  "name": "精密瞄准",
+  "description": "提升瞄准稳定性",
+  "color": "#44AAFF",
+  "force_show": false,
+  "priority": 0
+}

@@ -46,8 +46,9 @@ public interface PluginValidator {
      *                       definitions
      * @return a {@link ValidationResult}; {@link ValidationResult#success()}
      *         to allow installation, or
-     *         {@link ValidationResult#error(String)} with a player-facing
-     *         message to abort it
+     *         {@link ValidationResult#error(Component)} with a player-facing
+     *         message to abort it (the {@code String} overload is retained
+     *         for third-party compatibility)
      */
     ValidationResult validate(
             Player player, ItemStack gun, ResourceLocation pluginId, RegistryAccess registryAccess);

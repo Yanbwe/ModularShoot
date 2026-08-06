@@ -56,9 +56,9 @@ public final class GunDatapackLoader {
      *   <li>{@code texture} is non-null</li>
      *   <li>{@code shoot_texture} (if present) differs from
      *       {@code texture}</li>
- *   <li>{@code stats}/{@code traits}/{@code slots} keys do not carry an
- *       explicit {@code minecraft:} prefix (bare keys resolve to the
- *       {@code modularshoot} namespace)</li>
+     *   <li>{@code stats}/{@code traits}/{@code slots} keys do not carry an
+     *       explicit {@code minecraft:} prefix (bare keys resolve to the
+     *       {@code modularshoot} namespace)</li>
      *   <li>{@code stats} values are finite (not NaN or Infinite)</li>
      *   <li>{@code slots} counts are non-negative</li>
      *   <li>{@code sounds} slot names are non-empty</li>
