@@ -101,20 +101,23 @@ public final class PluginUninstallService {
      * <ol>
      *   <li>the stack must be a {@code modularshoot:gun} item with a
      *       {@code gun_data} component, otherwise
-     *       {@code (false, null, instanceUuid)};</li>
+     *       {@code (false, null, instanceUuid, NOT_GUN_OR_NO_DATA)};</li>
      *   <li>the plugin must be present in the installed list, otherwise
-     *       {@code (false, null, instanceUuid)};</li>
+     *       {@code (false, null, instanceUuid, UUID_NOT_FOUND)};</li>
      *   <li>if {@code force} is {@code false} and the plugin is locked,
-     *       skip and return {@code (false, pluginId, instanceUuid)};</li>
+     *       skip and return {@code (false, pluginId, instanceUuid, LOCKED)};</li>
      *   <li>fire {@link PrePluginUninstallEvent}; if cancelled, skip and
-     *       return {@code (false, pluginId, instanceUuid)};</li>
+     *       return {@code (false, pluginId, instanceUuid, CANCELED)};</li>
      *   <li>remove the plugin, write the new {@link GunData}, optionally
      *       return the item (skipped when the plugin definition is missing
      *       &mdash; degraded plugins are destroyed, not returned, even with
      *       {@code returnItems = true}), refresh modifiers, fire
      *       {@link PostPluginUninstallEvent}, and return
-     *       {@code (true, pluginId, instanceUuid)}.</li>
+     *       {@code (true, pluginId, instanceUuid, SUCCESS)}.</li>
      * </ol>
+     * <p>The {@link UninstallResult.Reason} component classifies every outcome,
+     * so callers can distinguish e.g. {@code LOCKED} (a force retry is
+     * meaningful) from {@code UUID_NOT_FOUND} (the instance is gone).</p>
      *
      * @param gun            the gun item stack to modify (mutated on success)
      * @param instanceUuid   the instance uuid of the plugin to remove
@@ -139,21 +142,21 @@ public final class PluginUninstallService {
     ) {
         GunData gunData = readGunData(gun);
         if (gunData == null) {
-            return new UninstallResult(false, null, instanceUuid);
+            return new UninstallResult(false, null, instanceUuid, UninstallResult.Reason.NOT_GUN_OR_NO_DATA);
         }
         Optional<PluginInstance> target = findPlugin(gunData.installedPlugins(), instanceUuid);
         if (target.isEmpty()) {
-            return new UninstallResult(false, null, instanceUuid);
+            return new UninstallResult(false, null, instanceUuid, UninstallResult.Reason.UUID_NOT_FOUND);
         }
         PluginInstance plugin = target.get();
         if (!force && plugin.locked()) {
-            return new UninstallResult(false, plugin.pluginId(), instanceUuid);
+            return new UninstallResult(false, plugin.pluginId(), instanceUuid, UninstallResult.Reason.LOCKED);
         }
         PrePluginUninstallEvent preEvent = new PrePluginUninstallEvent(
                 player, gun, instanceUuid, plugin.pluginId());
         NeoForge.EVENT_BUS.post(preEvent);
         if (preEvent.isCanceled()) {
-            return new UninstallResult(false, plugin.pluginId(), instanceUuid);
+            return new UninstallResult(false, plugin.pluginId(), instanceUuid, UninstallResult.Reason.CANCELED);
         }
         removePluginFromGun(gun, gunData, instanceUuid);
         if (returnItems && player != null
@@ -163,7 +166,7 @@ public final class PluginUninstallService {
         AttributeModifierService.refreshModifiers(gun, registryAccess);
         NeoForge.EVENT_BUS.post(new PostPluginUninstallEvent(
                 player, gun, plugin.pluginId(), instanceUuid));
-        return new UninstallResult(true, plugin.pluginId(), instanceUuid);
+        return new UninstallResult(true, plugin.pluginId(), instanceUuid, UninstallResult.Reason.SUCCESS);
     }
 
     /**
@@ -173,7 +176,7 @@ public final class PluginUninstallService {
      * would be force-removed. One is picked uniformly at random and
      * delegated to {@link #uninstallPlugin}. When no candidate is available
      * (empty list or all locked without {@code force}) the result is
-     * {@code (false, null, null)}.</p>
+     * {@code (false, null, null, NO_CANDIDATE)}.</p>
      *
      * <p>The random source is consistent with the install path: when
      * {@code player} is non-null, the player's server-controlled
@@ -199,13 +202,13 @@ public final class PluginUninstallService {
     ) {
         GunData gunData = readGunData(gun);
         if (gunData == null) {
-            return new UninstallResult(false, null, null);
+            return new UninstallResult(false, null, null, UninstallResult.Reason.NOT_GUN_OR_NO_DATA);
         }
         List<PluginInstance> candidates = gunData.installedPlugins().stream()
                 .filter(p -> force || !p.locked())
                 .toList();
         if (candidates.isEmpty()) {
-            return new UninstallResult(false, null, null);
+            return new UninstallResult(false, null, null, UninstallResult.Reason.NO_CANDIDATE);
         }
         // Use the player's server-controlled random source when available,
         // consistent with the install path (PluginInstallService). Fall back
