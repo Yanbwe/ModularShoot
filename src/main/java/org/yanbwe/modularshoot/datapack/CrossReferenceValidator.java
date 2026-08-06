@@ -16,7 +16,6 @@ import org.yanbwe.modularshoot.degradation.AttributeBindsDegradationHandler;
 import org.yanbwe.modularshoot.plugin.PluginDefinition;
 import org.yanbwe.modularshoot.plugin.PluginModifier;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
-import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.variant.VariantDefinition;
 
@@ -164,32 +163,6 @@ public final class CrossReferenceValidator {
                                     + "' is not registered in the vanilla damage type registry");
                 }
             });
-        }
-    }
-
-    /**
-     * Validates every {@code attribute_meta} entry's {@code binds} reference.
-     *
-     * <p>An entry whose {@code binds} points at an unregistered vanilla
-     * attribute emits a {@code WARN}. The registration predicate is shared
-     * with {@link AttributeBindsDegradationHandler#isAttributeRegistered} so
-     * the check stays in a single place (设计文档 §属性元数据 binds 失效降级).</p>
-     *
-     * @param access the reloaded registry access
-     * @param metas  the loaded logical id to {@link AttributeMeta} entries
-     */
-    public static void validateAttributeMeta(
-            RegistryAccess access, Map<ResourceLocation, AttributeMeta> metas) {
-        if (metas.isEmpty()) {
-            return;
-        }
-        for (Map.Entry<ResourceLocation, AttributeMeta> entry : metas.entrySet()) {
-            AttributeMeta meta = entry.getValue();
-            if (!AttributeBindsDegradationHandler.isAttributeRegistered(meta.binds())) {
-                DatapackErrorHandler.logReferenceWarning(entry.getKey(),
-                        "binds '" + meta.binds()
-                                + "' is not registered in the vanilla attribute registry");
-            }
         }
     }
 
