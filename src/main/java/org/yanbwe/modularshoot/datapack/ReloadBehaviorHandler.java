@@ -16,7 +16,7 @@ import org.yanbwe.modularshoot.item.ModularShootItems;
  * Handles framework-specific behaviours that must run after a datapack
  * reload completes (设计文档 §/reload 重载行为, line 2305).
  *
- * <p>After {@code /reload}, the six dynamic registries are automatically
+ * <p>After {@code /reload}, the seven dynamic registries are automatically
  * repopulated by NeoForge's {@code DataPackRegistryEvent} mechanism.
  * However, two framework-specific side effects are not automatically
  * handled:</p>
