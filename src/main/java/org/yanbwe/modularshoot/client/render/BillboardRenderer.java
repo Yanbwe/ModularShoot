@@ -77,26 +77,39 @@ public final class BillboardRenderer {
      * callers may safely invoke this for every bullet regardless of whether
      * a texture was assigned.</p>
      *
+     * <p><b>Near-camera translucency</b> (系统七 §近相机距离透明度): the
+     * {@code distanceAlpha} multiplier is folded into the tint's alpha
+     * channel before drawing. The composed tint held by the render object is
+     * never mutated — a fresh {@link Vector4f} is built when the fade is
+     * active, so {@code onVisualTick} hooks and subsequent frames keep
+     * reading the original values.</p>
+     *
      * @param renderObject the bullet to render
      * @param poseStack    the camera-space pose stack, already translated to
      *                     the bullet's interpolated position
      * @param bufferSource the vertex buffer source for submitting geometry
      * @param partialTick  the frame partial tick (reserved for future
      *                     sub-frame animation; currently unused)
-     * @param cameraPos    the camera world position — <strong>currently
-     *                     unused</strong>. Orientation is read from the live
-     *                     {@link Camera} instance obtained via
-     *                     {@link Minecraft#gameRenderer}. The parameter is
-     *                     retained for API consistency with
-     *                     {@link Model3DRenderer#render} and reserved for
-     *                     future distance-based effects (e.g. LOD scaling).
+     * @param cameraPos    the camera world position. Orientation is read from
+     *                     the live {@link Camera} instance obtained via
+     *                     {@link Minecraft#gameRenderer} rather than from this
+     *                     parameter; it is retained for API consistency with
+     *                     {@link Model3DRenderer#render} (the dispatcher also
+     *                     derives the distance fade from it).
+     * @param distanceAlpha the distance-based opacity multiplier in
+     *                     {@code [0.2, 1]} from
+     *                     {@link DistanceAlphaCurve#computeAlpha}; multiply it
+     *                     into the tint's alpha (design choice: the fade is
+     *                     multiplicative, so an already-translucent tint stays
+     *                     translucent on top of the distance fade)
      */
     public static void render(
             BulletRenderObject renderObject,
             PoseStack poseStack,
             MultiBufferSource bufferSource,
             float partialTick,
-            Vec3 cameraPos) {
+            Vec3 cameraPos,
+            float distanceAlpha) {
         ResourceLocation texture = renderObject.getTexture();
         if (texture == null) {
             return;
@@ -106,6 +119,10 @@ public final class BillboardRenderer {
         float halfSize = renderObject.getScale() * HALF_SIZE_FACTOR;
         Vector4f tint = renderObject.getComposedTint() != null
                 ? renderObject.getComposedTint() : WHITE_TINT;
+        if (distanceAlpha < 1.0F) {
+            // Copy-on-fade: never write the fade back into the render object.
+            tint = new Vector4f(tint.x, tint.y, tint.z, tint.w * distanceAlpha);
+        }
         drawBillboard(texture, halfSize, tint, poseStack, bufferSource, partialTick, cameraPos);
     }
 

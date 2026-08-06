@@ -10,16 +10,21 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.client.event.ModelEvent;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import org.joml.Vector4f;
+import org.yanbwe.modularshoot.client.config.ModularShootClientConfig;
 import org.yanbwe.modularshoot.client.render.DynamicOutlineTintRegistry;
 
 @Mod(value = ModularShoot.MODID, dist = Dist.CLIENT)
 public class ModularShootClient {
     public ModularShootClient(ModContainer container) {
         container.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
+        // First client config: near-camera bullet translucency (系统七
+        // §近相机距离透明度). Editable from Options → Mods → ModularShoot.
+        container.registerConfig(ModConfig.Type.CLIENT, ModularShootClientConfig.SPEC);
         // Demo: the visual_gun_prism plugin's whole-gun outline cycles through
         // the hue wheel per frame. Integration mods register their own
         // providers keyed by their plugin ids here in the same way.
