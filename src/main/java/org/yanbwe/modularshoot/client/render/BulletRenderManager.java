@@ -3,8 +3,10 @@ package org.yanbwe.modularshoot.client.render;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector4f;
@@ -48,9 +50,14 @@ import org.yanbwe.modularshoot.network.BulletS2CPacket.FullBulletEntry;
  * </ul>
  *
  * <p>When {@link BulletS2CPacket#forceFullSync()} is {@code true}, the manager
- * first clears its entire render-object map, then rebuilds from
- * {@link BulletS2CPacket#newBullets()} alone — the other buckets are ignored.
- * This recovers from any dropped delta packets (periodic drift recovery).</p>
+ * applies the packet as a <b>diff update</b> instead of a clear-and-rebuild:
+ * existing render objects are updated in place via
+ * {@link #updateRenderObjectFull(BulletRenderObject, FullBulletEntry)}
+ * (preserving their {@link BulletRenderObject#getPrevPosition() prevPosition}
+ * interpolation pair), new ids are created, and ids absent from the packet
+ * are removed — the other buckets are ignored. This recovers from any dropped
+ * delta packets (periodic drift recovery) without the per-interval visual
+ * jump that a full rebuild caused (设计文档 §同步策略).</p>
  *
  * <p>Position interpolation: each render object keeps a
  * {@link BulletRenderObject#getPrevPosition() prevPosition} that lags one tick
@@ -112,9 +119,14 @@ public final class BulletRenderManager {
      * with the server's current bullet state (设计文档 §客户端创建).
      *
      * <p>When {@link BulletS2CPacket#forceFullSync()} is {@code true}, the
-     * entire render-object map is cleared and rebuilt from
-     * {@link BulletS2CPacket#newBullets()} alone — the other buckets are
-     * ignored. This is the periodic drift-recovery / initial-sync path.</p>
+     * packet is applied as a <b>diff update</b> (see
+     * {@link #applyFullSyncEntries(List)}): existing render objects are
+     * updated in place — keeping their
+     * {@link BulletRenderObject#getPrevPosition() prevPosition} interpolation
+     * pair so long-flight bullets show no jump at the full-sync boundary —
+     * new ids are created, and ids absent from the packet are removed. The
+     * other buckets are ignored. This is the periodic drift-recovery /
+     * initial-sync path.</p>
      *
      * <p>Otherwise (incremental delta packet):</p>
      * <ul>
@@ -133,16 +145,46 @@ public final class BulletRenderManager {
      */
     public void handlePacket(BulletS2CPacket packet) {
         if (packet.forceFullSync()) {
-            renderObjects.clear();
-            snapshots.clear();
-            for (FullBulletEntry entry : packet.newBullets()) {
-                createRenderObject(entry);
-            }
+            applyFullSyncEntries(packet.newBullets());
             return;
         }
         processNewBullets(packet.newBullets());
         processUpdatedBullets(packet.updatedBullets());
         processRemovedBullets(packet.removedBulletIds());
+    }
+
+    /**
+     * Applies a force-full-sync packet as a diff update against the current
+     * render-object map, preserving interpolation state.
+     *
+     * <p>Each entry of the full-sync set is reconciled by id: an id that
+     * already has a render object is updated in place via
+     * {@link #updateRenderObjectFull(BulletRenderObject, FullBulletEntry)}
+     * (which advances position through
+     * {@link BulletRenderObject#updatePosition(Vec3)}, keeping the
+     * {@code prevPosition} interpolation pair), while a new id is created via
+     * {@link #createRenderObject(FullBulletEntry)}. Ids present in the map
+     * but absent from the set — bullets that expired server-side since the
+     * last sync — are removed through {@link #processRemovedBullets(List)},
+     * which also evicts their snapshots.</p>
+     *
+     * @param newBullets the full-sync set of every active bullet
+     */
+    private void applyFullSyncEntries(List<FullBulletEntry> newBullets) {
+        Set<Integer> incoming = new HashSet<>();
+        for (FullBulletEntry entry : newBullets) {
+            incoming.add(entry.bulletId());
+            BulletRenderObject existing = renderObjects.get(entry.bulletId());
+            if (existing != null) {
+                updateRenderObjectFull(existing, entry);
+            } else {
+                createRenderObject(entry);
+            }
+        }
+        List<Integer> staleIds = renderObjects.keySet().stream()
+                .filter(id -> !incoming.contains(id))
+                .toList();
+        processRemovedBullets(staleIds);
     }
 
     /**
