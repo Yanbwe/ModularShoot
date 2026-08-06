@@ -183,6 +183,25 @@ public class VariantPoolService {
         INSTANCE.rollAndApplyImpl(player, snapshot, gunData, gunDef);
     }
 
+    /**
+     * Previews the per-shot variant pool without rolling (供
+     * {@code /modularshoot variants} 调试命令展示)。Returns every candidate
+     * with its final weight, in declaration order, plus the normal-bullet
+     * fallback entry when the gun declares no {@code variants} (规格 §6.4
+     * v1.2). Percentages are derived by the caller: {@code P = finalWeight /
+     * Σ finalWeights}.
+     *
+     * @param ra      the runtime registry view
+     * @param gunDef  the gun definition declaring {@code variants}
+     * @param gunData the gun data carrying the installed plugin list
+     * @return the ordered pool preview; empty when the declared pool has no
+     *         positive-weight candidate and no fallback applies
+     */
+    public static List<PoolEntry> previewPool(
+            RegistryAccess ra, GunDefinition gunDef, GunData gunData) {
+        return INSTANCE.previewPoolImpl(ra, gunDef, gunData);
+    }
+
     // ------------------------------------------------------------------
     // Instance implementations (seam-aware; tests subclass and override
     // lookupVariant, then call these directly)
@@ -195,9 +214,39 @@ public class VariantPoolService {
      */
     protected Optional<ResourceLocation> rollImpl(
             RegistryAccess ra, RandomSource random, GunDefinition gunDef, GunData gunData) {
+        PoolBuild build = buildPool(ra, gunDef, gunData);
+        if (build.total() <= 0.0) {
+            return Optional.empty();   // 声明池全非正权重（无兜底）→ 普通弹
+        }
+        double r = random.nextDouble() * build.total();
+        double cumulative = 0.0;
+        for (WeightedCandidate c : build.candidates()) {
+            cumulative += c.weight();
+            if (r < cumulative) {
+                return Optional.of(c.id());
+            }
+        }
+        return Optional.empty();   // 落在普通弹兜底区间（或浮点舍入边界）→ 普通弹
+    }
+
+    /**
+     * Builds the per-shot candidate list once (shared by {@link #rollImpl}
+     * and {@link #previewPoolImpl}): assembles the pool, computes each
+     * candidate's final weight via {@link #calculateWeight}, excludes
+     * non-positive weights, and adds the normal-bullet fallback interval
+     * ({@link #NORMAL_FALLBACK_WEIGHT}) when the gun declares no
+     * {@code variants} (规格 §6.4 v1.2).
+     *
+     * @param ra      the runtime registry view
+     * @param gunDef  the gun definition declaring {@code variants}
+     * @param gunData the gun data carrying the installed plugin list
+     * @return the candidate list (positive weights only), the total weight
+     *         (fallback included when applicable) and whether the fallback
+     *         applies
+     */
+    private PoolBuild buildPool(RegistryAccess ra, GunDefinition gunDef, GunData gunData) {
         Map<ResourceLocation, List<AttributeModifier>> contribMods = VariantContributorRegistry.collect();
         Map<ResourceLocation, Double> pool = assemble(ra, gunDef, gunData, contribMods);
-        // 汇总遍：每候选只计算一次权重，构建候选列表并累加 total（非正权重排除）。
         List<WeightedCandidate> candidates = new ArrayList<>(pool.size());
         double total = 0.0;
         for (Map.Entry<ResourceLocation, Double> e : pool.entrySet()) {
@@ -211,21 +260,11 @@ public class VariantPoolService {
         // NORMAL_FALLBACK_WEIGHT 权重的"普通子弹"候选。roll 落在候选累积权重之外
         // （含本区间）→ 返回 empty（普通弹，静默）。声明了池的枪械无兜底，概率
         // 严格按声明权重计算。
-        if (gunDef.variants().isEmpty()) {
+        boolean normalFallback = gunDef.variants().isEmpty();
+        if (normalFallback) {
             total += NORMAL_FALLBACK_WEIGHT;
         }
-        if (total <= 0.0) {
-            return Optional.empty();   // 声明池全非正权重（无兜底）→ 普通弹
-        }
-        double r = random.nextDouble() * total;
-        double cumulative = 0.0;
-        for (WeightedCandidate c : candidates) {
-            cumulative += c.weight();
-            if (r < cumulative) {
-                return Optional.of(c.id());
-            }
-        }
-        return Optional.empty();   // 落在普通弹兜底区间（或浮点舍入边界）→ 普通弹
+        return new PoolBuild(candidates, total, normalFallback);
     }
 
     /**
@@ -255,6 +294,25 @@ public class VariantPoolService {
         RegistryAccess ra = player.registryAccess();
         rollImpl(ra, player.level().getRandom(), gunDef, gunData)
                 .ifPresent(id -> applyImpl(id, ra, snapshot));
+    }
+
+    /**
+     * Instance implementation backing {@link #previewPool}; identical
+     * semantics, dispatched through the instance so the {@link #lookupVariant}
+     * seam is honoured.
+     */
+    protected List<PoolEntry> previewPoolImpl(
+            RegistryAccess ra, GunDefinition gunDef, GunData gunData) {
+        PoolBuild build = buildPool(ra, gunDef, gunData);
+        List<PoolEntry> entries = new ArrayList<>(
+                build.candidates().size() + (build.normalFallback() ? 1 : 0));
+        for (WeightedCandidate c : build.candidates()) {
+            entries.add(new PoolEntry(c.id(), c.weight(), false));
+        }
+        if (build.normalFallback()) {
+            entries.add(new PoolEntry(null, NORMAL_FALLBACK_WEIGHT, true));
+        }
+        return entries;
     }
 
     /**
@@ -319,5 +377,28 @@ public class VariantPoolService {
 
     /** 预计算好的 roll 候选：id + 最终权重（非正权重已排除）。 */
     private record WeightedCandidate(ResourceLocation id, double weight) {
+    }
+
+    /**
+     * One candidate of the per-shot pool preview (规格 §6.4 v1.2，供
+     * {@code /modularshoot variants} 调试命令展示).
+     *
+     * @param variantId       the variant id; {@code null} for the implicit
+     *                        normal-bullet fallback entry
+     * @param finalWeight     the candidate's final weight (positive)
+     * @param normalFallback  whether this entry is the default normal-bullet
+     *                        fallback (gun declared no {@code variants})
+     */
+    public record PoolEntry(
+            @Nullable ResourceLocation variantId,
+            double finalWeight,
+            boolean normalFallback) {
+    }
+
+    /** Build result shared by {@link #rollImpl} and {@link #previewPoolImpl}. */
+    private record PoolBuild(
+            List<WeightedCandidate> candidates,
+            double total,
+            boolean normalFallback) {
     }
 }

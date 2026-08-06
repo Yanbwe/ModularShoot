@@ -14,9 +14,10 @@ import org.yanbwe.modularshoot.ModularShoot;
  *
  * <p>The root node is gated behind op permission level {@code 2}, which
  * corresponds to the conceptual {@code modularshoot.command} permission node
- * (设计文档 §调试命令). The read-only {@code stats} and {@code plugins}
- * subcommands and the mutating {@code gun} / {@code plugin} / {@code bullets}
- * / {@code debug} subcommands are all wired in {@link #buildRoot()}.</p>
+ * (设计文档 §调试命令). The read-only {@code stats} / {@code plugins} /
+ * {@code variants} subcommands and the mutating {@code gun} / {@code plugin}
+ * / {@code bullets} / {@code debug} subcommands are all wired in
+ * {@link #buildRoot()}.</p>
  *
  * @see StatsSubcommand
  * @see PluginsSubcommand
@@ -24,6 +25,7 @@ import org.yanbwe.modularshoot.ModularShoot;
  * @see PluginSubcommand
  * @see BulletsSubcommand
  * @see DebugSubcommand
+ * @see VariantsSubcommand
  */
 @EventBusSubscriber(modid = ModularShoot.MODID)
 public final class ModularShootCommand {
@@ -56,6 +58,7 @@ public final class ModularShootCommand {
                 .then(GunSubcommand.create())
                 .then(PluginSubcommand.create())
                 .then(BulletsSubcommand.create())
-                .then(DebugSubcommand.create());
+                .then(DebugSubcommand.create())
+                .then(VariantsSubcommand.create());
     }
 }

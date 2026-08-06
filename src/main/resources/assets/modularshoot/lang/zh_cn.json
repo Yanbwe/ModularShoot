@@ -21,5 +21,8 @@
   "modularshoot.command.stats_header": "枪械属性",
   "modularshoot.command.plugins_header": "已安装插件（%s）：",
   "modularshoot.command.plugin_locked": "[已锁定]",
-  "modularshoot.command.plugin_unlocked": "[未锁定]"
+  "modularshoot.command.plugin_unlocked": "[未锁定]",
+  "modularshoot.command.variants_header": "枪械变体池",
+  "modularshoot.command.variants_empty": "无候选（声明池权重全为 0）",
+  "modularshoot.command.variant_normal": "普通弹（默认兜底）"
 }

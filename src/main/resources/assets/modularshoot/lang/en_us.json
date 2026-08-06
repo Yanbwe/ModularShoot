@@ -21,5 +21,8 @@
   "modularshoot.command.stats_header": "Gun attribute stats",
   "modularshoot.command.plugins_header": "Installed plugins (%s):",
   "modularshoot.command.plugin_locked": "[Locked]",
-  "modularshoot.command.plugin_unlocked": "[Unlocked]"
+  "modularshoot.command.plugin_unlocked": "[Unlocked]",
+  "modularshoot.command.variants_header": "Gun variant pool",
+  "modularshoot.command.variants_empty": "No candidates (declared pool has all-zero weights)",
+  "modularshoot.command.variant_normal": "Normal bullet (default fallback)"
 }

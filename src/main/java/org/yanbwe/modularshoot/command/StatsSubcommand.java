@@ -38,7 +38,8 @@ public final class StatsSubcommand {
             ModularShootAttributes.ENTITY_PENETRATION,
             ModularShootAttributes.BULLET_SPEED,
             ModularShootAttributes.BULLET_SIZE,
-            ModularShootAttributes.BLOCK_PENETRATION);
+            ModularShootAttributes.BLOCK_PENETRATION,
+            ModularShootAttributes.PELLET_COUNT);
 
     private StatsSubcommand() {
     }

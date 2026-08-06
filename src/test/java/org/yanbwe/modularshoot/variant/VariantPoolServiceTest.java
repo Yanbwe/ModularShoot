@@ -260,6 +260,66 @@ class VariantPoolServiceTest {
     }
 
     // ------------------------------------------------------------------
+    // previewPool 池预览（/modularshoot variants 调试命令的数据源）
+    // ------------------------------------------------------------------
+
+    @Test
+    void previewPoolListsDeclaredCandidatesWithWeights() {
+        // 声明池：每个候选一条记录（id + 最终权重），无普通弹兜底条目。
+        // 注意：必须用显式有序的 LinkedHashMap——Map.of 的迭代顺序未指定
+        // （JDK 契约），而 previewPool 按声明顺序返回，断言 get(0)/get(1)
+        // 依赖该顺序。
+        Map<ResourceLocation, Double> declared = new java.util.LinkedHashMap<>();
+        declared.put(VARIANT_A, 1.0);
+        declared.put(VARIANT_B, 2.0);
+        GunDefinition gunDef = gunWithVariants(declared);
+        List<VariantPoolService.PoolEntry> entries =
+                VariantPoolService.previewPool(null, gunDef, gunData());
+
+        assertEquals(2, entries.size(), "声明池只有两个候选");
+        assertFalse(entries.get(0).normalFallback(), "声明候选非兜底");
+        assertEquals(VARIANT_A, entries.get(0).variantId());
+        assertEquals(1.0, entries.get(0).finalWeight(), 1e-9);
+        assertEquals(VARIANT_B, entries.get(1).variantId());
+        assertEquals(2.0, entries.get(1).finalWeight(), 1e-9);
+    }
+
+    @Test
+    void previewPoolIncludesNormalFallbackWhenUndeclared() {
+        // 未声明池 + 贡献者引入 A（hint 1.0 + ADD_VALUE 1.0 → 2.0）：
+        // 条目 = [A 2.0, 普通弹兜底 1.0]；兜底条目 variantId 为 null。
+        FakeService fake = new FakeService();
+        fake.variants.put(VARIANT_A, new VariantDefinition(
+                1.0,
+                Map.of(),
+                Map.of(),
+                Optional.empty(),
+                Optional.empty()));
+        VariantContributorRegistry.register(
+                sink -> sink.add(VARIANT_A, mod(1.0, AttributeModifier.Operation.ADD_VALUE)));
+
+        List<VariantPoolService.PoolEntry> entries =
+                fake.previewPoolImpl(null, gunWithVariants(Map.of()), gunData());
+
+        assertEquals(2, entries.size(), "未声明池 = 贡献者候选 + 普通弹兜底");
+        assertEquals(VARIANT_A, entries.get(0).variantId());
+        assertEquals(2.0, entries.get(0).finalWeight(), 1e-9);
+        assertTrue(entries.get(1).normalFallback(), "第二条为普通弹兜底");
+        assertNull(entries.get(1).variantId(), "兜底条目无变体 id");
+        assertEquals(VariantPoolService.NORMAL_FALLBACK_WEIGHT, entries.get(1).finalWeight(), 1e-9);
+    }
+
+    @Test
+    void previewPoolDeclaredPoolHasNoFallbackEntry() {
+        // 声明了池的枪械（即使全非正权重）→ 无普通弹兜底条目。
+        GunDefinition gunDef = gunWithVariants(Map.of(VARIANT_A, 0.0));
+        List<VariantPoolService.PoolEntry> entries =
+                VariantPoolService.previewPool(null, gunDef, gunData());
+
+        assertTrue(entries.isEmpty(), "非正权重候选被排除，声明池无兜底 → 空列表");
+    }
+
+    // ------------------------------------------------------------------
     // apply 改写快照（traits 合并 / stats 覆盖声明键 / 样式暂存）
     // ------------------------------------------------------------------
 
