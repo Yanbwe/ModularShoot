@@ -25,7 +25,6 @@
   "modularshoot.install.error.blocked": "安装被监听器阻止",
   "modularshoot.install.error.generic": "安装失败",
   "modularshoot.install.error.exclusive_group": "与已安装插件 %s 互斥",
-  "modularshoot.install.creative_unsupported": "创造模式不支持安装，请从创造标签页获取预装枪械",
   "modularshoot.tooltip.install_hint": "在容器界面中右键可安装到枪械",
   "modularshoot.tooltip.exclusive_group": "互斥：%s",
   "key.modularshoot.reload": "换弹",

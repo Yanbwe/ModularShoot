@@ -1,6 +1,8 @@
 package org.yanbwe.modularshoot.plugin;
 
 import java.util.Objects;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -44,24 +46,39 @@ import org.yanbwe.modularshoot.registry.gun.GunSounds;
  * and the results are written via {@code slot.set()} / {@code access.set()},
  * container sync handles the rest.</p>
  *
+ * <h2>Creative menu (Apotheosis pattern)</h2>
+ * <p>Inside the creative inventory, {@code ItemStackedOnOtherEvent} fires only
+ * on the client (the creative screen never sends container-click packets), so
+ * the install runs on the client alone. It still persists because
+ * {@link PluginInstallService#installPlugin} is deterministic (works on
+ * copies, derives the instance uuid from the player's random source) and the
+ * creative screen's {@code CreativeInventoryListener} re-syncs changed
+ * inventory slots to the server via {@code ServerboundSetCreativeModeSlot},
+ * which the server trusts for creative players. Consequences, matching the
+ * vanilla screen's structure:</p>
+ * <ul>
+ *   <li>Installs work in the <b>inventory tab</b> (real inventory slots);
+ *       the item-picker tab's {@code CONTAINER} slots are virtual templates
+ *       that never reach {@code doClick}, so stacking there is untouched.</li>
+ *   <li>Sound and rejection messages are shown locally on the client for
+ *       creative-menu clicks, since the server never fires there (W7's
+ *       single-audible-effect guarantee is preserved in real containers).</li>
+ *   <li>The consumed plugin lives on the creative cursor (client-side only);
+ *       this is invisible to the server and harmless in creative mode,
+ *       exactly like Apotheosis's gem socketing.</li>
+ * </ul>
+ *
  * <h2>Known limitations</h2>
  * <ul>
- *   <li><b>Creative menu (W5).</b> {@link net.neoforged.neoforge.event.ItemStackedOnOtherEvent}
- *       fires only on the client inside the creative inventory menu; the
- *       server never receives the event, so any install performed there would
- *       not persist. Per the event's own Javadoc advice ("listeners should
- *       require the player to be in survival mode if using capabilities that
- *       are not synced"), this handler skips installation entirely when the
- *       player is in creative mode. Creative players should obtain
- *       pre-configured guns via {@code /give} or the creative search tab
- *       instead.</li>
  *   <li><b>Sound feedback (W7).</b> The install sound is read from the gun
  *       definition's {@code sounds.plugin_install} slot (data-driven, 设计文档
- *       §音效系统); when the slot is unconfigured the install is silent. The
- *       sound is played only on the server side (and synced to the client) to
- *       avoid a doubled audible effect from the bilateral event firing. The
- *       random pitch draw is kept on both sides to preserve player-random
- *       alignment (see {@link PluginInstallService#deriveInstanceUuid}).
+ *       §音效系统); when the slot is unconfigured the install is silent. In
+ *       real containers the sound is played only on the server side (and
+ *       synced to the client) to avoid a doubled audible effect from the
+ *       bilateral event firing; in the creative menu it is played locally on
+ *       the client instead (see above). The random pitch draw is kept on both
+ *       sides to preserve player-random alignment (see
+ *       {@link PluginInstallService#deriveInstanceUuid}).
  *       Extension mods wanting a custom install sound can listen to
  *       {@code PostPluginInstallEvent} and play their own sound.</li>
  * </ul>
@@ -84,9 +101,6 @@ public final class PluginInstallEventHandler {
      *
      * <p>Filter order:</p>
      * <ol>
-     *   <li>creative-mode guard — creative players are skipped because the
-     *       event fires only on the client in the creative menu, so an
-     *       install would not persist on the server (W5 fix);</li>
      *   <li>right-click only ({@link ClickAction#SECONDARY});</li>
      *   <li>carried item is a {@code modularshoot:plugin} with {@code plugin_data};</li>
      *   <li>slot item is a {@code modularshoot:gun};</li>
@@ -94,11 +108,14 @@ public final class PluginInstallEventHandler {
      * </ol>
      * <p>On success the modified gun copy is placed into the slot via
      * {@link Slot#set}, the consumed plugin copy is placed onto the cursor via
-     * {@link SlotAccess#set}, the event is cancelled, and a sound plays
-     * (server-side only, synced to the client — W7 fix).
+     * {@link SlotAccess#set}, the event is cancelled, and a sound plays.
+     * In real containers the sound is played only on the server side (synced
+     * to the client); inside the creative menu — where the event fires on the
+     * client only — sound and rejection messages are played locally
+     * (W7 fix, see class Javadoc).
      * On failure the event is cancelled as well so the vanilla item swap is
      * suppressed and both items stay in their original slots; the localized
-     * rejection reason is shown in the action bar (P3 fix).</p>
+     * rejection reason is shown in the action bar.</p>
      *
      * @param event the stacking event fired by the container menu
      */
@@ -132,9 +149,9 @@ public final class PluginInstallEventHandler {
      * Runs the pre-install guard chain for a stacking event.
      *
      * <p>Filter order (matching the Javadoc of
-     * {@link #onItemStackedOnOther}): creative-mode guard, right-click only,
-     * carried item is a {@code modularshoot:plugin}, slot item is a
-     * {@code modularshoot:gun}, slot allows modification.</p>
+     * {@link #onItemStackedOnOther}): right-click only, carried item is a
+     * {@code modularshoot:plugin}, slot item is a {@code modularshoot:gun},
+     * slot allows modification.</p>
      *
      * @param player the player involved in the stacking event
      * @param event  the stacking event fired by the container menu
@@ -142,22 +159,6 @@ public final class PluginInstallEventHandler {
      *         {@code false} when it should be ignored
      */
     private static boolean shouldHandle(Player player, ItemStackedOnOtherEvent event) {
-        // Creative-mode guard (W5 fix): ItemStackedOnOtherEvent fires only on
-        // the client inside the creative menu, so a server-side install never
-        // happens and the result would not persist. Skip entirely for creative
-        // players, following the event Javadoc's own advice.
-        // P3 fix: give the player explicit feedback instead of a silent no-op —
-        // the creative menu's stacking event is client-only, so the action-bar
-        // hint is sent only on the client side (the server never executes this
-        // path for creative stacking).
-        if (player.isCreative()) {
-            if (player.level().isClientSide()) {
-                player.displayClientMessage(
-                        Component.translatable("modularshoot.install.creative_unsupported"), true);
-            }
-            return false;
-        }
-
         // Only handle right-click.
         if (event.getClickAction() != ClickAction.SECONDARY) {
             return false;
@@ -202,7 +203,10 @@ public final class PluginInstallEventHandler {
         access.set(result.consumedPlugin());
         event.setCanceled(true);
         float pitch = 1.5F + 0.35F * (1 - 2 * player.getRandom().nextFloat());
-        if (!player.level().isClientSide()) {
+        // One sound per perceived event: server side (synced to the client) in
+        // real containers, or locally on the client inside the creative menu
+        // where the server never fires (W7 fix, see class Javadoc).
+        if (!player.level().isClientSide() || isCreativeMenuClick(player)) {
             playInstallSound(player, stackedOnItem, pitch);
         }
     }
@@ -212,9 +216,11 @@ public final class PluginInstallEventHandler {
      *
      * <p>P3 fix: the plugin and gun stay in their original slots instead of
      * confusingly exchanging places. The localized rejection reason is shown
-     * in the action bar on the server side. The {@value #INSTALL_FAILED_KEY}
-     * lang value already ends with a colon, so the error message is appended
-     * directly without an extra ": " separator.</p>
+     * in the action bar — on the server side in real containers, or locally
+     * on the client inside the creative menu where the server never fires
+     * (see class Javadoc). The {@value #INSTALL_FAILED_KEY} lang value already
+     * ends with a colon, so the error message is appended directly without an
+     * extra ": " separator.</p>
      *
      * @param event  the stacking event to cancel
      * @param player the player to notify
@@ -223,12 +229,34 @@ public final class PluginInstallEventHandler {
     private static void rejectInstall(ItemStackedOnOtherEvent event, Player player,
             PluginInstallService.InstallResult result) {
         event.setCanceled(true);
-        if (!player.level().isClientSide()) {
+        if (!player.level().isClientSide() || isCreativeMenuClick(player)) {
             Component message = Component.translatable(INSTALL_FAILED_KEY)
                     .append(result.errorMessage()
                             .orElse(Component.translatable("modularshoot.install.error.generic")));
             player.displayClientMessage(message, true);
         }
+    }
+
+    /**
+     * Detects a stacking click inside the creative inventory menu.
+     *
+     * <p>The creative screen fires {@link ItemStackedOnOtherEvent} only on the
+     * client (its {@code doClick} path runs through
+     * {@code player.inventoryMenu} with no server-side counterpart), so sound
+     * and rejection feedback must be produced locally there. The client-only
+     * screen check is never evaluated on the server: the callers short-circuit
+     * on {@code player.level().isClientSide()} first, so the {@code Minecraft}
+     * reference is never resolved server-side.</p>
+     *
+     * @param player the player involved in the stacking event
+     * @return {@code true} when the click happened inside the creative
+     *         inventory menu and the player is in creative mode
+     */
+    private static boolean isCreativeMenuClick(Player player) {
+        if (!player.level().isClientSide() || !player.isCreative()) {
+            return false;
+        }
+        return Minecraft.getInstance().screen instanceof CreativeModeInventoryScreen;
     }
 
     /**
@@ -250,16 +278,17 @@ public final class PluginInstallEventHandler {
      * 播放插件安装音效（设计文档 §音效系统 — 数据驱动安装音效）。
      *
      * <p>音效从枪械定义 {@code sounds} 的 {@value #INSTALL_SOUND_SLOT} 槽位读取；
-     * 槽位未配置、枪械定义不存在或音效未注册时静音，不播放任何声音。仅服务端
-     * 调用（同步给客户端），保持 W7 的"仅服务端播放避免双端重复"约定。扩展模组
-     * 需要自定义安装音效可监听 {@code PostPluginInstallEvent}。</p>
+     * 槽位未配置、枪械定义不存在或音效未注册时静音，不播放任何声音。真实容器内
+     * 仅服务端调用（同步给客户端），保持 W7 的"单次可闻效果"约定；创造菜单内由
+     * 客户端本地调用（服务端在该场景从不触发事件）。扩展模组需要自定义安装音效
+     * 可监听 {@code PostPluginInstallEvent}。</p>
      *
      * <p>枪械定义声明 {@code sound_range} 时按固定可闻半径播放（与
      * {@code ShootingEngine.playShootSound} 一致），缺省用音效事件自带 range。</p>
      *
      * @param player 执行安装的玩家
      * @param gun    被安装插件的枪械 ItemStack
-     * @param pitch  随机音调（由调用方计算；双端各自独立抽取、无对齐承诺，仅服务端播放）
+     * @param pitch  随机音调（由调用方计算；双端各自独立抽取、无对齐承诺，仅播放端抽取）
      */
     private static void playInstallSound(Player player, ItemStack gun, float pitch) {
         GunData data = gun.get(ModularShootDataComponents.GUN_DATA.get());
