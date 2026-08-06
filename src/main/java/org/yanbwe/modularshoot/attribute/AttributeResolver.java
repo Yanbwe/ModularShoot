@@ -26,9 +26,10 @@ import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
  *
  * <p>The service is consumed by three paths:
  * <ul>
- *   <li><b>挂载层</b> &mdash; {@link #metaFor} + {@link #resolveBoundHolder}
- *       resolve the metadata entry and its bound vanilla attribute holder
- *       before mounting modifiers or building tooltip rows.</li>
+ *   <li><b>挂载层</b> &mdash; {@link #resolveBoundHolder} resolves the bound
+ *       vanilla attribute holder before mounting modifiers or building
+ *       tooltip rows ({@link #metaFor} is called internally by
+ *       {@link #readFinalValue} to resolve the metadata entry).</li>
  *   <li><b>结算/射速门禁/客户端预测/调试命令</b> &mdash;
  *       {@link #readFinalValue} reads the entity's final computed value in a
  *       single call, following the full chain internally.</li>

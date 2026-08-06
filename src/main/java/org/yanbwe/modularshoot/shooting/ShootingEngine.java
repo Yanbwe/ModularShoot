@@ -230,9 +230,10 @@ public final class ShootingEngine {
     // --- Step 5: Attribute snapshot --------------------------------------
 
     /**
-     * Builds the {@link BulletSnapshot} freezing all ten framework attribute
-     * values, the gun's inherent traits, the resolved damage type and the
-     * shooter identity (设计文档 §步骤五).
+     * Builds the {@link BulletSnapshot} freezing the final values of all ten
+     * framework attributes (each resolved through its {@code attribute_meta}
+     * entry's {@code binds} target), the gun's inherent traits, the resolved
+     * damage type and the shooter identity (设计文档 §步骤五).
      *
      * @param player         the shooting player (attributes read from here)
      * @param gunStack       the gun item stack (used for trait merge)
