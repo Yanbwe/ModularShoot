@@ -7,6 +7,7 @@ import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.ModularShootAPI;
+import org.yanbwe.modularshoot.attribute.AttributeResolver;
 import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
@@ -82,7 +83,8 @@ public final class ShootPacketHandler {
             // DEBUG so the rejection is visible only when diagnosing issues.
             ModularShoot.LOGGER.debug("Shoot rejected by fire-rate controller (player={}, gun={}, fireRate={})",
                     player.getName().getString(), gunData.gunId(),
-                    player.getAttributeValue(ModularShootAttributes.FIRE_RATE));
+                    AttributeResolver.readFinalValue(player, ModularShootAttributes.FIRE_RATE.getKey().location(),
+                            player.registryAccess()));
             return;
         }
         delegateToShootEngine(player, gunData);
@@ -124,14 +126,17 @@ public final class ShootPacketHandler {
 
     /**
      * Runs the fire-rate gate using the player's final {@code fire_rate}
-     * attribute value.
+     * value resolved via the {@code attribute_meta} {@code binds} chain
+     * (see {@link AttributeResolver#readFinalValue}); a missing link in the
+     * chain degrades the value to {@code 0.0} and the gate rejects the shot.
      *
      * @param player the shooting player
      * @param gunId  the gun definition id
      * @return {@code true} if the shot may proceed under the fire-rate limit
      */
     private static boolean checkFireRate(ServerPlayer player, ResourceLocation gunId) {
-        double fireRate = player.getAttributeValue(ModularShootAttributes.FIRE_RATE);
+        double fireRate = AttributeResolver.readFinalValue(player, ModularShootAttributes.FIRE_RATE.getKey().location(),
+                player.registryAccess());
         return FireRateController.canShoot(player, gunId, fireRate);
     }
 
