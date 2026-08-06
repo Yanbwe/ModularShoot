@@ -183,7 +183,7 @@ class VariantPoolServiceTest {
 
     @Test
     void undeclaredPoolGetsNormalFallback() {
-        // 规格 §6.4 v1.2：枪械**未声明** variants 时，池中默认存在权重 1.0 的
+        // 规格 §6.4：枪械**未声明** variants 时，池中默认存在权重 1.0 的
         // "普通子弹"兜底候选。否则"给普通枪加 50% 火球插件"会因单候选池恒 100%
         // 触发（这不科学）。本例：贡献者引入 A（hint 1.0 + ADD_VALUE 1.0 → 2.0），
         // 池 = {A: 2.0, 普通弹: 1.0} → A 命中率 2/3。
