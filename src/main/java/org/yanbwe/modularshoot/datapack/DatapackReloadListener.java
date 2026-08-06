@@ -121,9 +121,10 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
 
     /**
      * Executes the post-reload logic: log, enter DATAPACK phase,
-     * validate-and-summarise, check registration conflicts and missing
-     * resources, complete phase, then delegate creative-tab refresh and
-     * online-player gun refresh to {@link ReloadBehaviorHandler}.
+     * validate-and-summarise, cross-reference validation (D1), check
+     * registration conflicts and missing resources, complete phase, then
+     * delegate creative-tab refresh and online-player gun refresh to
+     * {@link ReloadBehaviorHandler}.
      *
      * @param access the reloaded registry access (all registries loaded and frozen)
      */
@@ -133,6 +134,7 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
         LoadOrderManager.enterPhase(LoadOrderManager.LoadPhase.DATAPACK);
         List<DatapackLoadSummary> summaries = collectValidationSummaries(access);
         ModularShoot.LOGGER.info(DatapackLoadSummary.formatAllSummaries(summaries));
+        validateCrossReferences(access);
         checkRegistrationConflicts(access);
         checkMissingResources(access);
         LoadOrderManager.completePhase(LoadOrderManager.LoadPhase.DATAPACK);
@@ -161,6 +163,29 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
         summaries.add(summarizeStates(access));
         summaries.add(summarizeAttributeMeta(access));
         return summaries;
+    }
+
+    /**
+     * Runs the post-reload cross-reference validation (D1): every reference
+     * a datapack entry carries to another framework table or to a vanilla
+     * registry is checked, and dangling references emit an explicit
+     * {@code WARN} via {@link DatapackErrorHandler#logReferenceWarning}
+     * (拼错 ID 显式 WARN，不再静默失效).
+     *
+     * <p>Each validator returns immediately on an empty entries map, so a
+     * missing framework registry does not cascade into warnings.</p>
+     *
+     * @param access the reloaded registry access
+     */
+    private static void validateCrossReferences(RegistryAccess access) {
+        CrossReferenceValidator.validateGuns(access,
+                collectEntries(access, ModularShootRegistries.GUNS_KEY));
+        CrossReferenceValidator.validatePlugins(access,
+                collectEntries(access, ModularShootRegistries.PLUGINS_KEY));
+        CrossReferenceValidator.validateVariants(access,
+                collectEntries(access, ModularShootRegistries.VARIANTS_KEY));
+        CrossReferenceValidator.validateAttributeMeta(access,
+                collectEntries(access, ModularShootRegistries.ATTRIBUTE_META_KEY));
     }
 
     /**
