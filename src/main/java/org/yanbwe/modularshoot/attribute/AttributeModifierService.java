@@ -2,10 +2,12 @@ package org.yanbwe.modularshoot.attribute;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import net.minecraft.core.Holder;
+import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -33,17 +35,34 @@ import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 /**
  * Computes the {@code ATTRIBUTE_MODIFIERS} component for a gun item stack.
  *
- * <p>The framework registers its preset attributes with a vanilla base of
- * {@code 0}; a gun's base values are applied through {@code ADD_VALUE}
- * modifiers written into the item's {@link DataComponents#ATTRIBUTE_MODIFIERS}
- * component. Vanilla's {@code LivingEntity.detectEquipmentUpdates} then mounts
- * these modifiers onto any player holding the gun in the main hand, so the
- * framework never manages player-side modifiers itself (设计文档 §系统五).
+ * <p>The framework describes its logical attributes (e.g.
+ * {@code modularshoot:hit_damage}) through hot-reloadable {@link AttributeMeta}
+ * entries in the {@code modularshoot:attribute_meta} datapack registry, whose
+ * {@code binds} field points at an already-registered vanilla
+ * {@link Attribute} id; a gun's base values are applied through
+ * {@code ADD_VALUE} modifiers written into the item's
+ * {@link DataComponents#ATTRIBUTE_MODIFIERS} component. Vanilla's
+ * {@code LivingEntity.detectEquipmentUpdates} then mounts these modifiers onto
+ * any player holding the gun in the main hand, so the framework never manages
+ * player-side modifiers itself (设计文档 §系统五).
+ *
+ * <p>Gun base modifiers are <em>meta 驱动</em>: the service iterates every
+ * entry of the {@code attribute_meta} registry and mounts one
+ * {@code ADD_VALUE} modifier onto the attribute resolved from the entry's
+ * {@code binds} field via {@link AttributeResolver#resolveBoundHolder}. A
+ * datapack can therefore rebind a logical attribute to <em>any</em>
+ * registered vanilla attribute (e.g. {@code modularshoot:hit_damage} →
+ * {@code minecraft:attack_damage}) without code changes; entries whose
+ * {@code binds} target is not registered are skipped (降级契约, 设计文档
+ * §属性元数据 binds 失效降级). Iterating the registry itself also means a
+ * datapack-added {@code attribute_meta} entry automatically makes the gun
+ * {@code stats} key of that logical attribute supported &mdash; no preset
+ * list to update.
  *
  * <p>The service merges two sources of modifiers into one component:
  * <ul>
  *   <li><b>Gun base values</b> &mdash; one {@code ADD_VALUE} modifier per
- *       preset attribute, all sharing the stable id
+ *       {@code attribute_meta} entry, all sharing the stable id
  *       {@link #GUN_BASE_MODIFIER_ID} ({@code modularshoot:gun_base}).</li>
  *   <li><b>Plugin modifiers</b> &mdash; the modifiers declared by each
  *       installed plugin ({@link PluginDefinition#modifiers()}), mapped from
@@ -81,23 +100,6 @@ public final class AttributeModifierService {
     public static final ResourceLocation GUN_BASE_MODIFIER_ID =
             ResourceLocation.parse("modularshoot:gun_base");
 
-    /**
-     * The ten framework preset attributes, in display-priority order. Each
-     * produces one {@code ADD_VALUE} modifier bound to the main hand.
-     */
-    private static final List<Holder<Attribute>> PRESET_ATTRIBUTES = List.of(
-            ModularShootAttributes.HIT_DAMAGE,
-            ModularShootAttributes.FIRE_RATE,
-            ModularShootAttributes.RANGE,
-            ModularShootAttributes.ACCURACY_YAW,
-            ModularShootAttributes.ACCURACY_PITCH,
-            ModularShootAttributes.ENTITY_PENETRATION,
-            ModularShootAttributes.BULLET_SPEED,
-            ModularShootAttributes.BULLET_SIZE,
-            ModularShootAttributes.BLOCK_PENETRATION,
-            ModularShootAttributes.PELLET_COUNT
-    );
-
     private AttributeModifierService() {
     }
 
@@ -105,17 +107,22 @@ public final class AttributeModifierService {
      * Computes the {@link ItemAttributeModifiers} for a gun definition,
      * applying <em>only</em> the gun base values.
      *
-     * <p>For each preset attribute the base value is resolved as follows:
+     * <p>Iterates every entry of the {@code modularshoot:attribute_meta}
+     * datapack registry and mounts one {@code ADD_VALUE} modifier per entry,
+     * resolved as follows:
      * <ol>
-     *   <li>if the gun definition declares the attribute in {@code stats},
-     *       use that declared value;</li>
-     *   <li>otherwise look up the {@code attribute_meta} default value;</li>
-     *   <li>if neither is available, fall back to {@code 0.0}.</li>
+     *   <li>the mount target is the vanilla {@link Attribute} resolved from
+     *       the entry's {@code binds} field
+     *       ({@link AttributeResolver#resolveBoundHolder});</li>
+     *   <li>the value is the gun's declared {@code stats} value for the
+     *       entry's logical id, falling back to
+     *       {@link AttributeMeta#defaultValue()} when undeclared;</li>
+     *   <li>entries whose {@code binds} target is not registered in the
+     *       vanilla {@code ATTRIBUTE} registry are skipped (降级契约).</li>
      * </ol>
-     * Each attribute produces one {@code ADD_VALUE} modifier with the stable
-     * {@link #GUN_BASE_MODIFIER_ID}, bound to {@link EquipmentSlotGroup#MAINHAND}
-     * with {@code showInTooltip = false} (the framework renders its own tooltip,
-     * 屏蔽原版属性修饰符提示行).
+     * Each modifier uses the stable {@link #GUN_BASE_MODIFIER_ID}, bound to
+     * {@link EquipmentSlotGroup#MAINHAND} with {@code showInTooltip = false}
+     * (the framework renders its own tooltip, 屏蔽原版属性修饰符提示行).
      *
      * <p>This method is retained for backward compatibility with M1 callers
      * that create a gun with an empty plugin list. Use
@@ -123,8 +130,8 @@ public final class AttributeModifierService {
      *
      * @param gunDef         the gun definition supplying declared stats
      * @param registryAccess the runtime registry view (for {@code attribute_meta})
-     * @return an immutable {@link ItemAttributeModifiers} with ten main-hand
-     *         entries and tooltip hidden
+     * @return an immutable {@link ItemAttributeModifiers} with one main-hand
+     *         entry per {@code attribute_meta} entry and tooltip hidden
      */
     public static ItemAttributeModifiers computeGunModifiers(GunDefinition gunDef, RegistryAccess registryAccess) {
         ItemAttributeModifiers.Builder builder = ItemAttributeModifiers.builder();
@@ -136,8 +143,9 @@ public final class AttributeModifierService {
      * Computes the {@link ItemAttributeModifiers} for a gun, merging both the
      * gun base values and the modifiers declared by every installed plugin.
      *
-     * <p>Base values are added first (one {@code ADD_VALUE} per preset
-     * attribute, id {@link #GUN_BASE_MODIFIER_ID}); plugin modifiers are added
+     * <p>Base values are added first (one {@code ADD_VALUE} per
+     * {@code attribute_meta} entry, id {@link #GUN_BASE_MODIFIER_ID}); plugin
+     * modifiers are added
      * afterwards, each keyed by its plugin instance's {@code instanceUuid}.
      * Modifiers targeting an attribute that is not registered in the vanilla
      * {@code ATTRIBUTE} registry are silently skipped. Plugins whose
@@ -211,64 +219,48 @@ public final class AttributeModifierService {
     }
 
     /**
-     * Resolves the registered id of an attribute holder.
+     * Resolves the gun base value for a logical attribute.
      *
-     * @param attribute the attribute holder
-     * @return the attribute's {@link ResourceLocation}, or empty for an
-     *         unregistered (direct) holder
-     */
-    private static Optional<ResourceLocation> resolveAttributeId(Holder<Attribute> attribute) {
-        return attribute.unwrapKey().map(ResourceKey::location);
-    }
-
-    /**
-     * Resolves the gun base value for a single attribute.
+     * <p>Declared gun {@code stats} take precedence; the metadata entry's
+     * {@link AttributeMeta#defaultValue()} is the fallback. The entry is
+     * always present when called from {@link #addBaseModifiers} (the loop
+     * iterates the registry itself), so no last-resort fallback is needed.
      *
-     * <p>Declared gun stats take precedence; the {@code attribute_meta}
-     * default value is the fallback; {@code 0.0} is the last-resort fallback
-     * when the metadata entry is also missing.
-     *
-     * @param attributeId    the attribute id to resolve
-     * @param gunDef         the gun definition supplying declared stats
-     * @param registryAccess the runtime registry view
+     * @param logicalId the logical attribute id to resolve
+     * @param gunDef    the gun definition supplying declared stats
+     * @param meta      the {@code attribute_meta} entry for the logical id
      * @return the base value to feed into the {@code ADD_VALUE} modifier
      */
     private static double resolveBaseValue(
-            ResourceLocation attributeId, GunDefinition gunDef, RegistryAccess registryAccess) {
-        Double declared = gunDef.stats().get(attributeId);
+            ResourceLocation logicalId, GunDefinition gunDef, AttributeMeta meta) {
+        Double declared = gunDef.stats().get(logicalId);
         if (declared != null) {
             return declared;
         }
-        return metaDefaultValue(registryAccess, attributeId).orElse(0.0);
+        return meta.defaultValue();
     }
 
     /**
-     * Looks up the default value for an attribute from the
-     * {@code attribute_meta} registry.
+     * Adds the gun base value modifiers for every {@code attribute_meta}
+     * entry to a builder (meta 驱动).
      *
-     * @param registryAccess the runtime registry view
-     * @param attributeId    the attribute id whose metadata default is sought
-     * @return the default value, or empty when the registry or entry is absent
-     */
-    private static Optional<Double> metaDefaultValue(RegistryAccess registryAccess, ResourceLocation attributeId) {
-        return registryAccess.registry(ModularShootRegistries.ATTRIBUTE_META_KEY)
-                .flatMap(reg -> reg.getOptional(attributeId))
-                .map(AttributeMeta::defaultValue);
-    }
-
-    /**
-     * Adds the gun base value modifiers for all preset attributes to a builder.
+     * <p>Iterates the {@code modularshoot:attribute_meta} datapack registry;
+     * each entry produces one {@code ADD_VALUE} modifier mounted onto the
+     * vanilla {@link Attribute} resolved from its {@code binds} field via
+     * {@link AttributeResolver#resolveBoundHolder}, with the stable
+     * {@link #GUN_BASE_MODIFIER_ID}, bound to
+     * {@link EquipmentSlotGroup#MAINHAND}. The value is the gun's declared
+     * {@code stats} for the entry's logical id, falling back to
+     * {@link AttributeMeta#defaultValue()} when undeclared. Extracted from
+     * {@link #computeGunModifiers} so {@link #computeAllModifiers} can reuse
+     * the same logic before appending plugin modifiers.</p>
      *
-     * <p>Each preset attribute produces one {@code ADD_VALUE} modifier with the
-     * stable {@link #GUN_BASE_MODIFIER_ID}, bound to
-     * {@link EquipmentSlotGroup#MAINHAND}. Extracted from
-     * {@link #computeGunModifiers} so {@link #computeAllModifiers} can reuse the
-     * same logic before appending plugin modifiers.</p>
-     *
-     * <p>Attributes whose registry id is not registered in
-     * {@link BuiltInRegistries#ATTRIBUTE} are silently skipped &mdash; no
-     * modifier is mounted and no exception is thrown. This covers the
-     * binds-degradation contract (设计文档 §属性元数据 binds 失效降级):
+     * <p><strong>Degradation contract.</strong> When the
+     * {@code attribute_meta} registry is absent no modifiers are added
+     * (注册表缺失 → 无基础修饰符). Entries whose {@code binds} target is not
+     * registered in {@link BuiltInRegistries#ATTRIBUTE} are silently skipped
+     * &mdash; no modifier is mounted and no exception is thrown. This covers
+     * the binds-degradation contract (设计文档 §属性元数据 binds 失效降级):
      * when a third-party attribute body is uninstalled, its metadata entry
      * remains but the modifier is not mounted. The check is delegated to
      * {@link AttributeBindsDegradationHandler#isAttributeRegistered} so the
@@ -280,16 +272,25 @@ public final class AttributeModifierService {
      */
     private static void addBaseModifiers(
             ItemAttributeModifiers.Builder builder, GunDefinition gunDef, RegistryAccess registryAccess) {
-        for (Holder<Attribute> attribute : PRESET_ATTRIBUTES) {
-            resolveAttributeId(attribute).ifPresent(id -> {
-                if (!AttributeBindsDegradationHandler.isAttributeRegistered(id)) {
-                    return;
-                }
-                double baseValue = resolveBaseValue(id, gunDef, registryAccess);
-                AttributeModifier modifier = new AttributeModifier(
-                        GUN_BASE_MODIFIER_ID, baseValue, AttributeModifier.Operation.ADD_VALUE);
-                builder.add(attribute, modifier, EquipmentSlotGroup.MAINHAND);
-            });
+        Registry<AttributeMeta> metaRegistry =
+                registryAccess.registry(ModularShootRegistries.ATTRIBUTE_META_KEY).orElse(null);
+        if (metaRegistry == null) {
+            return;  // 注册表缺失 → 无基础修饰符（降级）
+        }
+        for (Map.Entry<ResourceKey<AttributeMeta>, AttributeMeta> entry : metaRegistry.entrySet()) {
+            ResourceLocation logicalId = entry.getKey().location();
+            AttributeMeta meta = entry.getValue();
+            if (!AttributeBindsDegradationHandler.isAttributeRegistered(meta.binds())) {
+                continue;  // binds 目标未注册 → 跳过（降级契约）
+            }
+            Holder<Attribute> holder = AttributeResolver.resolveBoundHolder(meta);
+            if (holder == null) {
+                continue;  // 防御：上面已检查，正常不会发生
+            }
+            double value = resolveBaseValue(logicalId, gunDef, meta);
+            AttributeModifier modifier = new AttributeModifier(
+                    GUN_BASE_MODIFIER_ID, value, AttributeModifier.Operation.ADD_VALUE);
+            builder.add(holder, modifier, EquipmentSlotGroup.MAINHAND);
         }
     }
 
