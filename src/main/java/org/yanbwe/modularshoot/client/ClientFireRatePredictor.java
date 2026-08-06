@@ -16,6 +16,7 @@ import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.ModularShootAPI;
+import org.yanbwe.modularshoot.attribute.AttributeResolver;
 import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
@@ -34,14 +35,20 @@ import org.yanbwe.modularshoot.component.ModularShootDataComponents;
  * locally to drive the {@code per_shot} texture mode and the arm-recoil
  * animation with the same per-shot cadence the server enforces.</p>
  *
- * <p><b>Prediction accuracy:</b> the {@code fire_rate} attribute is
- * {@code syncable} (see {@link ModularShootAttributes}), so the client sees the
- * same final value the server uses. The interval formula
- * {@code max(1, round(20 / fireRate))} is replicated verbatim from
- * {@code FireRateController.computeInterval}. Minor tick-skew between client
- * and server is acceptable: this predictor drives only <em>visuals</em>
- * (texture flash + arm pose); it never decides whether a bullet actually
- * spawns &mdash; that remains the server's exclusive responsibility.</p>
+ * <p><b>Prediction accuracy:</b> the client resolves the {@code fire_rate}
+ * value via
+ * {@link org.yanbwe.modularshoot.attribute.AttributeResolver#readFinalValue},
+ * following the {@code attribute_meta} {@code binds} chain exactly as the
+ * server-side gate does. When the bound target attribute is not
+ * {@code syncable} the client reads {@code 0.0} and prediction is silently
+ * disabled (降级路径, consistent with
+ * {@link org.yanbwe.modularshoot.degradation.AttributeBindsDegradationHandler}).
+ * The interval formula {@code max(1, round(20 / fireRate))} is replicated
+ * verbatim from {@code FireRateController.computeInterval}. Minor tick-skew
+ * between client and server is acceptable: this predictor drives only
+ * <em>visuals</em> (texture flash + arm pose); it never decides whether a
+ * bullet actually spawns &mdash; that remains the server's exclusive
+ * responsibility.</p>
  *
  * <p><b>State:</b> a {@code player uuid &rarr; (gun id &rarr; last shoot tick)}
  * map, mirroring {@code FireRateController}'s structure. The state lives only
@@ -85,7 +92,8 @@ public final class ClientFireRatePredictor {
      *         predicted fire-rate limit
      */
     public static boolean shouldPredictShoot(Player player) {
-        double fireRate = player.getAttributeValue(ModularShootAttributes.FIRE_RATE);
+        double fireRate = AttributeResolver.readFinalValue(player, ModularShootAttributes.FIRE_RATE.getKey().location(),
+                player.registryAccess());
         if (fireRate <= 0.0) {
             return false;
         }
