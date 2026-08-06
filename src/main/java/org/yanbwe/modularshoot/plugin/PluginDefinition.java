@@ -68,6 +68,10 @@ import org.yanbwe.modularshoot.registry.gun.TextureScaleMode;
  *   <li>{@code description} &mdash; optional long-form description.</li>
  *   <li>{@code color} &mdash; optional name colour (e.g.
  *       {@code "#FF4444"}).</li>
+ *   <li>{@code adds_variants} &mdash; optional "variant id → base weight"
+ *       map appended to the gun's per-shot variant pool (设计规格 §6.2 来源表：
+ *       插件向枪的池子追加变体 id + base_weight); defaults to an empty
+ *       map.</li>
  * </ul>
  *
  * @param tags           tag ids for category intersection matching
@@ -90,6 +94,9 @@ import org.yanbwe.modularshoot.registry.gun.TextureScaleMode;
  * @param brief          optional one-line summary
  * @param description    optional long-form description
  * @param color          optional name colour
+ * @param addsVariants   optional variant id → base weight map appended to the
+ *                       gun's per-shot variant pool (设计规格 §6.2); empty
+ *                       when the plugin adds no variants
  */
 public record PluginDefinition(
         List<ResourceLocation> tags,
@@ -106,7 +113,8 @@ public record PluginDefinition(
         Optional<String> name,
         Optional<String> brief,
         Optional<String> description,
-        Optional<String> color
+        Optional<String> color,
+        Map<ResourceLocation, Double> addsVariants
 ) {
     public static final Codec<PluginDefinition> CODEC = RecordCodecBuilder.create(
             instance -> instance.group(
@@ -126,7 +134,10 @@ public record PluginDefinition(
                     Codec.STRING.optionalFieldOf("name").forGetter(PluginDefinition::name),
                     Codec.STRING.optionalFieldOf("brief").forGetter(PluginDefinition::brief),
                     Codec.STRING.optionalFieldOf("description").forGetter(PluginDefinition::description),
-                    Codec.STRING.optionalFieldOf("color").forGetter(PluginDefinition::color)
+                    Codec.STRING.optionalFieldOf("color").forGetter(PluginDefinition::color),
+                    Codec.unboundedMap(ResourceLocation.CODEC, Codec.DOUBLE)
+                            .optionalFieldOf("adds_variants", Map.of())
+                            .forGetter(PluginDefinition::addsVariants)
             ).apply(instance, PluginDefinition::new)
     );
 }

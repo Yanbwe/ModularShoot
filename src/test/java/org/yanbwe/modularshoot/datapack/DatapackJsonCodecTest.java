@@ -7,8 +7,10 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import net.minecraft.resources.ResourceLocation;
 import org.junit.jupiter.api.Test;
 import org.yanbwe.modularshoot.registry.Trait;
+import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
 import org.yanbwe.modularshoot.registry.gun.BulletStyle;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.Modifier;
@@ -126,6 +128,17 @@ class DatapackJsonCodecTest {
                 "visual_bloodlust declares tint + scale visual modifiers");
         assertEquals("tint", trait.visualModifiers().get(0).type());
         assertEquals("scale", trait.visualModifiers().get(1).type());
+    }
+
+    // --- attribute_meta ---
+
+    @Test
+    void pelletCountMetaParses() {
+        AttributeMeta meta = parse("attribute_meta/pellet_count.json", AttributeMeta.CODEC);
+        assertEquals(1.0, meta.defaultValue(),
+                "pellet_count defaults to a single pellet per shot (多弹丸规格 §3.2)");
+        assertEquals(ResourceLocation.parse("modularshoot:pellet_count"), meta.binds(),
+                "pellet_count binds to its own built-in attribute body");
     }
 
     // --- states ---

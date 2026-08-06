@@ -1,6 +1,9 @@
 {
   "tags": ["c:barrel", "c:accessory"],
   "priority": 60,
+  "adds_variants": {
+    "modularshoot:demo_fireball": 0.5
+  },
   "item_icon": "modularshoot:textures/bullet/test_fireball.png",
   "modifiers": [
     { "attribute": "hit_damage", "operation": "multiply", "value": 0.1 }

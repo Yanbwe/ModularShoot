@@ -48,6 +48,8 @@ public final class ModularShootAttributes {
             register("bullet_size", 0.0, 1024.0);
     public static final DeferredHolder<Attribute, Attribute> BLOCK_PENETRATION =
             register("block_penetration", 0.0, 1024.0);
+    public static final DeferredHolder<Attribute, Attribute> PELLET_COUNT =
+            register("pellet_count", 0.0, 1024.0);
 
     private ModularShootAttributes() {
     }
@@ -102,5 +104,9 @@ public final class ModularShootAttributes {
 
     public static Holder<Attribute> blockPenetrationHolder() {
         return BLOCK_PENETRATION;
+    }
+
+    public static Holder<Attribute> pelletCountHolder() {
+        return PELLET_COUNT;
     }
 }

@@ -73,6 +73,9 @@ import org.yanbwe.modularshoot.registry.gun.GunDefinition;
  *   <li>{@code sounds} — sound slot name → sound event id</li>
  *   <li>{@code bullet_style} — optional projectile appearance; absent →
  *       default bullet appearance (pure collision body)</li>
+ *   <li>{@code variants} — optional variant id → base weight map feeding the
+ *       per-shot variant pool (设计规格 §6.2 来源表：枪械声明变体 id +
+ *       base_weight); absent → empty map (no variants declared)</li>
  * </ul>
  *
  * @see GunDefinition#CODEC

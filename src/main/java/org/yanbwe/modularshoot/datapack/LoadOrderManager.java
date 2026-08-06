@@ -16,8 +16,8 @@ import org.slf4j.LoggerFactory;
  * sequence of phases:</p>
  * <ol>
  *   <li>{@link LoadPhase#PRESET} &mdash; framework preset content: the
- *       nine {@code Attribute} bodies registered via
- *       {@code DeferredRegister}, the nine {@code attribute_meta}
+ *       ten {@code Attribute} bodies registered via
+ *       {@code DeferredRegister}, the ten {@code attribute_meta}
  *       entries, and the built-in {@code bullet_damage} damage type.
  *       These are baked into the mod jar and never change at runtime.</li>
  *   <li>{@link LoadPhase#JAVA_API} &mdash; Java API registration: add-on
@@ -101,8 +101,8 @@ public final class LoadOrderManager {
         /**
          * Framework preset content phase.
          *
-         * <p>Registers the nine {@code Attribute} bodies via
-         * {@code DeferredRegister}, the nine {@code attribute_meta}
+         * <p>Registers the ten {@code Attribute} bodies via
+         * {@code DeferredRegister}, the ten {@code attribute_meta}
          * entries, and the built-in {@code bullet_damage} damage type.
          * This content is baked into the mod jar and never changes at
          * runtime (设计文档 §加载顺序, line 2299).</p>

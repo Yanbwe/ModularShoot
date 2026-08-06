@@ -11,6 +11,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.damagesource.DamageType;
 import org.jetbrains.annotations.Nullable;
+import org.yanbwe.modularshoot.registry.gun.BulletStyle;
 import org.yanbwe.modularshoot.state.StateDefinition;
 import org.yanbwe.modularshoot.state.StateDomain;
 import org.yanbwe.modularshoot.state.StateRegistry;
@@ -62,6 +63,10 @@ public final class BulletSnapshot {
      * §三层归属 per-bullet).
      */
     private final Map<ResourceLocation, Object> state;
+    /**
+     * 变体 JSON 的 bullet_style_override，服务端 compose 读，不序列化到客户端。
+     */
+    private BulletStyle variantStyleOverride;  // 可空，默认 null
 
     /**
      * @param stats           attribute id → final value (copied defensively)
@@ -127,6 +132,13 @@ public final class BulletSnapshot {
     /** Sets or overwrites the stat value for the given attribute id. */
     public void setStat(ResourceLocation id, double value) {
         stats.put(id, value);
+    }
+
+    /**
+     * 将指定属性的值乘以 factor（机制三效果贡献者的倍率乘算）。
+     */
+    public void multiplyStat(ResourceLocation id, double factor) {
+        stats.put(id, getStat(id) * factor);
     }
 
     /** Returns the trait flag for the given trait id, or {@code false} if absent. */
@@ -383,5 +395,31 @@ public final class BulletSnapshot {
     @Nullable
     public UUID getGunInstanceUuid() {
         return gunInstanceUuid;
+    }
+
+    /**
+     * 返回变体 JSON 的 bullet_style_override；未设置时为 {@code null}。
+     * 服务端变体选举写入、compose 读取，不序列化到客户端（encodeState/decodeState 不触碰）。
+     */
+    @Nullable
+    public BulletStyle getVariantStyleOverride() {
+        return variantStyleOverride;
+    }
+
+    /**
+     * 设置变体 JSON 的 bullet_style_override（可空，置 {@code null} 清除）。
+     * 仅服务端使用：客户端不参与变体逻辑，该字段不走任何网络序列化。
+     */
+    public void setVariantStyleOverride(@Nullable BulletStyle variantStyleOverride) {
+        this.variantStyleOverride = variantStyleOverride;
+    }
+
+    /**
+     * 深拷贝本快照（stats/traits/state 防御拷贝），供多弹丸循环逐颗分化（规格 §3.2）。
+     */
+    public BulletSnapshot copy() {
+        BulletSnapshot copied = new BulletSnapshot(stats, traits, damageType, shooter, gunId, gunInstanceUuid, state);
+        copied.variantStyleOverride = this.variantStyleOverride;
+        return copied;
     }
 }

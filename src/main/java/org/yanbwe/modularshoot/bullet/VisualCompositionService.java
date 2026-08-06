@@ -40,7 +40,7 @@ import org.yanbwe.modularshoot.state.StateWarnLogger;
  *
  * <h2>Sources and priority</h2>
  *
- * <p>Four source groups stack additively into the composed style (spec §4.2
+ * <p>Five source groups stack additively into the composed style (spec §4.2
  * algorithm):</p>
  *
  * <ol>
@@ -61,10 +61,19 @@ import org.yanbwe.modularshoot.state.StateWarnLogger;
  *       condition holds against the per-bullet (first) or per-gun state map
  *       at creation time contributes its modifiers (spec §3.5 domain
  *       resolution).</li>
+ *   <li><b>Variant {@code bullet_style_override}</b> (priority
+ *       {@code Integer.MAX_VALUE}) &mdash; the {@link BulletStyle} staged by
+ *       the server-side variant roll via
+ *       {@link BulletSnapshot#getVariantStyleOverride()}. Its base joins the
+ *       base election at the highest possible priority and therefore always
+ *       wins over gun/plugin/trait/state sources; its modifiers stack
+ *       additively like any other source (spec §V6).</li>
  * </ol>
  *
- * <p>Base election: last-wins by priority; equal priority later install
- * wins; no candidate &rarr; {@link ComposedBulletStyle#FALLBACK_BASE}.</p>
+ * <p>Base election: a variant-override candidate beats every non-override
+ * candidate regardless of priority (规格 V6「高于一切来源」); among
+ * non-overrides, last-wins by priority and later install at equal priority;
+ * no candidate &rarr; {@link ComposedBulletStyle#FALLBACK_BASE}.</p>
  *
  * <h2>Compute</h2>
  *
@@ -296,7 +305,7 @@ public class VisualCompositionService {
     // ------------------------------------------------------------------
 
     /**
-     * Internal collector that walks the four source groups, accumulating
+     * Internal collector that walks the five source groups, accumulating
      * base candidates, top-level scale/tint modifiers and additive layer
      * modifiers. Mutates its own lists; the outer {@link #compose} method
      * reads them after {@link #collectAll()} completes.
@@ -325,6 +334,7 @@ public class VisualCompositionService {
             collectPlugins();
             collectTraits();
             collectStateConditions();
+            collectVariantOverride();
         }
 
         private void collectGun(int priority) {
@@ -336,9 +346,19 @@ public class VisualCompositionService {
                 return;
             }
             gd.get().bulletStyle().ifPresent(style -> {
-                style.base().ifPresent(b -> baseCands.add(new BaseCandidate(b, priority, 0)));
+                style.base().ifPresent(b -> baseCands.add(new BaseCandidate(b, priority, 0, false)));
                 addModifiers(style.modifiers());
             });
+        }
+
+        /** 变体 bullet_style_override：base 以最高优先级参选，modifiers 照常叠加（规格 V6）。 */
+        private void collectVariantOverride() {
+            BulletStyle override = snapshot.getVariantStyleOverride();
+            if (override == null) {
+                return;
+            }
+            override.base().ifPresent(b -> baseCands.add(new BaseCandidate(b, Integer.MAX_VALUE, 0, true)));
+            addModifiers(override.modifiers());
         }
 
         private void collectPlugins() {
@@ -358,7 +378,7 @@ public class VisualCompositionService {
                 final int priority = pd.get().priority();
                 final int capturedInstallIdx = installIdx;
                 pd.get().bulletStyle().ifPresent(style -> {
-                    style.base().ifPresent(b -> baseCands.add(new BaseCandidate(b, priority, capturedInstallIdx)));
+                    style.base().ifPresent(b -> baseCands.add(new BaseCandidate(b, priority, capturedInstallIdx, false)));
                     addModifiers(style.modifiers());
                 });
                 installIdx++;
@@ -465,9 +485,11 @@ public class VisualCompositionService {
         }
 
         /**
-         * Picks the winning base candidate: highest priority, then higher
-         * install index (later-installed) at equal priority. Empty list
-         * &rarr; {@link ComposedBulletStyle#FALLBACK_BASE}.
+         * Picks the winning base candidate: a {@code variantOverride} flag
+         * outranks priority/install order (变体「高于一切来源」, 规格 V6),
+         * then highest priority, then higher install index (later-installed)
+         * at equal priority. Empty list &rarr;
+         * {@link ComposedBulletStyle#FALLBACK_BASE}.
          *
          * @return the winning base, never {@code null}
          */
@@ -477,15 +499,18 @@ public class VisualCompositionService {
             }
             BaseCandidate winner = baseCands.get(0);
             for (BaseCandidate c : baseCands) {
-                if (c.priority > winner.priority
-                        || (c.priority == winner.priority && c.installIdx > winner.installIdx)) {
+                if (c.variantOverride() != winner.variantOverride()
+                        ? c.variantOverride()
+                        : c.priority() > winner.priority()
+                                || (c.priority() == winner.priority() && c.installIdx() > winner.installIdx())) {
                     winner = c;
                 }
             }
             return winner.base;
         }
 
-        private record BaseCandidate(BulletStyle.Base base, int priority, int installIdx) {
+        private record BaseCandidate(
+                BulletStyle.Base base, int priority, int installIdx, boolean variantOverride) {
         }
     }
 }

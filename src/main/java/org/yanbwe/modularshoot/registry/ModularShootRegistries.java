@@ -5,6 +5,7 @@ import org.yanbwe.modularshoot.plugin.PluginDefinition;
 import org.yanbwe.modularshoot.plugin.PluginTypeDefinition;
 import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
+import org.yanbwe.modularshoot.registry.variant.VariantDefinition;
 import org.yanbwe.modularshoot.state.StateDefinition;
 
 import com.mojang.serialization.Codec;
@@ -17,19 +18,20 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.registries.DataPackRegistryEvent;
 
 /**
- * Central declaration of the framework's six dynamic datapack registries.
+ * Central declaration of the framework's seven dynamic datapack registries.
  *
- * <p>Five framework registries ({@code guns}, {@code plugins},
- * {@code plugin_types}, {@code traits}, {@code states}) and one attribute
- * metadata table ({@code attribute_meta}) are registered through NeoForge's
+ * <p>Six framework registries ({@code guns}, {@code plugins},
+ * {@code plugin_types}, {@code traits}, {@code states}, {@code variants}) and
+ * one attribute metadata table ({@code attribute_meta}) are registered
+ * through NeoForge's
  * {@link DataPackRegistryEvent.NewRegistry} mechanism rather than static
  * {@code DeferredRegister}s. This keeps them hot-reloadable via {@code /reload}
  * and allows datapack JSON to populate the same registry instances used by the
  * Java API.</p>
  *
- * <p>All six registries are registered with a non-null network codec so their
- * contents are synced to clients on connect (clients must have the mod to join
- * a server that uses these registries).</p>
+ * <p>All seven registries are registered with a non-null network codec so
+ * their contents are synced to clients on connect (clients must have the mod
+ * to join a server that uses these registries).</p>
  *
  * <p>Data JSONs are loaded from
  * {@code data/<datapack_namespace>/modularshoot/<registry_path>/}.</p>
@@ -62,6 +64,10 @@ public final class ModularShootRegistries {
     public static final ResourceKey<Registry<AttributeMeta>> ATTRIBUTE_META_KEY =
             createRegistryKey("attribute_meta");
 
+    /** Registry key for {@code modularshoot:variants} — random variant definitions. */
+    public static final ResourceKey<Registry<VariantDefinition>> VARIANTS_KEY =
+            createRegistryKey("variants");
+
     /**
      * Builds a root registry key under the mod's namespace.
      *
@@ -75,7 +81,7 @@ public final class ModularShootRegistries {
     }
 
     /**
-     * Registers all six framework datapack registries.
+     * Registers all seven framework datapack registries.
      *
      * <p>Each registry is registered with its codec as both the load codec and
      * the network codec, so entries are synced to clients. This event fires on
@@ -91,6 +97,7 @@ public final class ModularShootRegistries {
         register(event, TRAITS_KEY, Trait.CODEC);
         register(event, STATES_KEY, StateDefinition.CODEC);
         register(event, ATTRIBUTE_META_KEY, AttributeMeta.CODEC);
+        register(event, VARIANTS_KEY, VariantDefinition.CODEC);
     }
 
     /**

@@ -37,6 +37,9 @@ import org.jetbrains.annotations.Nullable;
  *   <li>{@code sounds} — sound slot name (e.g. {@code "shoot"}) → sound event
  *       id.</li>
  *   <li>{@code bullet_style} — optional projectile appearance.</li>
+ *   <li>{@code variants} — variant id → base weight, feeding the per-shot
+ *       variant pool (设计规格 §6.2 来源表：枪械声明变体 id + base_weight);
+ *       optional, defaults to an empty map.</li>
  * </ul>
  *
  * @param name             optional display name; empty when the caller should
@@ -54,6 +57,9 @@ import org.jetbrains.annotations.Nullable;
  * @param sounds           sound bindings keyed by slot name
  * @param bulletStyle      optional projectile visual style; empty when the
  *                         default (pure collision body) appearance is used
+ * @param variants         optional variant id → base weight map for the
+ *                         per-shot variant pool (设计规格 §6.2); empty when
+ *                         the gun declares no variants
  */
 public record GunDefinition(
         Optional<String> name,
@@ -65,7 +71,8 @@ public record GunDefinition(
         Map<ResourceLocation, Boolean> traits,
         Map<ResourceLocation, Integer> slots,
         Map<String, ResourceLocation> sounds,
-        Optional<BulletStyle> bulletStyle
+        Optional<BulletStyle> bulletStyle,
+        Map<ResourceLocation, Double> variants
 ) {
     public static final Codec<GunDefinition> CODEC = RecordCodecBuilder.create(
             instance -> instance.group(
@@ -78,7 +85,8 @@ public record GunDefinition(
                     Codec.unboundedMap(ResourceLocation.CODEC, Codec.BOOL).optionalFieldOf("traits", Map.of()).forGetter(GunDefinition::traits),
                     Codec.unboundedMap(ResourceLocation.CODEC, Codec.INT).optionalFieldOf("slots", Map.of()).forGetter(GunDefinition::slots),
                     Codec.unboundedMap(Codec.STRING, ResourceLocation.CODEC).optionalFieldOf("sounds", Map.of()).forGetter(GunDefinition::sounds),
-                    BulletStyle.CODEC.optionalFieldOf("bullet_style").forGetter(GunDefinition::bulletStyle)
+                    BulletStyle.CODEC.optionalFieldOf("bullet_style").forGetter(GunDefinition::bulletStyle),
+                    Codec.unboundedMap(ResourceLocation.CODEC, Codec.DOUBLE).optionalFieldOf("variants", Map.of()).forGetter(GunDefinition::variants)
             ).apply(instance, GunDefinition::new)
     );
 

@@ -1,0 +1,8 @@
+{
+  "binds": "modularshoot:pellet_count",
+  "default_value": 1.0,
+  "description": "单发弹丸数",
+  "color": "#55FFFF",
+  "priority": 0,
+  "force_show": false
+}

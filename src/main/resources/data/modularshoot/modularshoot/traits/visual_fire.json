@@ -1,0 +1,12 @@
+{
+  "default_value": false,
+  "name": "视觉测试·火焰",
+  "description": "激活后子弹染成红橙色并附烈焰色泽",
+  "color": "#FF7722",
+  "brief": "子弹染成火焰色（trait visual_modifiers）",
+  "force_show": true,
+  "priority": 30,
+  "visual_modifiers": [
+    { "type": "tint", "color": [1.0, 0.4, 0.1] }
+  ]
+}

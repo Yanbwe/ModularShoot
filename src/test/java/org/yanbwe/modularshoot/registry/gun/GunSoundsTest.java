@@ -28,7 +28,8 @@ class GunSoundsTest {
                 Map.of(),
                 Map.of(),
                 sounds,
-                Optional.empty());
+                Optional.empty(),
+                Map.of());
     }
 
     @Test

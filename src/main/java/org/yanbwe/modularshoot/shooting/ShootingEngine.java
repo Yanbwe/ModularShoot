@@ -1,7 +1,9 @@
 package org.yanbwe.modularshoot.shooting;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import net.minecraft.core.Holder;
@@ -35,6 +37,7 @@ import org.yanbwe.modularshoot.network.ShootAnimSyncService;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 import org.yanbwe.modularshoot.registry.gun.GunSounds;
+import org.yanbwe.modularshoot.variant.VariantPoolService;
 
 /**
  * Server-side shooting engine orchestrator (设计文档 §射击时序步骤 3-9).
@@ -49,23 +52,25 @@ import org.yanbwe.modularshoot.registry.gun.GunSounds;
  *   <li><b>PreShootEvent</b> — fires a cancelable {@link PreShootEvent}; a
  *       canceled event aborts the shot without consuming the fire-rate
  *       cooldown.</li>
- *   <li><b>Attribute snapshot</b> — reads the final values of all nine
+ *   <li><b>Attribute snapshot</b> — reads the final values of all ten
  *       framework attributes from the player, reads the gun's inherent
  *       boolean traits, resolves the damage type (per-gun state preset or
  *       framework default), and freezes everything into a
  *       {@link BulletSnapshot}.</li>
- *   <li><b>Spread</b> — derives the bullet direction from the player's
- *       server-side look angle and applies elliptical spread via
- *       {@link SpreadCalculator}. The client's direction is never trusted.</li>
- *   <li><b>Register bullet</b> — spawns a {@link BulletRecord} at the
- *       player's eye position and registers it with the per-dimension
- *       {@link BulletManager}, then marks it as created this tick so the
- *       tick-end sync sends a full packet even if the bullet is removed by
- *       collision in the same Pre step (设计文档 §短寿命子弹保证).</li>
+ *   <li><b>Spread per pellet</b> — for every pellet, derives an independent
+ *       bullet direction from the player's server-side look angle and
+ *       applies elliptical spread via {@link SpreadCalculator} (每颗独立
+ *       采样，天然形成霰弹分布). The client's direction is never trusted.</li>
+ *   <li><b>Register bullets</b> — registers one bullet per pellet at the
+ *       player's eye position with the per-dimension {@link BulletManager},
+ *       then marks each as created this tick so the tick-end sync sends a
+ *       full packet even if the bullet is removed by collision in the same
+ *       Pre step (设计文档 §短寿命子弹保证).</li>
  *   <li><b>Sound</b> — plays the gun's {@code shoot} sound slot at the
  *       shooter's position, if the gun definition defines one.</li>
  *   <li><b>PostShootEvent</b> — fires a non-cancelable
- *       {@link PostShootEvent} carrying the live {@link BulletRecord}.</li>
+ *       {@link PostShootEvent} carrying every pellet's live
+ *       {@link BulletRecord}.</li>
  * </ol>
  *
  * <p>Each step is a short-circuit guard: the first failure aborts the entire
@@ -103,6 +108,10 @@ public final class ShootingEngine {
             ModularShootAttributes.BULLET_SIZE.getKey().location();
     private static final ResourceLocation BLOCK_PENETRATION_ID =
             ModularShootAttributes.BLOCK_PENETRATION.getKey().location();
+    private static final ResourceLocation PELLET_COUNT_ID =
+            ModularShootAttributes.PELLET_COUNT.getKey().location();
+    /** 单发弹丸数上限；超限 clamp + WARN（规格 §3.3）。 */
+    private static final int MAX_PELLETS = 32;
 
     /** Per-gun state key for the reserved ammo-damage-type preset (设计文档 §伤害类型预设机制一). */
     private static final String AMMO_DAMAGE_TYPE_STATE_KEY = "modularshoot:ammo_damage_type";
@@ -159,30 +168,17 @@ public final class ShootingEngine {
         }
         // Step 5: build the frozen attribute/trait snapshot.
         BulletSnapshot snapshot = buildSnapshot(player, gunStack, gunData, gunDefinition);
-        // Step 6: apply server-side spread to the look angle.
-        Vec3 direction = applySpread(player, snapshot);
-        // Step 7: register the bullet with the per-dimension BulletManager.
-        BulletRecord bulletRecord = registerBullet(player, snapshot, direction, gunData);
-        // Mark the new bullet as created this tick so that the tick-end
-        // sync includes it in the newBullets bucket — even if the bullet is
-        // removed by collision before the Post tick event fires (设计文档
-        // §短寿命子弹保证, line 1276: "子弹在创建 tick 末强制同步一次完整包").
-        // The actual packet is sent at tick end from BulletSyncService,
-        // aligning with the design doc's "创建 tick 末" timing requirement.
-        BulletSyncService.markBulletCreated(player.level(), bulletRecord);
-        // Step 8: play the shoot sound at the shooter's position.
+        // Step 5b: 变体池 roll（整发一次）；无选中 → 普通弹（静默，规格 §6.4）。
+        // 在 buildSnapshot 之后执行 → 变体 damage_type 覆盖 ammo 预设（变体优先）。
+        VariantPoolService.rollAndApply(player, snapshot, gunData, gunDefinition);
+        // Step 6+7: register one bullet per pellet; each pellet gets an independent
+        // spread sample, bullet id and visual composition (规格 §3.2).
+        List<BulletRecord> records = registerPellets(player, gunStack, snapshot, gunData);
+        // Step 8: sound + third-person animation stay once per shot (一枪一声).
         playShootSound(player, gunDefinition);
-        // Broadcast the shoot-animation state to nearby clients so remote
-        // players see the third-person animation (设计文档 §第三人称射击动画).
         ShootAnimSyncService.getInstance().onShootFired(player);
-        // Step 9: PostShootEvent — non-cancelable notification.
-        firePostShootEvent(player, gunStack, bulletRecord);
-        // Debug-level: high fire-rate weapons produce many shots per second,
-        // so an INFO log here would cause log spam (W8). Use DEBUG so the
-        // detail is available when diagnosing issues but silent in normal play.
-        ModularShoot.LOGGER.debug("Bullet fired: id={}, gun={}, player={}, pos=({},{},{})",
-                bulletRecord.getBulletId(), gunData.gunId(), player.getName().getString(),
-                bulletRecord.getPosition().x, bulletRecord.getPosition().y, bulletRecord.getPosition().z);
+        // Step 9: PostShootEvent carrying every pellet.
+        firePostShootEvent(player, gunStack, records);
     }
 
     // --- Step 3: ShootPredicate ------------------------------------------
@@ -235,7 +231,7 @@ public final class ShootingEngine {
     // --- Step 5: Attribute snapshot --------------------------------------
 
     /**
-     * Builds the {@link BulletSnapshot} freezing all nine framework attribute
+     * Builds the {@link BulletSnapshot} freezing all ten framework attribute
      * values, the gun's inherent traits, the resolved damage type and the
      * shooter identity (设计文档 §步骤五).
      *
@@ -263,7 +259,7 @@ public final class ShootingEngine {
     }
 
     /**
-     * Reads the final values of all nine framework attributes from the player
+     * Reads the final values of all ten framework attributes from the player
      * and returns them keyed by attribute id.
      *
      * <p>Uses a {@link LinkedHashMap} so the iteration order is deterministic
@@ -284,6 +280,7 @@ public final class ShootingEngine {
         stats.put(BULLET_SPEED_ID, player.getAttributeValue(ModularShootAttributes.BULLET_SPEED));
         stats.put(BULLET_SIZE_ID, player.getAttributeValue(ModularShootAttributes.BULLET_SIZE));
         stats.put(BLOCK_PENETRATION_ID, player.getAttributeValue(ModularShootAttributes.BLOCK_PENETRATION));
+        stats.put(PELLET_COUNT_ID, player.getAttributeValue(ModularShootAttributes.PELLET_COUNT));
         return stats;
     }
 
@@ -342,7 +339,57 @@ public final class ShootingEngine {
         return SpreadCalculator.applySpread(lookAngle, accuracyYaw, accuracyPitch, random);
     }
 
-    // --- Step 7: Register bullet -----------------------------------------
+    // --- Step 7: Register bullets ----------------------------------------
+
+    /**
+     * 注册单发全部弹丸（规格 §3.2 步骤七改造）。每颗深拷贝快照、逐颗执行效果贡献者
+     * （机制三）、独立散布采样、独立 ID 与视觉组合，并逐颗调用
+     * BulletSyncService.markBulletCreated（短寿命子弹保证为逐子弹语义）。音效与
+     * 第三人称动画由调用方在循环外保持一次。
+     *
+     * @param player    the shooting player
+     * @param gunStack  the gun item stack being fired
+     * @param snapshot  the frozen per-shot snapshot (shared base; each pellet copies it)
+     * @param gunData   the firing gun's data (already resolved in {@link #fire}'s scope)
+     * @return all registered pellet records, in registration order
+     */
+    private static List<BulletRecord> registerPellets(
+            ServerPlayer player, ItemStack gunStack, BulletSnapshot snapshot, GunData gunData) {
+        int pellets = resolvePelletCount(snapshot);
+        List<BulletRecord> records = new ArrayList<>(pellets);
+        for (int i = 0; i < pellets; i++) {
+            BulletSnapshot copy = snapshot.copy();
+            // 机制三：效果贡献者按注册顺序改写本颗快照（规格 §5.1：copy 之后、applySpread 之前）。
+            ShootEffectRegistry.applyEffects(player, gunStack, copy, i, pellets);
+            Vec3 direction = applySpread(player, copy);        // 每颗独立散布采样（纯函数）
+            BulletRecord record = registerBullet(player, copy, direction, gunData);
+            BulletSyncService.markBulletCreated(player.level(), record);
+            records.add(record);
+            ModularShoot.LOGGER.debug("Pellet fired: id={}, gun={}, player={}, pellet={}/{}",
+                    record.getBulletId(), gunData.gunId(), player.getName().getString(), i + 1, pellets);
+        }
+        return records;
+    }
+
+    /**
+     * clamp(round(pellet_count), 1, MAX_PELLETS)；超上限 WARN（防恶意配置性能爆炸）。
+     *
+     * <p>极端值路径（行为安全，无需显式防御）：{@code Math.round(NaN) = 0} → 落到
+     * {@code < 1} 分支，静默退化为单弹丸；{@code Math.round(+inf)} 溢出为
+     * {@code Long.MAX_VALUE}，强转 {@code int} 截断为负 → 同样落到 {@code < 1}
+     * 分支退化为单弹丸。两种情况都不会产生越界循环或非法值。</p>
+     */
+    private static int resolvePelletCount(BulletSnapshot snapshot) {
+        int pellets = (int) Math.round(snapshot.getStat(PELLET_COUNT_ID));
+        if (pellets < 1) {
+            return 1;                       // 属性缺失/未挂载时静默退化为单弹丸
+        }
+        if (pellets > MAX_PELLETS) {
+            ModularShoot.LOGGER.warn("Pellet count {} exceeds MAX_PELLETS {}; clamping.", pellets, MAX_PELLETS);
+            return MAX_PELLETS;
+        }
+        return pellets;
+    }
 
     /**
      * Creates and registers a {@link BulletRecord} with the per-dimension
@@ -429,17 +476,19 @@ public final class ShootingEngine {
      * bus (设计文档 §步骤九).
      *
      * <p>This event carries the live, already-registered
-     * {@link BulletRecord} so that listeners observe the bullet in its
-     * initial in-flight state. The event is never canceled; to suppress a
-     * shot a listener must use {@link PreShootEvent} instead.</p>
+     * {@link BulletRecord}s of every pellet so that listeners observe the
+     * bullets in their initial in-flight state. The event is never canceled;
+     * to suppress a shot a listener must use {@link PreShootEvent}
+     * instead.</p>
      *
-     * @param player       the shooting player
-     * @param gunStack     the gun item stack the shot was fired from
-     * @param bulletRecord the live bullet record that was registered
+     * @param player   the shooting player
+     * @param gunStack the gun item stack the shot was fired from
+     * @param records  every live bullet record registered for this shot, in
+     *                 registration order
      */
     private static void firePostShootEvent(
-            ServerPlayer player, ItemStack gunStack, BulletRecord bulletRecord) {
-        PostShootEvent event = new PostShootEvent(player, gunStack, bulletRecord);
+            ServerPlayer player, ItemStack gunStack, List<BulletRecord> records) {
+        PostShootEvent event = new PostShootEvent(player, gunStack, records);
         NeoForge.EVENT_BUS.post(event);
     }
 }

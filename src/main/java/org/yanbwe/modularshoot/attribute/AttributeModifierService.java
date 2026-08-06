@@ -82,7 +82,7 @@ public final class AttributeModifierService {
             ResourceLocation.parse("modularshoot:gun_base");
 
     /**
-     * The nine framework preset attributes, in display-priority order. Each
+     * The ten framework preset attributes, in display-priority order. Each
      * produces one {@code ADD_VALUE} modifier bound to the main hand.
      */
     private static final List<Holder<Attribute>> PRESET_ATTRIBUTES = List.of(
@@ -94,7 +94,8 @@ public final class AttributeModifierService {
             ModularShootAttributes.ENTITY_PENETRATION,
             ModularShootAttributes.BULLET_SPEED,
             ModularShootAttributes.BULLET_SIZE,
-            ModularShootAttributes.BLOCK_PENETRATION
+            ModularShootAttributes.BLOCK_PENETRATION,
+            ModularShootAttributes.PELLET_COUNT
     );
 
     private AttributeModifierService() {
@@ -122,7 +123,7 @@ public final class AttributeModifierService {
      *
      * @param gunDef         the gun definition supplying declared stats
      * @param registryAccess the runtime registry view (for {@code attribute_meta})
-     * @return an immutable {@link ItemAttributeModifiers} with nine main-hand
+     * @return an immutable {@link ItemAttributeModifiers} with ten main-hand
      *         entries and tooltip hidden
      */
     public static ItemAttributeModifiers computeGunModifiers(GunDefinition gunDef, RegistryAccess registryAccess) {

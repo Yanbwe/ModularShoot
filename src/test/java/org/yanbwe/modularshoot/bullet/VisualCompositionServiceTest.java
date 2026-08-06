@@ -117,7 +117,8 @@ class VisualCompositionServiceTest {
                 Map.of(),
                 Map.of(),
                 Map.of(),
-                Optional.of(style));
+                Optional.of(style),
+                Map.of());
     }
 
     /** Builds a {@link PluginDefinition} with the given priority and bullet style. */
@@ -138,7 +139,8 @@ class VisualCompositionServiceTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
-                Optional.empty());
+                Optional.empty(),
+                Map.of());
     }
 
     private static GunData gunData(ResourceLocation gunId, List<org.yanbwe.modularshoot.component.PluginInstance> plugins) {
@@ -487,5 +489,77 @@ class VisualCompositionServiceTest {
         ComposedBulletStyle result = compose(svc, snap(GUN_ID, Map.of()), gd);
         assertEquals(1.2f, result.renderScale(), 1e-6, "unknown-type sentinel skipped");
         assertTrue(result.layers().isEmpty());
+    }
+
+    // ------------------------------------------------------------------
+    // 变体 bullet_style_override（规格 §V6）: base 最高优先级，modifiers 照常叠加
+    // ------------------------------------------------------------------
+
+    @Test
+    void variantOverrideBaseWinsOverGunAndPlugin() {
+        FakeService svc = new FakeService();
+        BulletStyle.Base gunBase = new BulletStyle.Base(BulletStyle.RenderMode.BILLBOARD,
+                Optional.of(rl("m", "gun_tex")), Optional.empty());
+        svc.guns.put(GUN_ID, gunWithStyle(new BulletStyle(Optional.of(gunBase), List.of())));
+        BulletStyle.Base pluginBase = new BulletStyle.Base(BulletStyle.RenderMode.BILLBOARD,
+                Optional.of(rl("m", "plugin_tex")), Optional.empty());
+        // Highest realistic plugin priority; the variant base must still win.
+        svc.plugins.put(PLUGIN_A_ID, pluginWith(Integer.MAX_VALUE - 1,
+                new BulletStyle(Optional.of(pluginBase), List.of())));
+        GunData gd = gunData(GUN_ID, List.of(pluginInst(PLUGIN_A_ID)));
+        BulletStyle.Base variantBase = new BulletStyle.Base(BulletStyle.RenderMode.BILLBOARD,
+                Optional.of(rl("m", "variant_tex")), Optional.empty());
+        BulletSnapshot snap = snap(GUN_ID, Map.of());
+        snap.setVariantStyleOverride(new BulletStyle(Optional.of(variantBase), List.of()));
+        ComposedBulletStyle result = compose(svc, snap, gd);
+        assertEquals(rl("m", "variant_tex"), result.base().texture().orElse(null),
+                "variant base (Integer.MAX_VALUE priority) wins over gun and plugin bases");
+    }
+
+    @Test
+    void variantOverrideModifiersStack() {
+        FakeService svc = new FakeService();
+        svc.guns.put(GUN_ID, gunWithStyle(new BulletStyle(Optional.empty(),
+                List.of(new ScaleModifier(1.5f)))));
+        GunData gd = gunData(GUN_ID, List.of());
+        BulletSnapshot snap = snap(GUN_ID, Map.of());
+        snap.setVariantStyleOverride(new BulletStyle(Optional.empty(),
+                List.of(new ScaleModifier(2.0f))));
+        ComposedBulletStyle result = compose(svc, snap, gd);
+        assertEquals(3.0f, result.renderScale(), 1e-6,
+                "variant scale modifier stacks multiplicatively with gun scale (1.5 × 2.0)");
+    }
+
+    @Test
+    void noVariantOverrideUnchanged() {
+        FakeService svc = new FakeService();
+        BulletStyle.Base gunBase = new BulletStyle.Base(BulletStyle.RenderMode.BILLBOARD,
+                Optional.of(rl("m", "gun_tex")), Optional.empty());
+        svc.guns.put(GUN_ID, gunWithStyle(new BulletStyle(Optional.of(gunBase), List.of())));
+        GunData gd = gunData(GUN_ID, List.of());
+        BulletSnapshot snap = snap(GUN_ID, Map.of());   // no setVariantStyleOverride
+        ComposedBulletStyle result = compose(svc, snap, gd);
+        assertEquals(rl("m", "gun_tex"), result.base().texture().orElse(null),
+                "without variant override the gun base still wins");
+        assertEquals(1.0f, result.renderScale(), 1e-6);
+    }
+
+    @Test
+    void variantOverrideWinsEvenAgainstMaxPriorityPlugin() {
+        // 插件 priority 取 Integer.MAX_VALUE（与变体哨兵完全并列）→ 纯 priority
+        // 决胜会因安装序并列而让插件赢；variantOverride 标志必须压倒一切来源（规格 V6）。
+        FakeService svc = new FakeService();
+        BulletStyle.Base pluginBase = new BulletStyle.Base(BulletStyle.RenderMode.BILLBOARD,
+                Optional.of(rl("m", "plugin_tex")), Optional.empty());
+        svc.plugins.put(PLUGIN_A_ID, pluginWith(Integer.MAX_VALUE,
+                new BulletStyle(Optional.of(pluginBase), List.of())));
+        GunData gd = gunData(GUN_ID, List.of(pluginInst(PLUGIN_A_ID)));
+        BulletStyle.Base variantBase = new BulletStyle.Base(BulletStyle.RenderMode.BILLBOARD,
+                Optional.of(rl("m", "variant_tex")), Optional.empty());
+        BulletSnapshot snap = snap(GUN_ID, Map.of());
+        snap.setVariantStyleOverride(new BulletStyle(Optional.of(variantBase), List.of()));
+        ComposedBulletStyle result = compose(svc, snap, gd);
+        assertEquals(rl("m", "variant_tex"), result.base().texture().orElse(null),
+                "variant override beats a plugin base even at equal Integer.MAX_VALUE priority");
     }
 }

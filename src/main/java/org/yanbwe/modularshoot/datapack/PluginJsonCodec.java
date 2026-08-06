@@ -88,6 +88,10 @@ import org.yanbwe.modularshoot.plugin.PluginDefinition;
  *       aggregates them without interpreting their meaning.</li>
  *   <li>{@code name}/{@code brief}/{@code description}/{@code color} —
  *       optional display fields.</li>
+ *   <li>{@code adds_variants} — optional variant id → base weight map
+ *       appended to the gun's per-shot variant pool (设计规格 §6.2 来源表：
+ *       插件向枪的池子追加变体 id + base_weight); defaults to an empty
+ *       map.</li>
  * </ul>
  *
  * @see PluginDefinition#CODEC

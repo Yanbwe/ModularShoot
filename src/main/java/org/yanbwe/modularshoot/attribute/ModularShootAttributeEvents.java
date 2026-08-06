@@ -19,7 +19,7 @@ import org.yanbwe.modularshoot.ModularShoot;
  * attribute throws {@code IllegalArgumentException("Can't find attribute …")}
  * and crashes the shoot-request pipeline.</p>
  *
- * <p>All nine framework attributes are added to {@link EntityType#PLAYER} so
+ * <p>All ten framework attributes are added to {@link EntityType#PLAYER} so
  * that the shooting engine, attribute-modifier service and tooltip builders
  * can safely read final values from any player.</p>
  */
@@ -40,5 +40,6 @@ public final class ModularShootAttributeEvents {
         event.add(EntityType.PLAYER, ModularShootAttributes.BULLET_SPEED);
         event.add(EntityType.PLAYER, ModularShootAttributes.BULLET_SIZE);
         event.add(EntityType.PLAYER, ModularShootAttributes.BLOCK_PENETRATION);
+        event.add(EntityType.PLAYER, ModularShootAttributes.PELLET_COUNT);
     }
 }

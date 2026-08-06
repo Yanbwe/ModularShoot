@@ -34,6 +34,8 @@ import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 import org.yanbwe.modularshoot.damage.DamageHandler;
 import org.yanbwe.modularshoot.damage.DamageHandlerRegistry;
+import org.yanbwe.modularshoot.shooting.ShootEffect;
+import org.yanbwe.modularshoot.shooting.ShootEffectRegistry;
 import org.yanbwe.modularshoot.shooting.ShootPredicate;
 import org.yanbwe.modularshoot.shooting.ShootPredicateRegistry;
 import org.yanbwe.modularshoot.state.GunState;
@@ -42,6 +44,8 @@ import org.yanbwe.modularshoot.trait.TraitCallbacks;
 import org.yanbwe.modularshoot.trait.TraitHookRegistry;
 import org.yanbwe.modularshoot.trait.TraitHookType;
 import org.yanbwe.modularshoot.util.GunResolver;
+import org.yanbwe.modularshoot.variant.VariantContributor;
+import org.yanbwe.modularshoot.variant.VariantContributorRegistry;
 
 /**
  * Unified facade entry point for the ModularShoot plugin system.
@@ -861,6 +865,55 @@ public final class ModularShootAPI {
     public static void registerShootPredicate(ShootPredicate predicate) {
         Objects.requireNonNull(predicate, "predicate");
         ShootPredicateRegistry.register(predicate);
+    }
+
+    /**
+     * Registers a per-pellet shoot effect that runs inside the step-seven
+     * pellet loop, right after each pellet's snapshot copy and before spread
+     * application (机制三 效果贡献者, 规格 §5).
+     *
+     * <p>Delegates to {@link ShootEffectRegistry#register}. Effects are
+     * stackable: every registered effect runs on every pellet in registration
+     * order, and later effects see the snapshot mutations of earlier ones.
+     * Recommended mutations are {@code setTrait} / {@code multiplyStat} /
+     * {@code setStat}; mutating exclusive single-value fields
+     * ({@code setDamageType}, visual {@code base}) is forbidden — exclusive
+     * effects must go through the variant pool (机制四) per 规格 §5.2. Safe
+     * to call during mod common-setup; the framework registers zero effects by
+     * default.</p>
+     *
+     * @param effect the effect to register; must not be {@code null}
+     */
+    public static void registerShootEffect(ShootEffect effect) {
+        Objects.requireNonNull(effect, "effect");
+        ShootEffectRegistry.register(effect);
+    }
+
+    /**
+     * Registers a variant weight contributor that feeds modifiers into the
+     * per-shot variant pool (机制四 §6.2 来源 3).
+     *
+     * <p>Delegates to {@link VariantContributorRegistry#register}. The
+     * contributor declares "variant id &rarr; weight modifier" pairs through
+     * the {@code VariantContributionSink} it receives; modifiers reuse the
+     * vanilla {@code AttributeModifier} record with its {@code Operation}
+     * three-stage semantics (规格 §6.3): {@code ADD_VALUE} adds to the base
+     * weight, {@code ADD_MULTIPLIED_BASE} multiplies only the base part (a
+     * fire-bullet doubling trinket is useless on guns with a zero base weight),
+     * and {@code ADD_MULTIPLIED_TOTAL} scales the final weight. A variant id
+     * that no gun/plugin declares still enters the pool when the contributor
+     * introduces it, using the variant's own {@code weight_hint} as its base
+     * weight (default {@code 0.0} — a weight-less contribution stays zero and
+     * is excluded from the roll); ids already declared by the gun
+     * ({@code variants}) or an installed plugin ({@code adds_variants}) keep
+     * their declared weight as authoritative. Safe to call during mod
+     * common-setup; the framework registers zero contributors by default.</p>
+     *
+     * @param contributor the contributor to register; must not be {@code null}
+     */
+    public static void registerVariantContributor(VariantContributor contributor) {
+        Objects.requireNonNull(contributor, "contributor");
+        VariantContributorRegistry.register(contributor);
     }
 
     // ---- Trait hooks -----------------------------------------------------
