@@ -171,11 +171,12 @@ public final class PluginInstallEventHandler {
             // P3 fix: cancel the event on failure too, suppressing the vanilla
             // swap — the plugin and gun stay in their original slots instead of
             // confusingly exchanging places. The localized rejection reason is
-            // shown in the action bar on the server side.
+            // shown in the action bar on the server side. The install_failed
+            // lang value already ends with a colon, so the error message is
+            // appended directly without an extra ": " separator.
             event.setCanceled(true);
             if (!player.level().isClientSide()) {
                 Component message = Component.translatable(INSTALL_FAILED_KEY)
-                        .append(Component.literal(": "))
                         .append(result.errorMessage()
                                 .orElse(Component.translatable("modularshoot.install.error.generic")));
                 player.displayClientMessage(message, true);
