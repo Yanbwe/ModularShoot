@@ -26,16 +26,17 @@ import org.yanbwe.modularshoot.registry.ModularShootRegistries;
 import org.yanbwe.modularshoot.registry.Trait;
 import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
+import org.yanbwe.modularshoot.registry.variant.VariantDefinition;
 
 /**
  * NeoForge reload listener for framework-specific post-reload logic
  * (设计文档 §/reload 重载行为, line 2305).
  *
  * <p>NeoForge's {@code DataPackRegistryEvent} already handles automatic
- * reloading of the six dynamic registries ({@code guns}, {@code plugins},
+ * reloading of the seven dynamic registries ({@code guns}, {@code plugins},
  * {@code plugin_types}, {@code traits}, {@code states},
- * {@code attribute_meta}). This listener complements that with
- * framework-specific post-reload logic that runs in the reload phase
+ * {@code attribute_meta}, {@code variants}). This listener complements that
+ * with framework-specific post-reload logic that runs in the reload phase
  * (on the game thread), after the vanilla registry pipeline has finished:</p>
  * <ol>
  *   <li>Logs the reload completion via {@link ModularShoot#LOGGER}.</li>
@@ -148,7 +149,7 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
     }
 
     /**
-     * Builds a per-registry validation summary for all six framework
+     * Builds a per-registry validation summary for all seven framework
      * registries.
      *
      * @param access the reloaded registry access
@@ -162,6 +163,7 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
         summaries.add(summarizeTraits(access));
         summaries.add(summarizeStates(access));
         summaries.add(summarizeAttributeMeta(access));
+        summaries.add(summarizeVariants(access));
         return summaries;
     }
 
@@ -173,7 +175,9 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
      * (拼错 ID 显式 WARN，不再静默失效).
      *
      * <p>Each validator returns immediately on an empty entries map, so a
-     * missing framework registry does not cascade into warnings.</p>
+     * missing framework registry does not cascade into warnings. Variants
+     * are validated inside {@link #summarizeVariants} so the summary and its
+     * reference warnings share the same entries map.</p>
      *
      * @param access the reloaded registry access
      */
@@ -182,8 +186,6 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
                 collectEntries(access, ModularShootRegistries.GUNS_KEY));
         CrossReferenceValidator.validatePlugins(access,
                 collectEntries(access, ModularShootRegistries.PLUGINS_KEY));
-        CrossReferenceValidator.validateVariants(access,
-                collectEntries(access, ModularShootRegistries.VARIANTS_KEY));
         CrossReferenceValidator.validateAttributeMeta(access,
                 collectEntries(access, ModularShootRegistries.ATTRIBUTE_META_KEY));
     }
@@ -306,10 +308,38 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
                 AttributeMetaDatapackLoader.BindingValidation::bindsRegistered);
     }
 
+    private static DatapackLoadSummary summarizeVariants(RegistryAccess access) {
+        Map<ResourceLocation, VariantDefinition> entries =
+                collectEntries(access, ModularShootRegistries.VARIANTS_KEY);
+        CrossReferenceValidator.validateVariants(access, entries);
+        logNonFiniteWeights(entries);
+        return summarize("变体定义", entries.size(), entries.values(),
+                v -> Double.isFinite(v.weightHint()));
+    }
+
+    /**
+     * Logs a {@code WARN} per variant whose base weight is not finite
+     * (NaN or Infinity), mirroring {@link GunDatapackLoader}'s stats finite
+     * check. A non-finite weight corrupts the per-shot pool probabilities,
+     * so it is surfaced as a reference warning.
+     *
+     * @param entries the variant id to {@link VariantDefinition} entries
+     */
+    private static void logNonFiniteWeights(Map<ResourceLocation, VariantDefinition> entries) {
+        for (Map.Entry<ResourceLocation, VariantDefinition> entry : entries.entrySet()) {
+            final double weight = entry.getValue().weightHint();
+            if (!Double.isFinite(weight)) {
+                DatapackErrorHandler.logReferenceWarning(entry.getKey(),
+                        "weight_hint is not finite (" + weight
+                                + "); entry registered with warning (degradation deferred).");
+            }
+        }
+    }
+
     // ──────────────── Registration conflict checks (A-01) ────────────────
 
     /**
-     * Checks all six framework registries for conflicts between datapack
+     * Checks all seven framework registries for conflicts between datapack
      * entries and ids claimed by the Java API via
      * {@link RegistrationCoordinator#markJavaApiRegistered}.
      *
@@ -320,6 +350,10 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
      * override). This implements the design rule "Java API takes priority
      * over datapack" (设计文档 §注册冲突与覆盖, line 2289).</p>
      *
+     * <p>The {@code variants} registry has no Java API write path, so its
+     * conflict set is always empty; it is included only for consistency
+     * (变体仅由数据包 JSON 注册).</p>
+     *
      * @param access the reloaded registry access
      */
     private static void checkRegistrationConflicts(RegistryAccess access) {
@@ -329,6 +363,7 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
         checkConflictsForRegistry(access, ModularShootRegistries.TRAITS_KEY);
         checkConflictsForRegistry(access, ModularShootRegistries.STATES_KEY);
         checkConflictsForRegistry(access, ModularShootRegistries.ATTRIBUTE_META_KEY);
+        checkConflictsForRegistry(access, ModularShootRegistries.VARIANTS_KEY);
     }
 
     /**

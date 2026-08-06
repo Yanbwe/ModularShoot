@@ -14,9 +14,10 @@ import org.slf4j.LoggerFactory;
  * Centralised coordinator for resolving registration conflicts between the
  * Java API and the datapack JSON pipeline (设计文档 §注册冲突与覆盖).
  *
- * <p>The framework's six dynamic registries ({@code guns}, {@code plugins},
- * {@code plugin_types}, {@code traits}, {@code states}, {@code attribute_meta})
- * can be populated from two sources:</p>
+ * <p>The framework's seven dynamic registries ({@code guns}, {@code plugins},
+ * {@code plugin_types}, {@code traits}, {@code states},
+ * {@code attribute_meta}, {@code variants}) can be populated from two
+ * sources:</p>
  * <ol>
  *   <li><b>Java API</b> &mdash; entries registered programmatically by the
  *       framework or by add-on mods during mod initialisation.</li>
