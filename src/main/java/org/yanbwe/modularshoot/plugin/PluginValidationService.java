@@ -6,6 +6,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
+import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginInstance;
@@ -132,6 +133,11 @@ public final class PluginValidationService {
      * §自定义安装校验), remaining validators are not run once a failure is
      * observed.</p>
      *
+     * <p>Exception isolation: a validator that throws an exception is logged
+     * and skipped; the remaining validators still run and the failure
+     * short-circuit is unaffected (抛异常的第三方 validator 被记录并跳过，
+     * 继续执行其余 validator，不影响首败短路).</p>
+     *
      * @param gun      the target gun item stack passed to each validator
      * @param pluginId the candidate plugin definition id passed to each
      *                 validator
@@ -142,7 +148,14 @@ public final class PluginValidationService {
      */
     public static Optional<ValidationResult> runCustomValidators(ItemStack gun, ResourceLocation pluginId) {
         for (PluginValidator validator : VALIDATORS) {
-            ValidationResult result = validator.validate(gun, pluginId);
+            ValidationResult result;
+            try {
+                result = validator.validate(gun, pluginId);
+            } catch (Exception e) {
+                ModularShoot.LOGGER.error(
+                        "PluginValidator threw an exception; skipping this validator", e);
+                continue;
+            }
             if (!result.valid()) {
                 return Optional.of(result);
             }

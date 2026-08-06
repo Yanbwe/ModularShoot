@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import net.minecraft.world.entity.Entity;
+import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.bullet.BulletRecord;
 
 /**
@@ -86,6 +87,10 @@ public final class DamageHandlerRegistry {
      * computes the final numeric value. The caller is responsible for the
      * subsequent {@code hurt()} call (设计文档 §职责边界).</p>
      *
+     * <p>Exception isolation: a handler that throws an exception is logged
+     * and skipped; the chain continues with the last successfully computed
+     * value (抛异常的第三方 handler 被记录并跳过，链以最近一次成功结果继续).</p>
+     *
      * @param bullet      the bullet record that hit the target; must not be
      *                    {@code null}
      * @param target      the entity hit by the bullet; must not be
@@ -101,7 +106,12 @@ public final class DamageHandlerRegistry {
         Objects.requireNonNull(target, "target");
         double current = baseDamage;
         for (DamageHandler handler : HANDLERS) {
-            current = handler.processDamage(bullet, target, current);
+            try {
+                current = handler.processDamage(bullet, target, current);
+            } catch (Exception e) {
+                ModularShoot.LOGGER.error(
+                        "DamageHandler threw an exception; skipping this handler", e);
+            }
         }
         return current;
     }
