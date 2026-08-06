@@ -38,6 +38,10 @@ import net.minecraft.resources.ResourceLocation;
  * @param forceShow     optional flag; when {@code true} the attribute is shown
  *                      in the tooltip even if its value equals the default.
  *                      Defaults to {@code false}.
+ * @param unit          optional translation key for the value's display unit
+ *                      (e.g. {@code modularshoot.unit.per_second}); rendered
+ *                      after the numeric value in the tooltip. Empty when
+ *                      absent (no unit shown).
  */
 public record AttributeMeta(
         ResourceLocation binds,
@@ -45,7 +49,8 @@ public record AttributeMeta(
         String description,
         Optional<String> color,
         int priority,
-        boolean forceShow
+        boolean forceShow,
+        Optional<String> unit
 ) {
     public static final Codec<AttributeMeta> CODEC = RecordCodecBuilder.create(
             instance -> instance.group(
@@ -54,20 +59,22 @@ public record AttributeMeta(
                     Codec.STRING.optionalFieldOf("description", "").forGetter(AttributeMeta::description),
                     Codec.STRING.optionalFieldOf("color").forGetter(AttributeMeta::color),
                     Codec.INT.optionalFieldOf("priority", 0).forGetter(AttributeMeta::priority),
-                    Codec.BOOL.optionalFieldOf("force_show", false).forGetter(AttributeMeta::forceShow)
+                    Codec.BOOL.optionalFieldOf("force_show", false).forGetter(AttributeMeta::forceShow),
+                    Codec.STRING.optionalFieldOf("unit").forGetter(AttributeMeta::unit)
             ).apply(instance, AttributeMeta::new)
     );
 
     /**
      * Convenience factory for creating an {@link AttributeMeta} with only the
      * required fields. Optional fields are filled with their defaults
-     * (empty description, no color, priority {@code 0}, forceShow {@code false}).
+     * (empty description, no color, priority {@code 0}, forceShow
+     * {@code false}, no unit).
      *
      * @param binds        the registered vanilla attribute id to bind to
      * @param defaultValue the gun base value used when a gun omits this attribute
      * @return a new immutable {@link AttributeMeta} instance
      */
     public static AttributeMeta of(ResourceLocation binds, double defaultValue) {
-        return new AttributeMeta(binds, defaultValue, "", Optional.empty(), 0, false);
+        return new AttributeMeta(binds, defaultValue, "", Optional.empty(), 0, false, Optional.empty());
     }
 }
