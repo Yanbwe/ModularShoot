@@ -36,12 +36,15 @@ import org.yanbwe.modularshoot.registry.variant.VariantRegistry;
  * {@code registerVariantContributor} weight modifiers — the latter fall back
  * to the variant's own {@code weight_hint} when nobody declared them. Each
  * candidate's final weight comes from the three-stage pure function
- * {@link #calculateWeight}; a single roll then picks one variant for the
- * whole shot (整发语义, 规格 §6.4). No selection (empty pool or total weight
- * &le; 0) → 普通弹 (silent). The selected variant rewrites the frozen
- * snapshot: traits merge, stats overwrite only declared keys, {@code
- * damage_type} overrides the ammo preset, and {@code bullet_style_override}
- * is staged for {@code VisualCompositionService} (变体优先, 规格 §6.4).</p>
+ * {@link #calculateWeight}; a single roll then picks one variant for one
+ * pellet (逐弹丸语义, 规格 §6.4 v1.1 — the shooting engine calls
+ * {@link #rollAndApply} once per pellet, so pellets of one shot may end up
+ * with different variants or a normal bullet). No selection (empty pool or
+ * total weight &le; 0) → 普通弹 (silent). The selected variant rewrites the
+ * frozen snapshot: traits merge, stats overwrite only declared keys,
+ * {@code damage_type} overrides the ammo preset, and
+ * {@code bullet_style_override} is staged for
+ * {@code VisualCompositionService} (变体优先, 规格 §6.4).</p>
  *
  * <h2>Static facade + lookup seam (测试扩展点)</h2>
  *
@@ -120,10 +123,11 @@ public class VariantPoolService {
     }
 
     /**
-     * Assembles the per-shot variant pool and rolls once (整发语义, 规格
-     * §6.4). Entries whose final weight is non-positive are excluded from
-     * the candidates; an empty pool or a total weight &le; 0 yields
-     * {@code Optional.empty()} — the shot proceeds as a normal bullet
+     * Assembles the per-shot variant pool and rolls once (逐弹丸语义, 规格
+     * §6.4 v1.1 — one call = one pellet's independent election). Entries
+     * whose final weight is non-positive are excluded from the candidates;
+     * an empty pool or a total weight &le; 0 yields
+     * {@code Optional.empty()} — the pellet proceeds as a normal bullet
      * (静默).
      *
      * @param ra      the runtime registry view
@@ -151,11 +155,13 @@ public class VariantPoolService {
     }
 
     /**
-     * Rolls the variant pool once for the whole shot and applies the winner
-     * to the snapshot (规格 §6.4 步骤五改造). Runs after
-     * {@code buildSnapshot} (which resolves the ammo damage type), so a
-     * variant's {@code damage_type} overrides the ammo preset (变体优先).
-     * No selection → normal bullet (silent).
+     * Rolls the variant pool once and applies the winner to the snapshot
+     * (规格 §6.4 v1.1 逐弹丸语义). The shooting engine calls this once per
+     * pellet, so each pellet of a shot gets an independent election. The
+     * snapshot it rewrites is typically a per-pellet {@code copy()}; the
+     * ammo damage type has already been resolved by {@code buildSnapshot},
+     * so a variant's {@code damage_type} overrides the ammo preset
+     * (变体优先). No selection → normal bullet (silent).
      *
      * @param player   the shooting server player (registry access + level random)
      * @param snapshot the frozen per-shot snapshot to rewrite (mutated)
