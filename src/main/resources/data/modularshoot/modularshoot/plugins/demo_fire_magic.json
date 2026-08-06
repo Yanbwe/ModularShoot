@@ -1,0 +1,12 @@
+{
+  "tags": ["c:accessory"],
+  "priority": 80,
+  "item_icon": "modularshoot:textures/bullet/test_fireball.png",
+  "adds_variants": {
+    "modularshoot:demo_fireball": 4.0
+  },
+  "name": "§c火元素强化（演示）",
+  "brief": "火球变体权重 +4",
+  "description": "演示插件：通过 adds_variants 把火球变体基础权重提升 4（测试枪火球概率约 83% → 96%）",
+  "color": "#FF8844"
+}

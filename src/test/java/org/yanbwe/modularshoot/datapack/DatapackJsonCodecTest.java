@@ -102,7 +102,9 @@ class DatapackJsonCodecTest {
                 "plugins/visual_gun_prism.json",
                 "plugins/explosive_rounds.json",
                 "plugins/precision_barrel.json",
-                "plugins/rapid_fire_barrel.json"
+                "plugins/rapid_fire_barrel.json",
+                "plugins/demo_pellet_barrel.json",
+                "plugins/demo_fire_magic.json"
         ).forEach(path -> {
             var plugin = parse(path, org.yanbwe.modularshoot.plugin.PluginDefinition.CODEC);
             plugin.bulletStyle().ifPresent(style -> assertStyleValid(style, path));

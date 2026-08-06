@@ -9,6 +9,7 @@
   "attribute.name.modularshoot.bullet_speed": "Bullet Speed",
   "attribute.name.modularshoot.bullet_size": "Bullet Size",
   "attribute.name.modularshoot.block_penetration": "Block Penetration",
+  "attribute.name.modularshoot.pellet_count": "Pellet Count",
   "modularshoot.offhand_restricted": "Guns cannot be placed in the offhand slot.",
   "modularshoot.creative_tab": "ModularShoot",
   "item.modularshoot.plugin": "Plugin",

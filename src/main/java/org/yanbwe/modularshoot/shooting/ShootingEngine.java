@@ -168,12 +168,9 @@ public final class ShootingEngine {
         }
         // Step 5: build the frozen attribute/trait snapshot.
         BulletSnapshot snapshot = buildSnapshot(player, gunStack, gunData, gunDefinition);
-        // Step 5b: 变体池 roll（整发一次）；无选中 → 普通弹（静默，规格 §6.4）。
-        // 在 buildSnapshot 之后执行 → 变体 damage_type 覆盖 ammo 预设（变体优先）。
-        VariantPoolService.rollAndApply(player, snapshot, gunData, gunDefinition);
         // Step 6+7: register one bullet per pellet; each pellet gets an independent
         // spread sample, bullet id and visual composition (规格 §3.2).
-        List<BulletRecord> records = registerPellets(player, gunStack, snapshot, gunData);
+        List<BulletRecord> records = registerPellets(player, gunStack, snapshot, gunData, gunDefinition);
         // Step 8: sound + third-person animation stay once per shot (一枪一声).
         playShootSound(player, gunDefinition);
         ShootAnimSyncService.getInstance().onShootFired(player);
@@ -342,23 +339,31 @@ public final class ShootingEngine {
     // --- Step 7: Register bullets ----------------------------------------
 
     /**
-     * 注册单发全部弹丸（规格 §3.2 步骤七改造）。每颗深拷贝快照、逐颗执行效果贡献者
-     * （机制三）、独立散布采样、独立 ID 与视觉组合，并逐颗调用
-     * BulletSyncService.markBulletCreated（短寿命子弹保证为逐子弹语义）。音效与
-     * 第三人称动画由调用方在循环外保持一次。
+     * 注册单发全部弹丸（规格 §3.2 步骤七改造）。每颗深拷贝快照、逐弹丸独立变体 roll
+     * （机制四 §6.4 逐弹丸语义）、逐颗执行效果贡献者（机制三）、独立散布采样、独立
+     * ID 与视觉组合，并逐颗调用 BulletSyncService.markBulletCreated（短寿命子弹
+     * 保证为逐子弹语义）。音效与第三人称动画由调用方在循环外保持一次。
      *
-     * @param player    the shooting player
-     * @param gunStack  the gun item stack being fired
-     * @param snapshot  the frozen per-shot snapshot (shared base; each pellet copies it)
-     * @param gunData   the firing gun's data (already resolved in {@link #fire}'s scope)
+     * @param player        the shooting player
+     * @param gunStack      the gun item stack being fired
+     * @param snapshot      the frozen per-shot snapshot (shared base; each pellet copies it)
+     * @param gunData       the firing gun's data (already resolved in {@link #fire}'s scope)
+     * @param gunDefinition the gun definition (declared variants; already resolved in
+     *                      {@link #fire}'s scope)
      * @return all registered pellet records, in registration order
      */
     private static List<BulletRecord> registerPellets(
-            ServerPlayer player, ItemStack gunStack, BulletSnapshot snapshot, GunData gunData) {
+            ServerPlayer player, ItemStack gunStack, BulletSnapshot snapshot, GunData gunData,
+            GunDefinition gunDefinition) {
         int pellets = resolvePelletCount(snapshot);
         List<BulletRecord> records = new ArrayList<>(pellets);
         for (int i = 0; i < pellets; i++) {
             BulletSnapshot copy = snapshot.copy();
+            // 变体池逐弹丸独立 roll（规格 §6.4 逐弹丸语义）：每颗独立选举，霰弹中可
+            // 混合出现不同变体；无选中 → 本颗普通弹（静默）。在 copy 之后、效果贡献者
+            // 之前执行 → 变体 damage_type 覆盖 ammo 预设（变体优先），效果贡献者可
+            // 叠加在变体结果之上。
+            VariantPoolService.rollAndApply(player, copy, gunData, gunDefinition);
             // 机制三：效果贡献者按注册顺序改写本颗快照（规格 §5.1：copy 之后、applySpread 之前）。
             ShootEffectRegistry.applyEffects(player, gunStack, copy, i, pellets);
             Vec3 direction = applySpread(player, copy);        // 每颗独立散布采样（纯函数）
