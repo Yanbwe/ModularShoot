@@ -14,17 +14,18 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.item.ItemStack;
 import org.yanbwe.modularshoot.ModularShootAPI;
+import org.yanbwe.modularshoot.attribute.AttributeResolver;
 import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 
 /**
  * {@code /modularshoot stats} subcommand: reports the final, post-modifier
  * attribute values of the executor's main-hand gun.
  *
- * <p>Each value is read via {@link ServerPlayer#getAttributeValue(Holder)}, which
- * returns the fully stacked result of every attribute source (gun base,
- * installed plugins, traits, external modifiers). When the main hand does not
- * hold a gun a notice is sent and the command exits cleanly without crashing
- * (设计文档 §调试命令).</p>
+ * <p>Each value is read by resolving the target attribute per the
+ * {@code binds} field of each {@code attribute_meta} entry
+ * ({@link AttributeResolver#readFinalValue}); a missing bind degrades to
+ * {@code 0.0}. When the main hand does not hold a gun a notice is sent and
+ * the command exits cleanly without crashing (设计文档 §调试命令).</p>
  */
 public final class StatsSubcommand {
 
@@ -77,7 +78,8 @@ public final class StatsSubcommand {
                 .append(Component.literal(": ").withStyle(ChatFormatting.AQUA))
                 .append(Component.literal(gun.getHoverName().getString()).withStyle(ChatFormatting.WHITE));
         for (Holder<Attribute> holder : FRAMEWORK_ATTRIBUTES) {
-            double value = player.getAttributeValue(holder);
+            double value = AttributeResolver.readFinalValue(player, holder.getKey().location(),
+                    player.registryAccess());
             root.append(Component.literal("\n  ").withStyle(ChatFormatting.GRAY))
                     .append(Component.translatable(holder.value().getDescriptionId()).withStyle(ChatFormatting.GRAY))
                     .append(Component.literal(": " + formatValue(value)).withStyle(ChatFormatting.GREEN));

@@ -20,6 +20,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.ModularShootAPI;
+import org.yanbwe.modularshoot.attribute.AttributeResolver;
 import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 
 /**
@@ -31,8 +32,10 @@ import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
  * set to {@code true} and the executor's uuid is recorded in
  * {@link #debugPlayerUuid}. A {@link LevelTickEvent.Post} listener then runs
  * every tick: it looks up the recorded player on the server, checks the main
- * hand for a gun, and sends an action-bar message with the stacked attribute
- * values. {@code debug off} clears both fields and stops the overlay.</p>
+ * hand for a gun, and sends an action-bar message with attribute values
+ * resolved per each {@code attribute_meta} entry's {@code binds}
+ * ({@link AttributeResolver#readFinalValue}). {@code debug off} clears both
+ * fields and stops the overlay.</p>
  *
  * <p>The flag and uuid are {@code volatile} because they are written from the
  * command thread (netty) and read from the server tick thread. Only one
@@ -121,13 +124,16 @@ public final class DebugSubcommand {
 
     /**
      * Assembles the single-line action-bar debug overlay: a prefix, the gun
-     * display name, then each framework attribute with its stacked value.
+     * display name, then each framework attribute resolved via its
+     * {@code attribute_meta} {@code binds} target
+     * ({@link AttributeResolver#readFinalValue}).
      */
     private static Component buildDebugComponent(ServerPlayer player, ItemStack gun) {
         MutableComponent root = Component.literal("[MS Debug] ").withStyle(ChatFormatting.AQUA)
                 .append(Component.literal(gun.getHoverName().getString()).withStyle(ChatFormatting.WHITE));
         for (Holder<Attribute> holder : DEBUG_ATTRIBUTES) {
-            double value = player.getAttributeValue(holder);
+            double value = AttributeResolver.readFinalValue(player, holder.getKey().location(),
+                    player.registryAccess());
             root.append(Component.literal(" | ").withStyle(ChatFormatting.DARK_GRAY))
                     .append(Component.translatable(holder.value().getDescriptionId()).withStyle(ChatFormatting.GRAY))
                     .append(Component.literal(": " + formatValue(value)).withStyle(ChatFormatting.GREEN));
