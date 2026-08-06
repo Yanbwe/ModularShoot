@@ -222,28 +222,14 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
     /**
      * Builds a {@link DatapackLoadSummary} from validation results.
      *
-     * <p>In the post-reload context all entries are already registered, so
-     * {@code failed} is always {@code 0}. This is an architectural
-     * consequence of NeoForge's {@code DataPackRegistryEvent} mechanism:
-     * the vanilla {@code RegistryDataLoader} parses every JSON entry
-     * <em>before</em> this listener fires. Each entry is isolated by its
-     * own try-catch inside {@code loadContentsFromManager}, so a single
-     * parse failure does not abort the remaining entries; however, when
-     * <em>any</em> entry fails, {@code RegistryDataLoader.load()} throws
-     * an {@code IllegalStateException} and the entire registry load is
-     * aborted &mdash; this post-reload listener never runs for that
-     * registry. Therefore, when this method <em>is</em> reached, every
-     * visible entry has already been parsed and registered successfully,
-     * and the parse-failure count is necessarily zero.</p>
-     *
-     * <p>Parse failures are logged by the vanilla pipeline itself (via
-     * {@code RegistryDataLoader.logErrors}), not by this framework. The
-     * design-document summary format "共加载 42 个枪械定义，3 个失败"
-     * (设计文档 §数据包 JSON 加载失败的错误处理) describes the
-     * operator-facing intent; under the NeoForge architecture the actual
-     * failure count is surfaced by the vanilla pipeline's error log, which
-     * precedes this summary. Entries that did not pass the framework's
-     * post-load validation cleanly are counted as warnings here.</p>
+     * <p>In the post-reload context every visible entry has already been
+     * parsed and registered by the vanilla {@code RegistryDataLoader}, so
+     * {@code failed} is always {@code 0}: a single parse failure aborts the
+     * entire registry load with an {@code IllegalStateException} and this
+     * listener never runs for that registry (see the
+     * {@link DatapackLoadSummary} class javadoc). Entries that did not pass
+     * the framework's post-load validation cleanly are counted as warnings
+     * here.</p>
      *
      * @param name    the human-readable registry name (e.g. "枪械定义")
      * @param total   the total number of entries
@@ -259,6 +245,8 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
             String name, int total, Collection<T> results, Predicate<T> isClean) {
         int succeeded = (int) results.stream().filter(isClean).count();
         int warnings = total - succeeded;
+        // failed 恒为 0：单条解析失败即整表中断（原版 RegistryDataLoader），本汇总不产出；
+        // 详见 DatapackLoadSummary 类 javadoc
         return DatapackLoadSummary.of(name, total, succeeded, 0, warnings);
     }
 
