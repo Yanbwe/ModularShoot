@@ -4,6 +4,8 @@ import java.util.Objects;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.entity.SlotAccess;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ClickAction;
@@ -192,6 +194,9 @@ public final class PluginInstallEventHandler {
      * 调用（同步给客户端），保持 W7 的"仅服务端播放避免双端重复"约定。扩展模组
      * 需要自定义安装音效可监听 {@code PostPluginInstallEvent}。</p>
      *
+     * <p>枪械定义声明 {@code sound_range} 时按固定可闻半径播放（与
+     * {@code ShootingEngine.playShootSound} 一致），缺省用音效事件自带 range。</p>
+     *
      * @param player 执行安装的玩家
      * @param gun    被安装插件的枪械 ItemStack
      * @param pitch  随机音调（W7 双端随机源对齐约定，由调用方计算）
@@ -202,9 +207,13 @@ public final class PluginInstallEventHandler {
             return;
         }
         GunRegistry.getGun(player.level().registryAccess(), data.gunId())
-                .flatMap(def -> GunSounds.get(def, INSTALL_SOUND_SLOT))
-                .map(id -> BuiltInRegistries.SOUND_EVENT.get(id))
-                .filter(Objects::nonNull)
+                .flatMap(def -> GunSounds.get(def, INSTALL_SOUND_SLOT)
+                        .map(id -> BuiltInRegistries.SOUND_EVENT.get(id))
+                        .filter(Objects::nonNull)
+                        .map(soundEvent -> GunSounds.getRange(def)
+                                .map(range -> SoundEvent.createFixedRangeEvent(
+                                        soundEvent.getLocation(), range))
+                                .orElse(soundEvent)))
                 .ifPresent(sound -> player.playSound(sound, 1.0F, pitch));
     }
 }

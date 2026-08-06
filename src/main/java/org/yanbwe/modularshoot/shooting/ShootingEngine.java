@@ -468,6 +468,12 @@ public final class ShootingEngine {
      * {@code playSound} is {@code null} so that every nearby player hears
      * the shot (the shooter is not excluded).</p>
      *
+     * <p>When the gun definition declares a {@code sound_range} (audible
+     * radius in blocks), the event is wrapped with
+     * {@link SoundEvent#createFixedRangeEvent(ResourceLocation, float)} so
+     * datapack authors can tune how far the shot is heard; absent → the
+     * sound event's own range (default 16) applies.</p>
+     *
      * @param player         the shooting player (position and level)
      * @param gunDefinition  the gun definition (carries the sound bindings)
      */
@@ -483,13 +489,17 @@ public final class ShootingEngine {
                     soundId);
             return;
         }
+        // sound_range 存在时用固定可闻半径事件播放（Level.playSound 无 range 参数）。
+        SoundEvent effective = GunSounds.getRange(gunDefinition)
+                .map(range -> SoundEvent.createFixedRangeEvent(soundId, range))
+                .orElse(soundEvent);
         Vec3 eye = player.getEyePosition();
         player.level().playSound(
                 null,
                 eye.x,
                 eye.y,
                 eye.z,
-                soundEvent,
+                effective,
                 SoundSource.PLAYERS,
                 SHOOT_VOLUME,
                 SHOOT_PITCH);

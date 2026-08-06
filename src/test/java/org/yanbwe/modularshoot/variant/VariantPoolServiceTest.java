@@ -73,7 +73,8 @@ class VariantPoolServiceTest {
                 Map.of(),
                 Map.of(),
                 Optional.empty(),
-                variants);
+                variants,
+                Optional.empty());
     }
 
     /** Builds an empty-instance {@link GunData} (no plugins → no registry lookups). */

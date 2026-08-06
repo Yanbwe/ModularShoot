@@ -118,7 +118,8 @@ class VisualCompositionServiceTest {
                 Map.of(),
                 Map.of(),
                 Optional.of(style),
-                Map.of());
+                Map.of(),
+                Optional.empty());
     }
 
     /** Builds a {@link PluginDefinition} with the given priority and bullet style. */

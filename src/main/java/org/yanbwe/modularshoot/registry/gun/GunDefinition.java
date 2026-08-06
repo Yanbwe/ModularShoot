@@ -39,6 +39,8 @@ import org.yanbwe.modularshoot.ModularShoot;
  *       to the {@code modularshoot} namespace.</li>
  *   <li>{@code sounds} — sound slot name (e.g. {@code "shoot"}) → sound event
  *       id.</li>
+ *   <li>{@code sound_range} — optional audible radius (blocks); absent → the
+ *       sound event's own range (default 16) is used.</li>
  *   <li>{@code bullet_style} — optional projectile appearance.</li>
  *   <li>{@code variants} — variant id → base weight, feeding the per-shot
  *       variant pool (设计规格 §6.2 来源表：枪械声明变体 id + base_weight);
@@ -64,6 +66,9 @@ import org.yanbwe.modularshoot.ModularShoot;
  * @param variants         optional variant id → base weight map for the
  *                         per-shot variant pool (设计规格 §6.2); empty when
  *                         the gun declares no variants
+ * @param soundRange       optional audible radius override (blocks); empty
+ *                         when the sound event's own range (default 16)
+ *                         should be used
  */
 public record GunDefinition(
         Optional<String> name,
@@ -76,7 +81,8 @@ public record GunDefinition(
         Map<ResourceLocation, Integer> slots,
         Map<String, ResourceLocation> sounds,
         Optional<BulletStyle> bulletStyle,
-        Map<ResourceLocation, Double> variants
+        Map<ResourceLocation, Double> variants,
+        Optional<Float> soundRange
 ) {
     /**
      * Map 键 codec：裸键（无冒号）默认补 {@code modularshoot} 命名空间。
@@ -104,7 +110,8 @@ public record GunDefinition(
                     Codec.unboundedMap(MODULARSHOOT_KEY, Codec.INT).optionalFieldOf("slots", Map.of()).forGetter(GunDefinition::slots),
                     Codec.unboundedMap(Codec.STRING, ResourceLocation.CODEC).optionalFieldOf("sounds", Map.of()).forGetter(GunDefinition::sounds),
                     BulletStyle.CODEC.optionalFieldOf("bullet_style").forGetter(GunDefinition::bulletStyle),
-                    Codec.unboundedMap(MODULARSHOOT_KEY, Codec.DOUBLE).optionalFieldOf("variants", Map.of()).forGetter(GunDefinition::variants)
+                    Codec.unboundedMap(MODULARSHOOT_KEY, Codec.DOUBLE).optionalFieldOf("variants", Map.of()).forGetter(GunDefinition::variants),
+                    Codec.FLOAT.optionalFieldOf("sound_range").forGetter(GunDefinition::soundRange)
             ).apply(instance, GunDefinition::new)
     );
 
