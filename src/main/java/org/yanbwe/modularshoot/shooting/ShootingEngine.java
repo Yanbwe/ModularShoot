@@ -156,7 +156,7 @@ public final class ShootingEngine {
             return;
         }
         // Step 4: PreShootEvent — cancelable; abort without consuming fire-rate.
-        if (!firePreShootEvent(player, gunStack)) {
+        if (!firePreShootEvent(player, gunStack, gunData.gunId())) {
             return;
         }
         // Resolve the gun definition once for snapshot + sound steps.
@@ -211,20 +211,26 @@ public final class ShootingEngine {
      * (设计文档 §步骤四).
      *
      * <p>A canceled event aborts the shot. Per the design contract the
-     * fire-rate cooldown is <em>not</em> consumed when the event is canceled,
-     * so the caller (fire-rate controller) is not notified to update its
-     * state — that is handled by the caller only when this method returns
-     * {@code true}.</p>
+     * fire-rate cooldown is <em>not</em> consumed when the event is canceled:
+     * the last-shoot tick recorded by the fire-rate gate is rolled back via
+     * {@link FireRateController#rollbackLastShootTick}, so the next request
+     * is timed from a fresh interval (兑现 javadoc 承诺).</p>
      *
      * @param player   the shooting player
      * @param gunStack the gun item stack being fired
+     * @param gunId    the gun definition id（取消时用于回滚射速冷却）
      * @return {@code true} if the event was not canceled and the shot may
      *         continue; {@code false} if a listener canceled the shot
      */
-    private static boolean firePreShootEvent(ServerPlayer player, ItemStack gunStack) {
+    private static boolean firePreShootEvent(ServerPlayer player, ItemStack gunStack, ResourceLocation gunId) {
         PreShootEvent event = new PreShootEvent(player, gunStack);
         NeoForge.EVENT_BUS.post(event);
-        return !event.isCanceled();
+        if (event.isCanceled()) {
+            // 兑现 javadoc 承诺：取消的射击不消耗射速冷却（设计文档 §步骤四）。
+            FireRateController.rollbackLastShootTick(player.getUUID(), gunId);
+            return false;
+        }
+        return true;
     }
 
     // --- Step 5: Attribute snapshot --------------------------------------
