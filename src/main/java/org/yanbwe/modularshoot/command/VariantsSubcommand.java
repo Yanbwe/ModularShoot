@@ -25,7 +25,7 @@ import org.yanbwe.modularshoot.variant.VariantPoolService;
  * the gun's declared {@code variants}, each valid installed plugin's
  * {@code adds_variants} (summed), every registered contributor's weight
  * modifiers (三阶段计算), and the implicit normal-bullet fallback (weight
- * {@code 1.0}) when the gun declares no {@code variants} (规格 §6.4 v1.2).
+ * {@code 1.0}) when the gun declares no {@code variants} (规格 §6.4).
  * Probabilities are computed server-side via
  * {@link VariantPoolService#previewPool}, so they reflect the exact pool a
  * roll would sample — including Java-API contributor modifiers the client
