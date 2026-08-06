@@ -18,12 +18,22 @@ import org.yanbwe.modularshoot.ModularShootAPI;
  *
  * <p>The framework provides no default right-click (use) behavior for guns.
  * This handler is purely an extension point: it translates NeoForge's
- * {@link PlayerInteractEvent.RightClickItem} and
- * {@link PlayerInteractEvent.RightClickEmpty} into the framework-specific
+ * {@link PlayerInteractEvent.RightClickItem},
+ * {@link PlayerInteractEvent.RightClickEmpty} and
+ * {@link PlayerInteractEvent.RightClickBlock} into the framework-specific
  * {@link GunRightClickEvent}, which other mods listen to via
  * {@code @SubscribeEvent} to implement custom behavior such as reloading,
  * firing-mode switching, aiming, etc. If no listener cancels the event, the
  * framework performs no action on its own.</p>
+ *
+ * <p>{@link PlayerInteractEvent.RightClickItem} and
+ * {@link PlayerInteractEvent.RightClickBlock} are cancelable, and this handler
+ * respects cancellations of the underlying NeoForge event: when another mod
+ * has already canceled the right-click interaction, {@link GunRightClickEvent}
+ * does not fire (尊重其他模组对底层事件的取消). {@code RightClickEmpty} is not
+ * cancelable in NeoForge, so no such guard applies there. The block variant
+ * is notification-only and never cancels the underlying event, so vanilla
+ * block interactions (opening chests, pressing buttons) proceed normally.</p>
  *
  * <h2>Container-GUI routing</h2>
  * <p>{@link GunRightClickEvent} fires only when the player is <em>not</em>
@@ -35,7 +45,8 @@ import org.yanbwe.modularshoot.ModularShootAPI;
  * {@code containerMenu} differs from the default {@code inventoryMenu}.</p>
  *
  * <h2>Logical-side handling</h2>
- * <p>{@link PlayerInteractEvent.RightClickItem} fires on both logical sides,
+ * <p>{@link PlayerInteractEvent.RightClickItem} and
+ * {@link PlayerInteractEvent.RightClickBlock} fire on both logical sides,
  * while {@link PlayerInteractEvent.RightClickEmpty} fires on the client only.
  * This handler does not guard on logical side: {@link GunRightClickEvent} is
  * notification-only, so it is posted on whichever side the underlying
@@ -68,10 +79,19 @@ public final class RightClickHandler {
      * the handler ignores off-hand right-clicks so the event fires at most
      * once per right-click when both hands hold items.</p>
      *
+     * <p>Events canceled by other mods are respected: when the underlying
+     * {@link PlayerInteractEvent.RightClickItem} is already canceled, this
+     * handler returns early and {@link GunRightClickEvent} does not fire
+     * (尊重其他模组对底层事件的取消).</p>
+     *
      * @param event the right-click-item event carrying the player and hand
      */
     @SubscribeEvent
     public static void onRightClickItem(PlayerInteractEvent.RightClickItem event) {
+        // Respect cancellations of the underlying event by other mods.
+        if (event.isCanceled()) {
+            return;
+        }
         // Guns are main-hand only; skip off-hand right-clicks to avoid firing
         // twice when both hands hold items.
         if (event.getHand() != InteractionHand.MAIN_HAND) {
@@ -97,13 +117,58 @@ public final class RightClickHandler {
      * when the player right-clicks empty space with an empty hand. When the
      * main hand holds a gun, the empty hand is the off hand; this handler
      * still fires {@link GunRightClickEvent} because the right-click intent
-     * concerns the main-hand gun. The event itself is not cancelable, but the
-     * {@link GunRightClickEvent} it posts is.</p>
+     * concerns the main-hand gun. The event itself is not cancelable
+     * (NeoForge's {@code RightClickEmpty} is not an
+     * {@code ICancellableEvent}, so there is no underlying cancellation to
+     * respect here), but the {@link GunRightClickEvent} it posts is.</p>
      *
      * @param event the right-click-empty event carrying the player and hand
      */
     @SubscribeEvent
     public static void onRightClickEmpty(PlayerInteractEvent.RightClickEmpty event) {
+        Player player = event.getEntity();
+        if (!isMainHandGun(player)) {
+            return;
+        }
+        // A non-default container GUI is open: the install flow owns
+        // right-clicks inside inventories, so GunRightClickEvent must not fire.
+        if (hasNonDefaultContainerOpen(player)) {
+            return;
+        }
+        fireRightClickEvent(player, player.getMainHandItem());
+    }
+
+    /**
+     * Handles right-click on a block, firing {@link GunRightClickEvent} when
+     * the main hand holds a gun and no container GUI is open.
+     *
+     * <p>{@link PlayerInteractEvent.RightClickBlock} fires on both logical
+     * sides when the player right-clicks a block, including usable blocks
+     * such as chests, buttons, doors, etc. This closes the trigger gap where
+     * the event did not fire at all while the crosshair pointed at a block,
+     * so ADS / reload mods no longer drift with the pointed-at target.</p>
+     *
+     * <p>The guards mirror {@link #onRightClickItem}: canceled events are
+     * respected, off-hand right-clicks are skipped, the main hand must hold a
+     * gun, and no non-default container GUI may be open. The handler is
+     * notification-only — it never cancels the underlying event, so vanilla
+     * block interactions (opening chests, pressing buttons, opening doors)
+     * proceed normally (通知性质：不取消事件，原版方块交互照常进行). Trigger
+     * scenarios now cover RightClickItem / RightClickEmpty / RightClickBlock.</p>
+     *
+     * @param event the right-click-block event carrying the player and hand
+     */
+    @SubscribeEvent
+    public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        // Respect cancellations of the underlying event by other mods.
+        if (event.isCanceled()) {
+            return;
+        }
+        // Guns are main-hand only; skip off-hand right-clicks to avoid firing
+        // twice when both hands hold items.
+        if (event.getHand() != InteractionHand.MAIN_HAND) {
+            return;
+        }
         Player player = event.getEntity();
         if (!isMainHandGun(player)) {
             return;
