@@ -112,7 +112,7 @@ public record StateDefinition(
      * directions.
      *
      * <p><strong>Decode</strong> tries each type codec in order
-     * (INT→LONG→DOUBLE→FLOAT→BOOLEAN→STRING→UUID) and picks the first
+     * (INT→LONG→DOUBLE→FLOAT→BOOLEAN→UUID→STRING) and picks the first
      * that succeeds — preserving the original decode behaviour.</p>
      *
      * <p><strong>Encode</strong> dispatches by the value's runtime type
@@ -133,7 +133,15 @@ public record StateDefinition(
      *
      * <p>Order matters: {@code INT} before {@code LONG} before
      * {@code DOUBLE} before {@code FLOAT} before {@code BOOLEAN} before
-     * {@code STRING} before {@code UUID}.</p>
+     * {@code UUID} before {@code STRING}. The UUID codec must precede
+     * STRING: a valid UUID string (e.g. a {@code value_type=uuid}
+     * {@code default_value} written as {@code "550e8400-..."}) is captured
+     * by the UUID codec, while a non-UUID string fails the UUID codec and
+     * falls through to STRING (eitherOf tries the first codec, then the
+     * second on failure). The chain uses {@link UUIDUtil#LENIENT_CODEC}
+     * rather than {@link UUIDUtil#CODEC}: in this MC version {@code CODEC}
+     * only decodes the 4-int-array form (the encoder's output), while
+     * {@code LENIENT_CODEC} accepts both that form and plain UUID strings.</p>
      *
      * <p>{@code INT} and {@code LONG} use the strict variants
      * ({@link #strictIntCodec()} / {@link #strictLongCodec()}) instead of
@@ -155,8 +163,15 @@ public record StateDefinition(
         chain = eitherOf(chain, wrapAsObject(Codec.DOUBLE));
         chain = eitherOf(chain, wrapAsObject(Codec.FLOAT));
         chain = eitherOf(chain, wrapAsObject(Codec.BOOL));
+        // UUID 优先于 STRING：合法 UUID 字符串被 UUID codec 截获（value_type=uuid
+        // 的 default_value 可直接从 JSON 以 "550e8400-..." 形式写入），非 UUID
+        // 字符串（"foo"）UUID codec 解码失败，eitherOf 的 first-fails-then-second
+        // 语义自动落到 STRING，行为无损。用 LENIENT_CODEC 而非 CODEC：本版本
+        // UUIDUtil.CODEC 只接受 int 流（[msb1, msb2, lsb1, lsb2] 数组形式，编码器
+        // 即用此形式），无法解析 UUID 字符串；LENIENT = withAlternative(CODEC,
+        // STRING_CODEC)，两种形式都接受，round-trip 与手写字符串两不误。
+        chain = eitherOf(chain, wrapAsObject(UUIDUtil.LENIENT_CODEC));
         chain = eitherOf(chain, wrapAsObject(Codec.STRING));
-        chain = eitherOf(chain, wrapAsObject(UUIDUtil.CODEC));
         return chain;
     }
 

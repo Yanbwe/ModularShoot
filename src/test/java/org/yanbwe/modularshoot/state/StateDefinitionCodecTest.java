@@ -254,6 +254,35 @@ class StateDefinitionCodecTest {
         assertEquals(0, decoded.defaultValue());
     }
 
+    // --- L4b: decode from JSON-written values (uuid default_value) ---
+
+    @Test
+    void uuidDefaultValueDecodesFromPlainUuidString() {
+        // L4b: UUID codec 必须在 STRING 之前——否则 value_type=uuid 的
+        // default_value 以 "550e8400-..." 字符串写入 JSON 时会被 STRING 截获，
+        // 值与 value_type 类型不匹配（"type does not match value_type 'uuid'"）。
+        // UUID 前置后，合法 UUID 字符串被 UUID codec 截获，解码值类型为 UUID。
+        JsonObject json = encode(define(StateValueType.UUID, new UUID(0L, 1L)));
+        json.addProperty("default_value", "550e8400-e29b-41d4-a716-446655440000");
+        StateDefinition decoded = decode(json);
+        assertEquals(StateValueType.UUID, decoded.valueType());
+        assertInstanceOf(UUID.class, decoded.defaultValue());
+        assertEquals(UUID.fromString("550e8400-e29b-41d4-a716-446655440000"),
+                decoded.defaultValue());
+    }
+
+    @Test
+    void stringDefaultValueStillDecodesAsString() {
+        // 回归：UUID 前置后，非 UUID 字符串（"foo"）在 UUID codec 解码失败，
+        // eitherOf 自动落到 STRING——string 类型的解析行为必须保持不变。
+        JsonObject json = encode(define(StateValueType.STRING, "hello"));
+        json.addProperty("default_value", "foo");
+        StateDefinition decoded = decode(json);
+        assertEquals(StateValueType.STRING, decoded.valueType());
+        assertInstanceOf(String.class, decoded.defaultValue());
+        assertEquals("foo", decoded.defaultValue());
+    }
+
     // --- visual_modifiers field (设计规格 §3.5) ---
 
     @Test
