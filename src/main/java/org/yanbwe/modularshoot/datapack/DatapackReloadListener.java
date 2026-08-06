@@ -307,7 +307,7 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
         CrossReferenceValidator.validateVariants(access, entries);
         logNonFiniteWeights(entries);
         return summarize("变体定义", entries.size(), entries.values(),
-                v -> Double.isFinite(v.weightHint()));
+                v -> Double.isFinite(v.baseWeight()));
     }
 
     /**
@@ -320,10 +320,10 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
      */
     private static void logNonFiniteWeights(Map<ResourceLocation, VariantDefinition> entries) {
         for (Map.Entry<ResourceLocation, VariantDefinition> entry : entries.entrySet()) {
-            final double weight = entry.getValue().weightHint();
+            final double weight = entry.getValue().baseWeight();
             if (!Double.isFinite(weight)) {
                 DatapackErrorHandler.logReferenceWarning(entry.getKey(),
-                        "weight_hint is not finite (" + weight
+                        "base_weight is not finite (" + weight
                                 + "); entry registered with warning (degradation deferred).");
             }
         }

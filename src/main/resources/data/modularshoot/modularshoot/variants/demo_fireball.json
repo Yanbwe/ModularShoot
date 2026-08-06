@@ -1,5 +1,5 @@
 {
-  "weight_hint": 1,
+  "base_weight": 1,
   "traits": { "modularshoot:visual_fire": true },
   "stats": { "modularshoot:hit_damage": 15.0 },
   "damage_type": "minecraft:in_fire",

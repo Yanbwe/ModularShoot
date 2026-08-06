@@ -24,7 +24,7 @@ package org.yanbwe.modularshoot.variant;
  * <p>Contributions are collected by {@link VariantContributorRegistry#collect()}
  * every time the per-shot pool is assembled; they are never persisted. A
  * variant id contributed but not declared by any gun/plugin still enters the
- * pool, with the variant's own {@code weight_hint} as its base weight (default
+ * pool, with the variant's own {@code base_weight} as its base weight (default
  * {@code 0.0}); ids already declared by the gun or an installed plugin keep
  * their declared weight as authoritative (任务说明设计决策 1).</p>
  *

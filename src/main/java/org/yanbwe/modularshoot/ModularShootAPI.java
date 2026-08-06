@@ -902,7 +902,7 @@ public final class ModularShootAPI {
      * fire-bullet doubling trinket is useless on guns with a zero base weight),
      * and {@code ADD_MULTIPLIED_TOTAL} scales the final weight. A variant id
      * that no gun/plugin declares still enters the pool when the contributor
-     * introduces it, using the variant's own {@code weight_hint} as its base
+     * introduces it, using the variant's own {@code base_weight} as its base
      * weight (default {@code 0.0} — a weight-less contribution stays zero and
      * is excluded from the roll); ids already declared by the gun
      * ({@code variants}) or an installed plugin ({@code adds_variants}) keep
