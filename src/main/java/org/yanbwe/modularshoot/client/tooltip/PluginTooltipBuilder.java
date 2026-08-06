@@ -117,6 +117,10 @@ public final class PluginTooltipBuilder {
         } else {
             PluginDefinition def = defOpt.get();
             lines.add(buildInstallTargetLine(def, registryAccess));
+            // P3 fix: one-line grey install guide so players know how to
+            // actually attach the plugin (right-click inside a container).
+            lines.add(Component.translatable("modularshoot.tooltip.install_hint")
+                    .withStyle(ChatFormatting.GRAY));
             addBriefLine(lines, def);
             addTagSection(lines, def);
         }

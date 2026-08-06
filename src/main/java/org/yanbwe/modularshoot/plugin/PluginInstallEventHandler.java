@@ -30,8 +30,10 @@ import org.yanbwe.modularshoot.registry.gun.GunSounds;
  * <ul>
  *   <li>Right-click + plugin-on-gun → validate, and on success write results
  *       via {@link Slot#set} / {@link SlotAccess#set}, cancel the event,
- *       and play a sound. On failure the event is left uncancelled so the
- *       vanilla swap proceeds normally.</li>
+ *       and play a sound. On failure the event is cancelled too, which
+ *       suppresses the vanilla swap so the plugin and gun stay in their
+ *       original slots; the localized failure reason is shown in the action
+ *       bar (P3 fix).</li>
  *   <li>All other cursor/slot combinations → ignored.</li>
  * </ul>
  *
@@ -94,7 +96,9 @@ public final class PluginInstallEventHandler {
      * {@link Slot#set}, the consumed plugin copy is placed onto the cursor via
      * {@link SlotAccess#set}, the event is cancelled, and a sound plays
      * (server-side only, synced to the client — W7 fix).
-     * On failure the event is left uncancelled so vanilla swap proceeds.</p>
+     * On failure the event is cancelled as well so the vanilla item swap is
+     * suppressed and both items stay in their original slots; the localized
+     * rejection reason is shown in the action bar (P3 fix).</p>
      *
      * @param event the stacking event fired by the container menu
      */
@@ -106,7 +110,15 @@ public final class PluginInstallEventHandler {
         // the client inside the creative menu, so a server-side install never
         // happens and the result would not persist. Skip entirely for creative
         // players, following the event Javadoc's own advice.
+        // P3 fix: give the player explicit feedback instead of a silent no-op —
+        // the creative menu's stacking event is client-only, so the action-bar
+        // hint is sent only on the client side (the server never executes this
+        // path for creative stacking).
         if (player.isCreative()) {
+            if (player.level().isClientSide()) {
+                player.displayClientMessage(
+                        Component.translatable("modularshoot.install.creative_unsupported"), true);
+            }
             return;
         }
 
@@ -156,15 +168,16 @@ public final class PluginInstallEventHandler {
                 playInstallSound(player, stackedOnItem, pitch);
             }
         } else {
-            // Install failed — do NOT cancel. Let vanilla swap proceed.
-            // Notify the player via action bar on the server side.
+            // P3 fix: cancel the event on failure too, suppressing the vanilla
+            // swap — the plugin and gun stay in their original slots instead of
+            // confusingly exchanging places. The localized rejection reason is
+            // shown in the action bar on the server side.
+            event.setCanceled(true);
             if (!player.level().isClientSide()) {
-                Component message = Component.translatable(INSTALL_FAILED_KEY);
-                if (result.errorMessage().isPresent()) {
-                    message = Component.empty()
-                            .append(message)
-                            .append(Component.literal(": " + result.errorMessage().get()));
-                }
+                Component message = Component.translatable(INSTALL_FAILED_KEY)
+                        .append(Component.literal(": "))
+                        .append(result.errorMessage()
+                                .orElse(Component.translatable("modularshoot.install.error.generic")));
                 player.displayClientMessage(message, true);
             }
         }

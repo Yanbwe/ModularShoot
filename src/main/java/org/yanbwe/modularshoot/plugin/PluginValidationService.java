@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import net.minecraft.core.RegistryAccess;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -93,8 +94,9 @@ public final class PluginValidationService {
      *                       installed plugins' definitions
      * @return {@link ValidationResult#success()} when no conflict exists or
      *         the candidate has no exclusive group; otherwise a failing
-     *         {@link ValidationResult} whose message names the conflicting
-     *         group
+     *         {@link ValidationResult} whose message names the already-installed
+     *         plugin's readable name (falling back to the group id), localized
+     *         via {@code modularshoot.install.error.exclusive_group}
      */
     public static ValidationResult checkExclusiveGroup(
             ItemStack gun,
@@ -117,9 +119,16 @@ public final class PluginValidationService {
             }
             Optional<String> installedGroup = installedDef.get().exclusiveGroup();
             if (installedGroup.isPresent() && installedGroup.get().equals(group)) {
-                return ValidationResult.error(
-                        "Plugin belongs to exclusive group '" + group
-                                + "' which is already occupied by an installed plugin");
+                // P3 fix: 冲突报错带上已安装插件的可读名——玩家看到
+                // "与已安装插件 §b精密枪管 互斥" 而不是原始英文 + 技术组 id。
+                // Component.literal 保留 § 格式码（name 字段支持颜色代码）；
+                // 名字缺失时回退显示互斥组 id。
+                String displayName = installedDef.get().name()
+                        .filter(s -> !s.isEmpty())
+                        .orElse(group);
+                return ValidationResult.error(Component.translatable(
+                        "modularshoot.install.error.exclusive_group",
+                        Component.literal(displayName)));
             }
         }
         return ValidationResult.success();
