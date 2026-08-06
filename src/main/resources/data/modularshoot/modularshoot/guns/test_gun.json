@@ -14,8 +14,8 @@
     "modularshoot:pellet_count": 3.0
   },
   "variants": {
-    "modularshoot:demo_fireball": 1,
-    "modularshoot:demo_heavy": 0.2
+    "modularshoot:demo_fireball": 0.5,
+    "modularshoot:demo_heavy": 1.5
   },
   "traits": {},
   "slots": {
