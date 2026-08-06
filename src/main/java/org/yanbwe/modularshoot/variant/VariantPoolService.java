@@ -37,7 +37,7 @@ import org.yanbwe.modularshoot.registry.variant.VariantRegistry;
  * to the variant's own {@code weight_hint} when nobody declared them. Each
  * candidate's final weight comes from the three-stage pure function
  * {@link #calculateWeight}; a single roll then picks one variant for one
- * pellet (逐弹丸语义, 规格 §6.4 v1.1 — the shooting engine calls
+ * pellet (逐弹丸语义, 规格 §6.4 — the shooting engine calls
  * {@link #rollAndApply} once per pellet, so pellets of one shot may end up
  * with different variants or a normal bullet). No selection (empty pool or
  * total weight &le; 0) → 普通弹 (silent). The selected variant rewrites the
@@ -60,7 +60,7 @@ import org.yanbwe.modularshoot.registry.variant.VariantRegistry;
 public class VariantPoolService {
 
     /**
-     * 未声明变体池的枪械的默认"普通子弹"兜底权重（规格 §6.4 v1.2）。枪械未声明
+     * 未声明变体池的枪械的默认"普通子弹"兜底权重（规格 §6.4）。枪械未声明
      * {@code variants} 时，池中默认存在权重 1.0 的普通弹候选——否则"给普通枪加
      * 50% 火球插件"会因单候选池恒 100% 触发（这不科学）；有兜底后该场景按
      * {@code 火球权重 : 1.0} 计算概率。
@@ -132,10 +132,10 @@ public class VariantPoolService {
 
     /**
      * Assembles the per-shot variant pool and rolls once (逐弹丸语义, 规格
-     * §6.4 v1.1/v1.2 — one call = one pellet's independent election). Entries
+     * §6.4 — one call = one pellet's independent election). Entries
      * whose final weight is non-positive are excluded from the candidates;
      * a gun that declares no {@code variants} gets the default normal-bullet
-     * fallback ({@link #NORMAL_FALLBACK_WEIGHT}, 规格 §6.4 v1.2). An empty
+     * fallback ({@link #NORMAL_FALLBACK_WEIGHT}, 规格 §6.4). An empty
      * candidate list, a declared pool with total weight &le; 0, or a roll
      * landing on the fallback interval all yield {@code Optional.empty()} —
      * the pellet proceeds as a normal bullet (静默).
@@ -166,7 +166,7 @@ public class VariantPoolService {
 
     /**
      * Rolls the variant pool once and applies the winner to the snapshot
-     * (规格 §6.4 v1.1 逐弹丸语义). The shooting engine calls this once per
+     * (规格 §6.4 逐弹丸语义). The shooting engine calls this once per
      * pellet, so each pellet of a shot gets an independent election. The
      * snapshot it rewrites is typically a per-pellet {@code copy()}; the
      * ammo damage type has already been resolved by {@code buildSnapshot},
@@ -188,7 +188,7 @@ public class VariantPoolService {
      * {@code /modularshoot variants} 调试命令展示)。Returns every candidate
      * with its final weight, in declaration order, plus the normal-bullet
      * fallback entry when the gun declares no {@code variants} (规格 §6.4
-     * v1.2). Percentages are derived by the caller: {@code P = finalWeight /
+     * ). Percentages are derived by the caller: {@code P = finalWeight /
      * Σ finalWeights}.
      *
      * @param ra      the runtime registry view
@@ -235,7 +235,7 @@ public class VariantPoolService {
      * candidate's final weight via {@link #calculateWeight}, excludes
      * non-positive weights, and adds the normal-bullet fallback interval
      * ({@link #NORMAL_FALLBACK_WEIGHT}) when the gun declares no
-     * {@code variants} (规格 §6.4 v1.2).
+     * {@code variants} (规格 §6.4).
      *
      * @param ra      the runtime registry view
      * @param gunDef  the gun definition declaring {@code variants}
@@ -256,7 +256,7 @@ public class VariantPoolService {
                 total += w;
             }
         }
-        // 普通弹兜底（规格 §6.4 v1.2）：枪械未声明 variants 时，池中默认存在
+        // 普通弹兜底（规格 §6.4）：枪械未声明 variants 时，池中默认存在
         // NORMAL_FALLBACK_WEIGHT 权重的"普通子弹"候选。roll 落在候选累积权重之外
         // （含本区间）→ 返回 empty（普通弹，静默）。声明了池的枪械无兜底，概率
         // 严格按声明权重计算。
@@ -380,7 +380,7 @@ public class VariantPoolService {
     }
 
     /**
-     * One candidate of the per-shot pool preview (规格 §6.4 v1.2，供
+     * One candidate of the per-shot pool preview (规格 §6.4，供
      * {@code /modularshoot variants} 调试命令展示).
      *
      * @param variantId       the variant id; {@code null} for the implicit
