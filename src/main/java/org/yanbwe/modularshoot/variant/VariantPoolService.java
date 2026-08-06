@@ -59,6 +59,14 @@ import org.yanbwe.modularshoot.registry.variant.VariantRegistry;
  */
 public class VariantPoolService {
 
+    /**
+     * 未声明变体池的枪械的默认"普通子弹"兜底权重（规格 §6.4 v1.2）。枪械未声明
+     * {@code variants} 时，池中默认存在权重 1.0 的普通弹候选——否则"给普通枪加
+     * 50% 火球插件"会因单候选池恒 100% 触发（这不科学）；有兜底后该场景按
+     * {@code 火球权重 : 1.0} 计算概率。
+     */
+    static final double NORMAL_FALLBACK_WEIGHT = 1.0;
+
     /** Shared singleton backing the static facade (seam-aware dispatch). */
     public static final VariantPoolService INSTANCE = new VariantPoolService();
 
@@ -124,11 +132,13 @@ public class VariantPoolService {
 
     /**
      * Assembles the per-shot variant pool and rolls once (逐弹丸语义, 规格
-     * §6.4 v1.1 — one call = one pellet's independent election). Entries
+     * §6.4 v1.1/v1.2 — one call = one pellet's independent election). Entries
      * whose final weight is non-positive are excluded from the candidates;
-     * an empty pool or a total weight &le; 0 yields
-     * {@code Optional.empty()} — the pellet proceeds as a normal bullet
-     * (静默).
+     * a gun that declares no {@code variants} gets the default normal-bullet
+     * fallback ({@link #NORMAL_FALLBACK_WEIGHT}, 规格 §6.4 v1.2). An empty
+     * candidate list, a declared pool with total weight &le; 0, or a roll
+     * landing on the fallback interval all yield {@code Optional.empty()} —
+     * the pellet proceeds as a normal bullet (静默).
      *
      * @param ra      the runtime registry view
      * @param random  the per-shot random source (server level random)
@@ -197,8 +207,15 @@ public class VariantPoolService {
                 total += w;
             }
         }
+        // 普通弹兜底（规格 §6.4 v1.2）：枪械未声明 variants 时，池中默认存在
+        // NORMAL_FALLBACK_WEIGHT 权重的"普通子弹"候选。roll 落在候选累积权重之外
+        // （含本区间）→ 返回 empty（普通弹，静默）。声明了池的枪械无兜底，概率
+        // 严格按声明权重计算。
+        if (gunDef.variants().isEmpty()) {
+            total += NORMAL_FALLBACK_WEIGHT;
+        }
         if (total <= 0.0) {
-            return Optional.empty();
+            return Optional.empty();   // 声明池全非正权重（无兜底）→ 普通弹
         }
         double r = random.nextDouble() * total;
         double cumulative = 0.0;
@@ -208,7 +225,7 @@ public class VariantPoolService {
                 return Optional.of(c.id());
             }
         }
-        return Optional.empty();   // 浮点舍入边界兜底；正常路径不会到达
+        return Optional.empty();   // 落在普通弹兜底区间（或浮点舍入边界）→ 普通弹
     }
 
     /**

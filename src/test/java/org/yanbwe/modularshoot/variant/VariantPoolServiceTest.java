@@ -135,6 +135,9 @@ class VariantPoolServiceTest {
 
     @Test
     void rollEmptyPoolReturnsEmpty() {
+        // 空 variants 枪械且无任何来源：池为空，但"未声明池"触发普通弹兜底（权重 1.0）
+        // → roll 必落兜底区间 → 普通弹（静默）。结果与无兜底时一致，语义由
+        // undeclaredPoolGetsNormalFallback 验证。
         Optional<ResourceLocation> rolled = VariantPoolService.roll(
                 null, RandomSource.create(42), gunWithVariants(Map.of()), gunData());
         assertTrue(rolled.isEmpty(), "空池 → 普通弹（静默）");
@@ -179,9 +182,52 @@ class VariantPoolServiceTest {
     }
 
     @Test
-    void contributorOnlyVariantUsesWeightHint() {
+    void undeclaredPoolGetsNormalFallback() {
+        // 规格 §6.4 v1.2：枪械**未声明** variants 时，池中默认存在权重 1.0 的
+        // "普通子弹"兜底候选。否则"给普通枪加 50% 火球插件"会因单候选池恒 100%
+        // 触发（这不科学）。本例：贡献者引入 A（hint 1.0 + ADD_VALUE 1.0 → 2.0），
+        // 池 = {A: 2.0, 普通弹: 1.0} → A 命中率 2/3。
+        FakeService fake = new FakeService();
+        fake.variants.put(VARIANT_A, new VariantDefinition(
+                1.0,
+                Map.of(),
+                Map.of(),
+                Optional.empty(),
+                Optional.empty()));
+        VariantContributorRegistry.register(
+                sink -> sink.add(VARIANT_A, mod(1.0, AttributeModifier.Operation.ADD_VALUE)));
+
+        RandomSource random = RandomSource.create(12345L);
+        int aCount = 0;
+        for (int i = 0; i < 1500; i++) {
+            if (fake.rollImpl(null, random, gunWithVariants(Map.of()), gunData())
+                    .filter(VARIANT_A::equals).isPresent()) {
+                aCount++;
+            }
+        }
+        assertTrue(aCount > 900 && aCount < 1100,
+                "A 命中率应约 2/3（1500 次 ≈ 1000），实际 " + aCount);
+    }
+
+    @Test
+    void declaredPoolHasNoNormalFallback() {
+        // 枪械**声明了** variants → 无普通弹兜底：单候选池恒 100%
+        // （普通弹兜底只属于未声明池，声明池按声明权重精确计算）。
+        GunDefinition gunDef = gunWithVariants(Map.of(VARIANT_A, 1.0));
+        RandomSource random = RandomSource.create(12345L);
+        for (int i = 0; i < 500; i++) {
+            Optional<ResourceLocation> rolled = VariantPoolService.roll(null, random, gunDef, gunData());
+            assertTrue(rolled.isPresent() && rolled.get().equals(VARIANT_A),
+                    "声明池单候选恒命中（无兜底区间），第 " + i + " 次采样");
+        }
+    }
+
+    @Test
+    void contributorOnlyVariantSharesPoolWithNormalFallback() {
         // 仅由贡献者引入的变体：池中以自身 weight_hint 作为基础权重兜底（设计决策 1）。
         // 内存定义 weightHint = 3.0，贡献者再加 ADD_VALUE +1.0 → 最终权重 4.0。
+        // 枪械未声明池 → 普通弹兜底 1.0 同在 → 池 = {A: 4.0, 普通弹: 1.0}，
+        // A 命中率 80%、普通弹（empty）20%——两者都必须出现。
         FakeService fake = new FakeService();
         fake.variants.put(VARIANT_A, new VariantDefinition(
                 3.0,
@@ -195,11 +241,22 @@ class VariantPoolServiceTest {
         // 空 variants 枪械 + 空插件 GunData → 池唯一候选即贡献者引入的 VARIANT_A。
         // @BeforeEach 已 clear() 隔离；空插件列表下 assemble 的 filterValidPlugins
         // 不会触碰 null ra，直接传 null 即可。
-        Optional<ResourceLocation> rolled = fake.rollImpl(
-                null, RandomSource.create(12345L), gunWithVariants(Map.of()), gunData());
-
-        assertTrue(rolled.isPresent(), "仅由贡献者引入的变体以 weight_hint 兜底进入池子");
-        assertEquals(VARIANT_A, rolled.get(), "唯一候选（权重 4.0 > 0）必然命中");
+        RandomSource random = RandomSource.create(12345L);
+        int aCount = 0;
+        int emptyCount = 0;
+        for (int i = 0; i < 1000; i++) {
+            Optional<ResourceLocation> rolled = fake.rollImpl(
+                    null, random, gunWithVariants(Map.of()), gunData());
+            if (rolled.filter(VARIANT_A::equals).isPresent()) {
+                aCount++;
+            } else if (rolled.isEmpty()) {
+                emptyCount++;
+            }
+        }
+        assertTrue(aCount > 700 && aCount < 900,
+                "A 命中率应约 80%（1000 次 ≈ 800），实际 " + aCount);
+        assertTrue(emptyCount > 100 && emptyCount < 300,
+                "普通弹兜底区间应约 20%（1000 次 ≈ 200），实际 " + emptyCount);
     }
 
     // ------------------------------------------------------------------
