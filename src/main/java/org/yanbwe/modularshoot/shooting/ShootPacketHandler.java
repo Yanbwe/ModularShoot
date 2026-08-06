@@ -24,6 +24,9 @@ import org.yanbwe.modularshoot.network.ShootAnimSyncService;
  *
  * <p><b>Pipeline:</b></p>
  * <ol>
+ *   <li>Reject the request while the player has a container open (defense
+ *       in depth — the client may still emit packets while a GUI is open,
+ *       and this guard also avoids setting {@code isFiring} then).</li>
  *   <li>Validate the main-hand item is a {@code modularshoot:gun}.</li>
  *   <li>Read {@link GunData} (modifier version + gun id) from the stack.</li>
  *   <li>Run the {@link ModifierVersionAntiCheat} modifier-version check.</li>
@@ -58,6 +61,11 @@ public final class ShootPacketHandler {
      */
     public static void handleShootRequest(ServerPlayer player, int packetModifierVersion) {
         Objects.requireNonNull(player, "player");
+        // 纵深防御：客户端 GUI 打开期间（含聊天/背包）仍可能发包——容器打开时
+        // 拒绝射击且不置 isFiring（设计文档 §服务端处理）。
+        if (player.hasContainerOpen()) {
+            return;
+        }
         // Notify the animation sync service that this player is actively shooting
         // (设计文档 §isFiring 标记维护: 收到 ShootC2SPacket 即置 true).
         ShootAnimSyncService.getInstance().onShootPacketReceived(player);
