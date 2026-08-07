@@ -1,8 +1,0 @@
-{
-  "default_value": false,
-  "name": "速射",
-  "description": "提高射击频率",
-  "color": "#FFAA44",
-  "force_show": false,
-  "priority": 0
-}

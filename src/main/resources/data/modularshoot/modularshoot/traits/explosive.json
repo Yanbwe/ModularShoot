@@ -1,8 +1,0 @@
-{
-  "default_value": false,
-  "name": "爆炸",
-  "description": "命中后产生爆炸",
-  "color": "#FF8800",
-  "force_show": false,
-  "priority": 0
-}

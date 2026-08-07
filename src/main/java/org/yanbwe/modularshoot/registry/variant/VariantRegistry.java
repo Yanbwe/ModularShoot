@@ -35,7 +35,7 @@ public final class VariantRegistry {
      *
      * @param registryAccess the runtime registry view (from a loaded world)
      * @param variantId      the variant definition id, e.g.
-     *                       {@code modularshoot:demo_fireball}
+     *                       {@code modularshoot:heavy}
      * @return the matching {@link VariantDefinition}, or
      *         {@code Optional.empty()} when the registry is absent or the id
      *         is not registered

@@ -3,7 +3,6 @@ package org.yanbwe.modularshoot;
 import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.creative.ModularShootCreativeTabs;
-import org.yanbwe.modularshoot.demo.DemoTraitHooks;
 import org.yanbwe.modularshoot.item.ModularShootItems;
 import org.yanbwe.modularshoot.plugin.PluginInstallEventHandler;
 import org.yanbwe.modularshoot.state.ModularShootAttachmentTypes;
@@ -40,9 +39,5 @@ public class ModularShoot {
 
         // Register plugin install handler on the game bus (Apotheosis pattern).
         NeoForge.EVENT_BUS.register(new PluginInstallEventHandler());
-
-        // Register demo explosive-trait runtime hook (DemoKillstreakHandler is
-        // registered automatically via its @EventBusSubscriber annotation).
-        DemoTraitHooks.register();
     }
 }
