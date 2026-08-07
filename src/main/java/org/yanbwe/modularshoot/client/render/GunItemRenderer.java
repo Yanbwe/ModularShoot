@@ -1,6 +1,7 @@
 package org.yanbwe.modularshoot.client.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.client.Minecraft;
@@ -20,6 +21,8 @@ import org.joml.Vector4f;
 import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.client.ClientGunDataStore;
 import org.yanbwe.modularshoot.client.PlayerShootStateManager;
+import org.yanbwe.modularshoot.component.GunData;
+import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.TextureScaleMode;
 
@@ -237,10 +240,18 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer imple
         ResourceLocation renderTexture = ShootTextureResolver.resolveTexture(gunDef, playerUuid);
 
         RegistryAccess registryAccess = minecraft.level.registryAccess();
-        PluginOverlayCompositor.OverlayRenderData renderData = collectRenderData(stack, registryAccess);
-        int modifierVersion = ClientGunDataStore.getInstance().hasSyncData()
-                ? ClientGunDataStore.getInstance().getModifierVersion()
-                : 0;
+        boolean useSync = isMainHandSyncMatch(stack);
+        PluginOverlayCompositor.OverlayRenderData renderData = useSync
+                ? PluginOverlayCompositor.collectRenderDataFromSync(
+                        ClientGunDataStore.getInstance().getInstalledPlugins(), registryAccess)
+                : PluginOverlayCompositor.collectRenderData(ModularShootAPI.getInstalledPlugins(stack), registryAccess);
+        int modifierVersion;
+        if (useSync) {
+            modifierVersion = ClientGunDataStore.getInstance().getModifierVersion();
+        } else {
+            GunData gunData = stack.get(ModularShootDataComponents.GUN_DATA.get());
+            modifierVersion = gunData != null ? gunData.modifierVersion() : 0;
+        }
 
         DynamicGunTextureCache.TextureHandle handle = DynamicGunTextureCache.getInstance().getOrCreate(
                 new DynamicGunTextureCache.Key(
@@ -257,6 +268,7 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer imple
                 handle.location(),
                 tint.isPresent() ? handle.maskLocation() : null,
                 tint.orElse(null),
+                handle.quads(),
                 scaleFor(gunDef.textureScale(), handle),
                 scaleForY(gunDef.textureScale(), handle),
                 context, poseStack, bufferSource, light, overlay);
@@ -291,29 +303,37 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer imple
     }
 
     /**
-     * Collects the render inputs of the gun's installed plugins: the sorted
-     * overlay layers and the whole-gun outlines in installation order.
+     * Whether the rendered stack should read its render inputs from the
+     * server-pushed sync snapshot.
      *
-     * <p>Prefers the server-pushed snapshot in
-     * {@link ClientGunDataStore} when one has been received <em>and</em> the
-     * rendered stack is the local player's main-hand gun (the snapshot is
-     * authoritative only for that gun, see {@link #isLocalMainHandStack});
-     * otherwise falls back to reading the plugin instances from the stack's
-     * own {@code gun_data} component — the correct data source for inventory
-     * GUI slots, dropped items and remote players' guns.</p>
+     * <p>Three conditions must hold: the store holds a snapshot, the rendered
+     * stack is the local player's main-hand item, and the snapshot's
+     * {@code gunInstanceUuid} and {@code hotbarSlot} both match the stack's
+     * own — the slot check is what prevents the stale-snapshot
+     * contamination: copied gun stacks share the same uuid, so right after a
+     * hotbar switch the store may still hold the <em>previous</em> slot's
+     * snapshot for a few ticks until the server's new sync arrives, and
+     * without the slot match the new gun would render the previous gun's
+     * plugin overlays and outlines (描边污染修复). When any condition fails
+     * the caller falls back to the stack's own {@code gun_data} component —
+     * the correct data source for inventory GUI slots, dropped items and
+     * remote players' guns.</p>
      *
-     * @param stack          the gun item stack
-     * @param registryAccess the runtime registry view (from a loaded world)
-     * @return the collected render inputs: overlays sorted bottom-to-top and
-     *         gun outlines in installation order (width sorting is the
-     *         compositor's job); both lists may be empty
+     * @param stack the stack being rendered
+     * @return {@code true} when the sync snapshot is authoritative for this
+     *         stack
      */
-    private PluginOverlayCompositor.OverlayRenderData collectRenderData(ItemStack stack, RegistryAccess registryAccess) {
+    private static boolean isMainHandSyncMatch(ItemStack stack) {
         ClientGunDataStore store = ClientGunDataStore.getInstance();
-        if (store.hasSyncData() && isLocalMainHandStack(stack)) {
-            return PluginOverlayCompositor.collectRenderDataFromSync(store.getInstalledPlugins(), registryAccess);
+        if (!store.hasSyncData() || !isLocalMainHandStack(stack)) {
+            return false;
         }
-        return PluginOverlayCompositor.collectRenderData(ModularShootAPI.getInstalledPlugins(stack), registryAccess);
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null || store.getHotbarSlot() != player.getInventory().selected) {
+            return false;
+        }
+        GunData gunData = stack.get(ModularShootDataComponents.GUN_DATA.get());
+        return gunData != null && Objects.equals(gunData.gunInstanceUuid(), store.getGunInstanceUuid());
     }
 
     /**
@@ -331,7 +351,9 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer imple
      * {@link ItemStack} instance to {@link #renderByItem} for both first
      * person (from {@code Player#getMainHandItem}) and GUI slots (from the
      * inventory list), so {@code ==} matches exactly the main-hand stack and
-     * nothing else.</p>
+     * nothing else. This check only answers "is the main hand"; whether the
+     * snapshot <em>belongs</em> to this stack is {@link #isMainHandSyncMatch}'s
+     * job.</p>
      *
      * @param stack the stack being rendered
      * @return {@code true} when the stack is the local player's main-hand item

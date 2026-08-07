@@ -170,6 +170,49 @@ public final class CompositeTextureBuilder {
     }
 
     /**
+     * Returns a new image with the source content shifted to {@code (padX,
+     * padY)} inside a canvas enlarged by {@code padX}/{@code padY} pixels on
+     * every side.
+     *
+     * <p>Used by {@link DynamicGunTextureCache} to give whole-gun outlines
+     * room outside the silhouette: when the content touches the original
+     * canvas edge, the outer stroke pixels would fall outside the canvas and
+     * be clipped by the outline passes. Padding keeps the content interior
+     * and the stroke visible around it (描边画布扩展). The returned image is
+     * newly allocated; the caller owns it and must close the source after
+     * this call returns (the source is not modified and not closed here).
+     * Padded areas are fully transparent. A {@code (0, 0)} pad returns the
+     * source instance unchanged.</p>
+     *
+     * <p>Package-private for unit testing; the pixel math is pure.</p>
+     *
+     * @param src  the source image to shift; must not be {@code null}
+     * @param padX pixels added on the left and right sides
+     * @param padY pixels added on the top and bottom sides
+     * @return the padded image (the same instance when both pads are 0)
+     */
+    static NativeImage padCanvas(NativeImage src, int padX, int padY) {
+        if (padX == 0 && padY == 0) {
+            return src;
+        }
+        NativeImage padded = new NativeImage(
+                src.getWidth() + 2 * padX, src.getHeight() + 2 * padY, false);
+        // NativeImage's native backing memory is not zero-initialised, so
+        // every pixel is explicitly set to transparent before copying.
+        for (int y = 0; y < padded.getHeight(); y++) {
+            for (int x = 0; x < padded.getWidth(); x++) {
+                padded.setPixelRGBA(x, y, 0);
+            }
+        }
+        for (int y = 0; y < src.getHeight(); y++) {
+            for (int x = 0; x < src.getWidth(); x++) {
+                padded.setPixelRGBA(x + padX, y + padY, src.getPixelRGBA(x, y));
+            }
+        }
+        return padded;
+    }
+
+    /**
      * Alpha-blends an overlay onto the base image, in place, at the position
      * and size determined by the layer's alignment and fit.
      *

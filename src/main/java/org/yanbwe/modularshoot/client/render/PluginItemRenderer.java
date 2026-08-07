@@ -123,8 +123,11 @@ public final class PluginItemRenderer extends BlockEntityWithoutLevelRenderer im
         DynamicGunTextureCache.TextureHandle handle = DynamicGunTextureCache.getInstance().getOrCreate(
                 new DynamicGunTextureCache.Key(definition.itemIcon(), List.of(), List.of(), 0));
         boolean auto = definition.textureScale() == TextureScaleMode.AUTO;
+        // The plugin icon gets the same extrusion treatment as guns: front
+        // and back faces plus silhouette side quads.
         DynamicItemModelRenderer.render(
                 handle.location(),
+                null, null, handle.quads(),
                 auto ? handle.width() / 16.0F : 1.0F,
                 auto ? handle.height() / 16.0F : 1.0F,
                 context, poseStack, bufferSource, light, overlay);

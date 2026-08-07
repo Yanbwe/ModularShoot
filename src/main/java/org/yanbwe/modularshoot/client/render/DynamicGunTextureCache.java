@@ -2,6 +2,7 @@ package org.yanbwe.modularshoot.client.render;
 
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.logging.LogUtils;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -110,21 +111,36 @@ public final class DynamicGunTextureCache {
 
     /**
      * Resolved dynamic texture plus the pixel dimensions of the composited
-     * image, so callers can size the render geometry from the texture
-     * resolution ({@code auto} texture scaling).
+     * content and the complete item quad geometry.
+     *
+     * <p>When the key declares gun outlines, the canvas is padded around the
+     * content (描边画布扩展) so outlines drawn outside the silhouette stay
+     * visible even when the content touches the original canvas edge. The
+     * padding never changes the content dimensions ({@code width} /
+     * {@code height} stay the content size) — instead the geometry expands:
+     * {@code quads} contains the front/back faces (a 9-grid over the content
+     * rect plus the outline ring, built by
+     * {@link SideQuadBuilder#buildMainFaces}) and the 1px silhouette edge
+     * strips ({@link SideQuadBuilder#build}); every quad uses content-space
+     * model coordinates and canvas-space UVs. The mask texture shares the
+     * same dimensions and layout, so the same quad list renders both.</p>
      *
      * @param location     the registered texture location for quad rendering
      * @param maskLocation the registered white outline-mask texture location
      *                     (same dimensions as {@code location}), or
      *                     {@code null} when the key declares no gun outlines
-     * @param width        the composited image width in pixels
-     * @param height       the composited image height in pixels
+     * @param width        the composited <em>content</em> width in pixels
+     * @param height       the composited <em>content</em> height in pixels
+     * @param quads        the complete item quad geometry (front/back faces
+     *                     plus silhouette edge strips), in content-space
+     *                     model coordinates and canvas-space UVs
      */
     public record TextureHandle(
             ResourceLocation location,
             @Nullable ResourceLocation maskLocation,
             int width,
-            int height) {
+            int height,
+            List<SideQuad> quads) {
     }
 
     /**
@@ -184,25 +200,49 @@ public final class DynamicGunTextureCache {
                     key.texturePath());
             image = createPlaceholder();
         }
-        // Read the dimensions before ownership transfers to the DynamicTexture.
+        // Read the content dimensions before ownership transfers to the
+        // DynamicTexture: geometry scaling is always based on the content
+        // size, never the padded canvas (描边画布扩展).
         int width = image.getWidth();
         int height = image.getHeight();
 
+        // Outlines painted outside the silhouette need canvas room beyond the
+        // content edges; pad by the widest outline so an edge-touching
+        // silhouette keeps its full outer stroke instead of clipping it at
+        // the canvas border. The content is shifted to the pad; render
+        // geometry scales from the content size and the UV rect becomes a
+        // content sub-rect of the canvas.
+        int pad = 0;
+        if (!key.gunOutlines().isEmpty()) {
+            pad = key.gunOutlines().stream().mapToInt(OutlineSpec::width).max().orElse(0);
+        }
+        NativeImage canvas = pad > 0 ? CompositeTextureBuilder.padCanvas(image, pad, pad) : image;
+        if (canvas != image) {
+            image.close();
+        }
+
         ResourceLocation maskLocation = null;
         if (!key.gunOutlines().isEmpty()) {
-            NativeImage maskImage = CompositeTextureBuilder.buildOutlineMask(image, key.gunOutlines());
+            NativeImage maskImage = CompositeTextureBuilder.buildOutlineMask(canvas, key.gunOutlines());
             maskLocation = ResourceLocation.fromNamespaceAndPath(
                     ModularShoot.MODID, "dynamic/gun_mask_" + nextId++);
             DynamicTexture maskTexture = new DynamicTexture(maskImage);
             Minecraft.getInstance().getTextureManager().register(maskLocation, maskTexture);
-            CompositeTextureBuilder.applyGunOutlines(image, key.gunOutlines());
+            CompositeTextureBuilder.applyGunOutlines(canvas, key.gunOutlines());
         }
 
         // DynamicTexture(NativeImage) prepares and uploads the GL texture,
         // deferring to the render thread when necessary.
-        DynamicTexture texture = new DynamicTexture(image);
+        DynamicTexture texture = new DynamicTexture(canvas);
         Minecraft.getInstance().getTextureManager().register(location, texture);
-        locations.put(key, new TextureHandle(location, maskLocation, width, height));
+        // Complete item geometry: front/back faces (content rect plus the
+        // padded outline ring) followed by the silhouette edge strips. All
+        // quads use content-space model coordinates and canvas-space UVs —
+        // with an unpadded canvas (pad == 0) both coincide.
+        List<SideQuad> quads = new ArrayList<>(18 + 16);
+        quads.addAll(SideQuadBuilder.buildMainFaces(width, height, pad, canvas.getWidth(), canvas.getHeight()));
+        quads.addAll(SideQuadBuilder.build(canvas, pad, pad, width, height));
+        locations.put(key, new TextureHandle(location, maskLocation, width, height, quads));
         return locations.get(key);
     }
 

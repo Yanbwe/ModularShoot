@@ -2,6 +2,7 @@ package org.yanbwe.modularshoot.client.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
@@ -23,21 +24,25 @@ import org.joml.Vector4f;
  * a pipeline that cannot reference runtime-composited textures
  * ({@link DynamicGunTextureCache}). This class replicates the <em>visual
  * output</em> of that bake (设计文档 §枪械纹理: 原版物品渲染管线的立体化效果)
- * for a single dynamic texture: an extruded 16×16 block with its front face
- * at {@code z = 8.5}, back face at {@code z = 7.5} and four side faces,
- * mirroring the geometry produced by {@code ItemModelGenerator} for
- * {@code builtin/generated} models. With {@code texture_scale = auto} the
- * caller scales the quads by {@code texturePixels / 16} per axis via
- * {@link #render(ResourceLocation, float, float, ItemDisplayContext, PoseStack, MultiBufferSource, int, int)},
+ * for a single dynamic texture by drawing the complete quad geometry built
+ * by {@link SideQuadBuilder}: the front face at {@code z = 8.5} and the back
+ * face at {@code z = 7.5} (mirroring {@code ItemModelGenerator}'s
+ * {@code builtin/generated} model), the 1px silhouette edge strips along
+ * the texture's alpha contour, and — when the canvas is padded for gun
+ * outlines — the outline ring around the content rect on both faces
+ * (描边环带). With {@code texture_scale = auto} the caller scales the quads
+ * by {@code texturePixels / 16} per axis via
+ * {@link #render(ResourceLocation, ResourceLocation, Vector4f, List, float, float, ItemDisplayContext, PoseStack, MultiBufferSource, int, int)},
  * so higher-resolution textures render proportionally larger instead of
  * being squeezed into the 16×16 unit grid.</p>
  *
  * <p><b>Coordinate space:</b> quads are emitted in the baked-model space of
  * 0..1 (vanilla's {@code FaceBakery} divides block-element coordinates by 16
  * when baking, so an {@code ItemModelGenerator} element spanning
- * {@code (0,0,7.5)-(16,16,8.5)} becomes {@code (0,0,0.46875)-(1,1,0.53125)}).
- * Vertex {@code y} maps to texture {@code v} as {@code v = 1 - y}, keeping
- * the top of the texture at the top of the item.</p>
+ * {@code (0,0,7.5)-(16,16,8.5)} becomes {@code (0,0,0.46875)-(1,1,0.53125)});
+ * the padded outline ring extends the coordinates beyond 0..1. Vertex
+ * {@code y} maps to texture {@code v} as {@code v = 1 - y}, keeping the top
+ * of the texture at the top of the item.</p>
  *
  * <p><b>Transform handling:</b> {@code ItemRenderer.render} applies
  * {@code bakedModel.getTransforms().getTransform(context)} and then
@@ -75,36 +80,6 @@ public final class DynamicItemModelRenderer {
     }
 
     /**
-     * Draws the extruded item quads for the given dynamic texture.
-     *
-     * <p>Convenience overload of {@link #render(ResourceLocation, ResourceLocation, Vector4f, float, float, ItemDisplayContext, PoseStack, MultiBufferSource, int, int)}
-     * with no mask pass — the composite texture is drawn with white vertex
-     * colour, exactly the static-item look.</p>
-     *
-     * @param texture      the registered dynamic texture location; must be
-     *                     non-{@code null}
-     * @param scaleX       horizontal geometry scale (16 px = 1 grid cell)
-     * @param scaleY       vertical geometry scale (16 px = 1 grid cell)
-     * @param context      the display context (GUI, hand, ground, ...)
-     * @param poseStack    the pose stack, already centred by the vanilla
-     *                     pipeline
-     * @param bufferSource the buffer source to submit quads to
-     * @param light        the packed light value
-     * @param overlay      the packed overlay value
-     */
-    public static void render(
-            ResourceLocation texture,
-            float scaleX,
-            float scaleY,
-            ItemDisplayContext context,
-            PoseStack poseStack,
-            MultiBufferSource bufferSource,
-            int light,
-            int overlay) {
-        render(texture, null, null, scaleX, scaleY, context, poseStack, bufferSource, light, overlay);
-    }
-
-    /**
      * Draws the extruded item quads for the given dynamic texture, optionally
      * followed by a tinted outline-mask pass.
      *
@@ -112,10 +87,18 @@ public final class DynamicItemModelRenderer {
      * {@code maskTexture} or {@code maskTint} is {@code null}: the composite
      * texture is drawn with white vertex colour. When both are provided, the
      * white outline mask (same pixel dimensions as {@code texture}) is drawn
-     * on top of the same extruded quads with the per-frame tint as vertex
-     * colour — texture &times; vertex colour yields the tint, so a
-     * dynamically coloured whole-gun outline is rendered without
-     * re-compositing or re-uploading any texture (设计文档 §动态描边).</p>
+     * on top of the same quads with the per-frame tint as vertex colour —
+     * texture &times; vertex colour yields the tint, so a dynamically
+     * coloured whole-gun outline is rendered without re-compositing or
+     * re-uploading any texture (设计文档 §动态描边).</p>
+     *
+     * <p><b>Geometry:</b> the quad list is the complete item geometry —
+     * front and back faces (the content rect, plus the padded outline ring
+     * when the canvas is padded) and the 1px silhouette edge strips — built
+     * by {@link SideQuadBuilder#buildMainFaces} and
+     * {@link SideQuadBuilder#build} from the composited canvas. All quads
+     * carry content-space model coordinates and canvas-space UVs, so the
+     * same list works for the composite texture and its outline mask.</p>
      *
      * @param texture      the registered composite texture location; must be
      *                     non-{@code null}
@@ -123,6 +106,9 @@ public final class DynamicItemModelRenderer {
      *                     or {@code null} to skip the mask pass
      * @param maskTint     the per-frame outline tint (RGBA, 0..1), or
      *                     {@code null} to skip the mask pass
+     * @param quads        the complete item quad geometry (front/back faces
+     *                     plus silhouette side quads); must not be
+     *                     {@code null}
      * @param scaleX       horizontal geometry scale (16 px = 1 grid cell)
      * @param scaleY       vertical geometry scale (16 px = 1 grid cell)
      * @param context      the display context (GUI, hand, ground, ...)
@@ -136,6 +122,7 @@ public final class DynamicItemModelRenderer {
             ResourceLocation texture,
             @Nullable ResourceLocation maskTexture,
             @Nullable Vector4f maskTint,
+            List<SideQuad> quads,
             float scaleX,
             float scaleY,
             ItemDisplayContext context,
@@ -147,23 +134,30 @@ public final class DynamicItemModelRenderer {
         poseStack.pushPose();
         poseStack.scale(scaleX, scaleY, 1F);
 
-        renderFaces(texture, WHITE_COLOR, poseStack, bufferSource, light, overlay);
+        renderFaces(texture, WHITE_COLOR, quads, poseStack, bufferSource, light, overlay);
         if (maskTexture != null && maskTint != null) {
-            renderFaces(maskTexture, maskTint, poseStack, bufferSource, light, overlay);
+            renderFaces(maskTexture, maskTint, quads, poseStack, bufferSource, light, overlay);
         }
 
         poseStack.popPose();
     }
 
     /**
-     * Emits the six extruded faces of the given texture with a fixed vertex
-     * colour, inside the caller's already-scaled pose.
+     * Emits the given item quads with a fixed vertex colour, inside the
+     * caller's already-scaled pose.
      *
-     * <p>Front face (z = 0.53125, normal +z), vertices CCW seen from +z.</p>
+     * <p>The quad list is the complete geometry produced by
+     * {@link SideQuadBuilder}: front and back faces (with the padded outline
+     * ring when the canvas is padded) plus the 1px silhouette edge strips.
+     * Every quad is emitted with its own canvas-space UVs — the back faces
+     * keep the front's u = +x assignment so the texture reads mirrored from
+     * behind, exactly like a vanilla flat item.</p>
      *
      * @param texture      the texture location to sample
      * @param color        the vertex colour (RGBA, 0..1) multiplied into the
      *                     sampled texel
+     * @param quads        the item quads to draw (front/back + sides); must
+     *                     not be {@code null}
      * @param poseStack    the pose stack, already centred and scaled by the
      *                     caller
      * @param bufferSource the buffer source to submit quads to
@@ -173,6 +167,7 @@ public final class DynamicItemModelRenderer {
     private static void renderFaces(
             ResourceLocation texture,
             Vector4f color,
+            List<SideQuad> quads,
             PoseStack poseStack,
             MultiBufferSource bufferSource,
             int light,
@@ -181,30 +176,20 @@ public final class DynamicItemModelRenderer {
         VertexConsumer consumer = bufferSource.getBuffer(RenderType.entityTranslucent(texture));
         PoseStack.Pose pose = poseStack.last();
 
-        // Front face (z = 0.53125, normal +z), vertices CCW seen from +z.
-        face(consumer, pose, light, overlay, color,
-                0F, 0F, 0.53125F, 1F, 0F, 0.53125F, 1F, 1F, 0.53125F, 0F, 1F, 0.53125F,
-                0F, 0F, 1F);
-        // Back face (z = 0.46875, normal -z).
-        face(consumer, pose, light, overlay, color,
-                1F, 0F, 0.46875F, 0F, 0F, 0.46875F, 0F, 1F, 0.46875F, 1F, 1F, 0.46875F,
-                0F, 0F, -1F);
-        // Left side (x = 0, normal -x).
-        face(consumer, pose, light, overlay, color,
-                0F, 0F, 0.46875F, 0F, 0F, 0.53125F, 0F, 1F, 0.53125F, 0F, 1F, 0.46875F,
-                -1F, 0F, 0F);
-        // Right side (x = 1, normal +x).
-        face(consumer, pose, light, overlay, color,
-                1F, 0F, 0.53125F, 1F, 0F, 0.46875F, 1F, 1F, 0.46875F, 1F, 1F, 0.53125F,
-                1F, 0F, 0F);
-        // Bottom side (y = 0, normal -y).
-        face(consumer, pose, light, overlay, color,
-                0F, 0F, 0.46875F, 1F, 0F, 0.46875F, 1F, 0F, 0.53125F, 0F, 0F, 0.53125F,
-                0F, -1F, 0F);
-        // Top side (y = 1, normal +y).
-        face(consumer, pose, light, overlay, color,
-                0F, 1F, 0.53125F, 1F, 1F, 0.53125F, 1F, 1F, 0.46875F, 0F, 1F, 0.46875F,
-                0F, 1F, 0F);
+        for (SideQuad quad : quads) {
+            vertex(consumer, pose, light, overlay, color,
+                    quad.positions()[0], quad.positions()[1], quad.positions()[2],
+                    quad.uvs()[0], quad.uvs()[1], quad.nx(), quad.ny(), quad.nz());
+            vertex(consumer, pose, light, overlay, color,
+                    quad.positions()[3], quad.positions()[4], quad.positions()[5],
+                    quad.uvs()[2], quad.uvs()[3], quad.nx(), quad.ny(), quad.nz());
+            vertex(consumer, pose, light, overlay, color,
+                    quad.positions()[6], quad.positions()[7], quad.positions()[8],
+                    quad.uvs()[4], quad.uvs()[5], quad.nx(), quad.ny(), quad.nz());
+            vertex(consumer, pose, light, overlay, color,
+                    quad.positions()[9], quad.positions()[10], quad.positions()[11],
+                    quad.uvs()[6], quad.uvs()[7], quad.nx(), quad.ny(), quad.nz());
+        }
     }
 
     /**
@@ -238,65 +223,18 @@ public final class DynamicItemModelRenderer {
     }
 
     /**
-     * Submits a single textured quad to the consumer.
-     *
-     * <p>Vertex order: {@code (x1,y1,z1)} {@code (x2,y2,z2)} {@code (x3,y3,z3)}
-     * {@code (x4,y4,z4)}, all in baked-model space (0..1). The texture is
-     * mapped with {@code u = x} and {@code v = 1 - y} so that the top of the
-     * texture ({@code v = 0}) sits at the top of the item ({@code y = 1}),
-     * matching the vanilla item sprite orientation. Each vertex is emitted
-     * with white colour, the given packed overlay/light, and the face normal.</p>
-     *
-     * @param consumer the vertex consumer to write to
-     * @param pose     the current pose for coordinate transformation
-     * @param light    the packed light value
-     * @param overlay  the packed overlay value
-     * @param x1       first vertex x (baked model space)
-     * @param y1       first vertex y
-     * @param z1       first vertex z
-     * @param x2       second vertex x
-     * @param y2       second vertex y
-     * @param z2       second vertex z
-     * @param x3       third vertex x
-     * @param y3       third vertex y
-     * @param z3       third vertex z
-     * @param x4       fourth vertex x
-     * @param y4       fourth vertex y
-     * @param z4       fourth vertex z
-     * @param nx       face normal x
-     * @param ny       face normal y
-     * @param nz       face normal z
-     */
-    private static void face(
-            VertexConsumer consumer,
-            PoseStack.Pose pose,
-            int light,
-            int overlay,
-            Vector4f color,
-            float x1, float y1, float z1,
-            float x2, float y2, float z2,
-            float x3, float y3, float z3,
-            float x4, float y4, float z4,
-            float nx, float ny, float nz) {
-
-        vertex(consumer, pose, light, overlay, color, x1, y1, z1, 0F, 1F, nx, ny, nz);
-        vertex(consumer, pose, light, overlay, color, x2, y2, z2, 1F, 1F, nx, ny, nz);
-        vertex(consumer, pose, light, overlay, color, x3, y3, z3, 1F, 0F, nx, ny, nz);
-        vertex(consumer, pose, light, overlay, color, x4, y4, z4, 0F, 0F, nx, ny, nz);
-    }
-
-    /**
      * Emits a single vertex into the consumer.
      *
      * @param consumer the vertex consumer to write to
      * @param pose     the current pose for coordinate transformation
      * @param light    the packed light value
      * @param overlay  the packed overlay value
-     * @param x        vertex x (baked model space, 0..1)
-     * @param y        vertex y (baked model space, 0..1)
+     * @param x        vertex x (baked model space; may exceed 0..1 for the
+     *                 padded outline ring)
+     * @param y        vertex y (baked model space; may exceed 0..1)
      * @param z        vertex z (baked model space, 0..1)
-     * @param u        texture u coordinate (0..1)
-     * @param v        texture v coordinate (0..1)
+     * @param u        texture u coordinate (0..1, canvas space)
+     * @param v        texture v coordinate (0..1, canvas space)
      * @param nx       face normal x
      * @param ny       face normal y
      * @param nz       face normal z
