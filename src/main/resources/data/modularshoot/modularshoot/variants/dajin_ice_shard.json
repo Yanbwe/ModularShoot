@@ -1,0 +1,12 @@
+{
+  "base_weight": 0.0,
+  "stats": { "modularshoot:hit_damage": 9.0 },
+  "damage_type": "minecraft:freeze",
+  "bullet_style_override": {
+    "base": { "render_mode": "billboard", "texture": "modularshoot:textures/bullet/default.png" },
+    "modifiers": [
+      { "type": "tint", "color": [0.6, 0.85, 1.0, 1.0] },
+      { "type": "scale", "value": 0.9 }
+    ]
+  }
+}

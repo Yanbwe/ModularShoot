@@ -1,0 +1,13 @@
+{
+  "tags": ["c:support"],
+  "priority": 200,
+  "item_icon": "modularshoot:textures/plugins/fragment_special.png",
+  "extra_values": { "modularshoot:demo_rarity": 5 },
+  "modifiers": [
+    { "attribute": "modularshoot:fire_rate", "operation": "multiply", "value": 0.2 },
+    { "attribute": "modularshoot:hit_damage", "operation": "multiply", "value": 0.2 }
+  ],
+  "name": "§5特殊碎片",
+  "brief": "特殊改造",
+  "description": "射速与伤害各提升 20%，稀有度 +5。"
+}

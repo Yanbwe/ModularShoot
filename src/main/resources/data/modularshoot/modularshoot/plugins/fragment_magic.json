@@ -1,0 +1,11 @@
+{
+  "tags": ["c:magic"],
+  "item_icon": "modularshoot:textures/plugins/fragment_magic.png",
+  "modifiers": [
+    { "attribute": "modularshoot:hit_damage", "operation": "multiply", "value": 0.5 },
+    { "attribute": "modularshoot:fire_rate", "operation": "multiply", "value": 0.3 }
+  ],
+  "name": "§d魔法碎片",
+  "brief": "魔力灌注",
+  "description": "伤害提升 50%，射速提升 30%。"
+}

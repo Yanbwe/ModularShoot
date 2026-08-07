@@ -1,0 +1,26 @@
+{
+  "domain": "gun",
+  "value_type": "int",
+  "default_value": 0,
+  "display": {
+    "name": "连杀层数",
+    "color": "#FFAA00",
+    "format": "{value} 层",
+    "priority": 10,
+    "hide_default": true
+  },
+  "visual_modifiers": [
+    {
+      "condition": {
+        "state": "modularshoot:visual_killstreak",
+        "domain": "gun",
+        "op": ">=",
+        "value": 3
+      },
+      "modifiers": [
+        { "type": "tint", "color": [1.0, 0.2, 0.2, 1.0] },
+        { "type": "scale", "value": 1.2 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "tags": ["c:melee"],
+  "item_icon": "modularshoot:textures/plugins/fragment_swords.png",
+  "adds_variants": { "modularshoot:dajin_heavy_blade": 0.4 },
+  "exclusive_group": "group:blade",
+  "modifiers": [
+    { "attribute": "modularshoot:hit_damage", "operation": "add", "value": 4.0 }
+  ],
+  "bullet_style": {
+    "modifiers": [
+      { "type": "tint", "color": [0.8, 0.1, 0.1, 1.0] }
+    ]
+  },
+  "name": "§c剑刃碎片",
+  "brief": "重斩弹倾向",
+  "description": "伤害 +4，可能斩出重斩弹（单独安装时约 29%）。剑刃型插件互斥。"
+}

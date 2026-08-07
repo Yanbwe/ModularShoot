@@ -1,0 +1,17 @@
+{
+  "tags": ["c:support"],
+  "item_icon": "modularshoot:textures/plugins/fragment_guard.png",
+  "exclusive_group": "group:defense",
+  "modifiers": [
+    { "attribute": "modularshoot:accuracy_yaw", "operation": "multiply", "value": 0.5 },
+    { "attribute": "modularshoot:accuracy_pitch", "operation": "multiply", "value": 0.5 }
+  ],
+  "gun_outline": {
+    "color": [0.3, 0.6, 1.0],
+    "alpha": 0.8,
+    "width": 1
+  },
+  "name": "§2守护碎片",
+  "brief": "守护结界",
+  "description": "散布减半，枪身描上守护蓝光。守护型插件互斥。"
+}

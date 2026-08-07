@@ -1,0 +1,16 @@
+{
+  "tags": ["c:magic", "c:support"],
+  "priority": -10,
+  "item_icon": "modularshoot:textures/plugins/fragment_implements.png",
+  "modifiers": [
+    { "attribute": "modularshoot:range", "operation": "add", "value": 10.0 }
+  ],
+  "bullet_style": {
+    "modifiers": [
+      { "type": "attach_layer", "render_mode": "billboard", "texture": "modularshoot:textures/bullet/default.png", "follow_rotation": true, "follow_scale": true, "offset": [0.0, 0.0, 0.0], "scale": 1.25, "tint": [1.0, 0.85, 0.5, 0.8] }
+    ]
+  },
+  "name": "§e法器碎片",
+  "brief": "法器延展",
+  "description": "射程 +10 格，子弹裹上法器光晕。"
+}

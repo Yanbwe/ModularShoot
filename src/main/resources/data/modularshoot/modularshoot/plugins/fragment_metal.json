@@ -1,0 +1,15 @@
+{
+  "tags": ["c:melee"],
+  "item_icon": "modularshoot:textures/plugins/fragment_metal.png",
+  "modifiers": [
+    { "attribute": "modularshoot:entity_penetration", "operation": "add", "value": 1.0 }
+  ],
+  "bullet_style": {
+    "modifiers": [
+      { "type": "attach_layer", "render_mode": "billboard", "texture": "modularshoot:textures/bullet/default.png", "follow_rotation": true, "follow_scale": true, "offset": [0.0, 0.0, 0.0], "scale": 1.1, "tint": [0.8, 0.8, 0.85, 1.0] }
+    ]
+  },
+  "name": "§7金属碎片",
+  "brief": "剑刃穿透",
+  "description": "实体穿透 +1，子弹附带金属刃层。"
+}

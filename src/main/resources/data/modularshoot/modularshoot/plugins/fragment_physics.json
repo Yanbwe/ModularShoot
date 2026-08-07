@@ -1,0 +1,11 @@
+{
+  "tags": ["c:support", "c:gun"],
+  "item_icon": "modularshoot:textures/plugins/fragment_physics.png",
+  "modifiers": [
+    { "attribute": "modularshoot:bullet_speed", "operation": "multiply", "value": 0.3 },
+    { "attribute": "modularshoot:pellet_count", "operation": "multiply_total", "value": 0.2 }
+  ],
+  "name": "§3物理碎片",
+  "brief": "动能重构",
+  "description": "弹速提升 30%，弹丸数提升 20%。"
+}

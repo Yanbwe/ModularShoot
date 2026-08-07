@@ -1,0 +1,16 @@
+{
+  "tags": ["c:melee", "c:gun"],
+  "item_icon": "modularshoot:textures/plugins/fragment_combat.png",
+  "exclusive_group": "group:blade",
+  "modifiers": [
+    { "attribute": "modularshoot:hit_damage", "operation": "multiply", "value": 0.5 }
+  ],
+  "bullet_style": {
+    "modifiers": [
+      { "type": "scale", "value": 1.2 }
+    ]
+  },
+  "name": "§c战斗碎片",
+  "brief": "更强更野",
+  "description": "伤害提升 50%，弹丸更大一号。剑刃型插件互斥。"
+}

@@ -1,0 +1,12 @@
+{
+  "default_value": false,
+  "description": "子弹裹上寒霜之息",
+  "name": "霜寒",
+  "color": "#88BBFF",
+  "brief": "子弹凝结冰蓝霜气",
+  "force_show": false,
+  "priority": 10,
+  "visual_modifiers": [
+    { "type": "tint", "color": [0.6, 0.8, 1.0, 1.0] }
+  ]
+}

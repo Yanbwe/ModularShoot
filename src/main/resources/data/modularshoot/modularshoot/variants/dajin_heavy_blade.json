@@ -1,0 +1,11 @@
+{
+  "base_weight": 0.0,
+  "stats": { "modularshoot:hit_damage": 18.0, "modularshoot:bullet_size": 0.75 },
+  "bullet_style_override": {
+    "base": { "render_mode": "billboard", "texture": "modularshoot:textures/bullet/default.png" },
+    "modifiers": [
+      { "type": "tint", "color": [0.75, 0.1, 0.1, 1.0] },
+      { "type": "scale", "value": 1.5 }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "tags": ["c:gun", "c:support"],
+  "item_icon": "modularshoot:textures/plugins/fragment_remote.png",
+  "modifiers": [
+    { "attribute": "modularshoot:range", "operation": "add", "value": 20.0 }
+  ],
+  "name": "§9远程碎片",
+  "brief": "远程模块",
+  "description": "射程 +20 格。"
+}

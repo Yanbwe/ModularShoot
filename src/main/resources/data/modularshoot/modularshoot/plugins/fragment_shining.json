@@ -1,0 +1,16 @@
+{
+  "tags": ["c:magic"],
+  "item_icon": "modularshoot:textures/plugins/fragment_shining.png",
+  "visual_priority": 100,
+  "modifiers": [
+    { "attribute": "modularshoot:bullet_size", "operation": "multiply", "value": 0.2 }
+  ],
+  "gun_outline": {
+    "color": [1.0, 0.85, 0.3],
+    "alpha": 0.9,
+    "width": 2
+  },
+  "name": "§e闪光碎片",
+  "brief": "闪光圣物",
+  "description": "子弹变大发亮，枪身描上金色圣光。"
+}

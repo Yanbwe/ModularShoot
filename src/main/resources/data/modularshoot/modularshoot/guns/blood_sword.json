@@ -1,0 +1,27 @@
+{
+  "name": "§c血剑",
+  "texture": "modularshoot:textures/gun/blood_sword.png",
+  "stats": {
+    "modularshoot:hit_damage": 12.0,
+    "modularshoot:fire_rate": 1.2,
+    "modularshoot:range": 40.0,
+    "modularshoot:bullet_speed": 24.0,
+    "modularshoot:accuracy_yaw": 14.0,
+    "modularshoot:accuracy_pitch": 14.0,
+    "modularshoot:entity_penetration": 2.0,
+    "modularshoot:bullet_size": 0.6,
+    "modularshoot:pellet_count": 5.0
+  },
+  "traits": {},
+  "slots": {
+    "modularshoot:dajin_melee": 2,
+    "modularshoot:dajin_support": 1
+  },
+  "sounds": {
+    "shoot": "minecraft:entity.player.attack.sweep",
+    "hit_entity": "minecraft:entity.generic.hurt",
+    "hit_block": "minecraft:block.stone.hit",
+    "hit_pierce": "minecraft:block.anvil.land",
+    "plugin_install": "minecraft:block.note_block.pling"
+  }
+}

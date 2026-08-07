@@ -1,0 +1,13 @@
+{
+  "default_value": false,
+  "description": "命中时子弹携带烈焰视觉",
+  "name": "烈焰",
+  "color": "#FF6633",
+  "brief": "子弹染上烈焰之色",
+  "force_show": false,
+  "priority": 10,
+  "visual_modifiers": [
+    { "type": "tint", "color": [1.0, 0.4, 0.1, 1.0] },
+    { "type": "scale", "value": 1.1 }
+  ]
+}

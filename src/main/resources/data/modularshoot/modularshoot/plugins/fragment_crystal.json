@@ -1,0 +1,23 @@
+{
+  "tags": ["c:magic"],
+  "item_icon": "modularshoot:textures/plugins/fragment_crystal.png",
+  "modifiers": [
+    { "attribute": "modularshoot:bullet_speed", "operation": "add", "value": 10.0 }
+  ],
+  "bullet_style": {
+    "modifiers": [
+      { "type": "tint", "color": [0.7, 0.4, 1.0, 1.0] }
+    ]
+  },
+  "texture_overlay": {
+    "texture": "modularshoot:textures/plugins/fragment_crystal.png",
+    "layer": 20,
+    "alignment": "center",
+    "fit": "contain",
+    "tint": [0.7, 0.4, 1.0, 1.0],
+    "blend": "screen"
+  },
+  "name": "§d水晶碎片",
+  "brief": "水晶加速",
+  "description": "弹速 +10，子弹泛紫光，枪身浮现水晶光点。"
+}

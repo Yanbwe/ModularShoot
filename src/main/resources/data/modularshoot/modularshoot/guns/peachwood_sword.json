@@ -1,0 +1,26 @@
+{
+  "name": "§d桃木剑",
+  "texture": "modularshoot:textures/gun/peachwood_sword.png",
+  "stats": {
+    "modularshoot:hit_damage": 10.0,
+    "modularshoot:fire_rate": 2.0,
+    "modularshoot:range": 80.0,
+    "modularshoot:bullet_speed": 60.0,
+    "modularshoot:accuracy_yaw": 4.0,
+    "modularshoot:accuracy_pitch": 4.0,
+    "modularshoot:block_penetration": 1.0,
+    "modularshoot:bullet_size": 0.5
+  },
+  "traits": {},
+  "slots": {
+    "modularshoot:dajin_melee": 1,
+    "modularshoot:dajin_magic": 1,
+    "modularshoot:barrel": 1
+  },
+  "sounds": {
+    "shoot": "minecraft:entity.evoker.cast_spell",
+    "hit_entity": "minecraft:entity.arrow.hit_player",
+    "hit_block": "minecraft:block.stone.hit",
+    "plugin_install": "minecraft:block.note_block.pling"
+  }
+}

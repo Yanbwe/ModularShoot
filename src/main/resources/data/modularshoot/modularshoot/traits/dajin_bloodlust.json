@@ -1,0 +1,13 @@
+{
+  "default_value": false,
+  "description": "鲜血充盈弹丸",
+  "name": "嗜血",
+  "color": "#CC2222",
+  "brief": "子弹染上血光",
+  "force_show": false,
+  "priority": 10,
+  "visual_modifiers": [
+    { "type": "tint", "color": [0.8, 0.1, 0.1, 1.0] },
+    { "type": "scale", "value": 1.15 }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "tags": ["c:melee"],
+  "priority": 30,
+  "name": "近战",
+  "color": "#FF6644"
+}
