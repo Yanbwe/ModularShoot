@@ -4,6 +4,8 @@ import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.plugin.PluginDefinition;
 import org.yanbwe.modularshoot.plugin.PluginTypeDefinition;
 import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
+import org.yanbwe.modularshoot.registry.binding.GunItemBinding;
+import org.yanbwe.modularshoot.registry.binding.PluginItemBinding;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.variant.VariantDefinition;
 import org.yanbwe.modularshoot.state.StateDefinition;
@@ -67,6 +69,14 @@ public final class ModularShootRegistries {
     /** Registry key for {@code modularshoot:variants} — random variant definitions. */
     public static final ResourceKey<Registry<VariantDefinition>> VARIANTS_KEY =
             createRegistryKey("variants");
+
+    /** Registry key for {@code modularshoot:gun_items} — item→gun bindings. */
+    public static final ResourceKey<Registry<GunItemBinding>> GUN_ITEMS_KEY =
+            createRegistryKey("gun_items");
+
+    /** Registry key for {@code modularshoot:plugin_items} — item→plugin bindings. */
+    public static final ResourceKey<Registry<PluginItemBinding>> PLUGIN_ITEMS_KEY =
+            createRegistryKey("plugin_items");
 
     /**
      * Builds a root registry key under the mod's namespace.
