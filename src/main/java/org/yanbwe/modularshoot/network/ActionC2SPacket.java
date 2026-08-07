@@ -8,9 +8,9 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
 /**
- * Client-to-server reload request packet.
+ * Client-to-server action request packet.
  *
- * <p>Sent by the client when the player single-presses the reload key
+ * <p>Sent by the client when the player single-presses the action key
  * (default: R) while holding a gun in the main hand. The packet carries
  * <strong>no payload</strong> — it is a pure signal. The server derives
  * everything it needs from the sender's own state: the player is obtained
@@ -18,15 +18,15 @@ import net.minecraft.resources.ResourceLocation;
  * This keeps the protocol minimal and prevents the client from spoofing a
  * different gun stack.</p>
  *
- * <p><b>Design rationale (see design doc §ReloadEvent):</b></p>
+ * <p><b>Design rationale (see design doc §ActionEvent):</b></p>
  * <ul>
  *   <li>The server is the sole authority — it re-checks
  *       {@link org.yanbwe.modularshoot.ModularShootAPI#isGun(ItemStack)}
  *       on the main-hand item before firing
- *       {@link org.yanbwe.modularshoot.api.event.ReloadEvent}, so a hacked
- *       client cannot trigger a reload event for a non-gun item.</li>
+ *       {@link org.yanbwe.modularshoot.api.event.ActionEvent}, so a hacked
+ *       client cannot trigger an action event for a non-gun item.</li>
  *   <li>The packet is stateless and idempotent: a dropped packet simply
- *       means no reload request that tick, with no cascading desync.</li>
+ *       means no action request that tick, with no cascading desync.</li>
  *   <li>Bandwidth is negligible (only the payload id header, ~4 bytes).</li>
  * </ul>
  *
@@ -37,12 +37,12 @@ import net.minecraft.resources.ResourceLocation;
  *
  * @see ShootC2SPacket for the C→S packet pattern with a non-empty payload
  */
-public record ReloadC2SPacket() implements CustomPacketPayload {
+public record ActionC2SPacket() implements CustomPacketPayload {
 
-    /** Payload identifier: {@code modularshoot:reload_c2s}. */
-    public static final CustomPacketPayload.Type<ReloadC2SPacket> TYPE =
+    /** Payload identifier: {@code modularshoot:action_c2s}. */
+    public static final CustomPacketPayload.Type<ActionC2SPacket> TYPE =
             new CustomPacketPayload.Type<>(
-                    ResourceLocation.fromNamespaceAndPath(ModularShoot.MODID, "reload_c2s"));
+                    ResourceLocation.fromNamespaceAndPath(ModularShoot.MODID, "action_c2s"));
 
     /**
      * Stream codec for the empty payload.
@@ -52,8 +52,8 @@ public record ReloadC2SPacket() implements CustomPacketPayload {
      * instance. The payload id is <em>not</em> written here; NeoForge
      * writes it automatically around the codec output.</p>
      */
-    public static final StreamCodec<RegistryFriendlyByteBuf, ReloadC2SPacket> STREAM_CODEC =
-            StreamCodec.unit(new ReloadC2SPacket());
+    public static final StreamCodec<RegistryFriendlyByteBuf, ActionC2SPacket> STREAM_CODEC =
+            StreamCodec.unit(new ActionC2SPacket());
 
     /**
      * {@return the payload type identifier used by NeoForge to route this packet}
