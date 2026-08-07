@@ -16,6 +16,7 @@ import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.ModularShootAPI;
+import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.degradation.GunDegradationHandler;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
 
@@ -70,6 +71,12 @@ public final class TooltipBuilder {
      * </ol>
      * </p>
      *
+     * <p>After the guards, a binding-channel gun that has not been attached
+     * yet (no {@code gun_data} component) gets a grey identity line
+     * {@code 枪械: <path>} inserted at the very top of the tooltip, above the
+     * item name (设计规格 物品绑定系统 §7.4). Native guns and guns that already
+     * carry the component skip this line so the display stays non-redundant.</p>
+     *
      * <p>After the guards, the four tooltip sections are injected in
      * design-document order (设计文档 lines 1473-1509):
      * <ol>
@@ -118,6 +125,18 @@ public final class TooltipBuilder {
         if (GunDegradationHandler.isGunDefinitionMissing(stack, registryAccess)) {
             appendDegradedTooltip(event.getToolTip(), stack);
             return;
+        }
+
+        // 身份标识行（设计规格 物品绑定系统 §7.4）：绑定通道识别的枪械在尚未
+        // 附加 GUN_DATA 组件时，于 tooltip 最前面（物品名之上）插入灰色
+        // "枪械: <path>" 行，便于区分多把绑定枪。已附加组件的原生枪械/已转化
+        // 枪械不显示该行，避免冗余。
+        if (!stack.has(ModularShootDataComponents.GUN_DATA.get())) {
+            ModularShootAPI.resolveGunId(stack, registryAccess).ifPresent(gunId ->
+                    event.getToolTip().add(0,
+                            Component.translatable("modularshoot.tooltip.bound_gun")
+                                    .withStyle(ChatFormatting.GRAY)
+                                    .append(Component.literal(gunId.getPath()))));
         }
 
         // 1. Attribute bar (设计文档 §属性栏; Ctrl 展开全部属性).

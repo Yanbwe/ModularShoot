@@ -957,7 +957,11 @@ public final class ModularShootAPI {
      * Returns a {@link GunState} view for the given gun item stack.
      *
      * <p>Delegates to {@link GunState#of}. Returns {@code null} when the stack
-     * is not a gun (checked via {@link #isGun}). The returned view is a
+     * is not a gun (checked via
+     * {@link #isGun(ItemStack, RegistryAccess)} with the player's runtime
+     * registry view, so binding-channel guns without an attached
+     * {@code gun_data} component are also recognized — their state storage
+     * only takes effect through the binding channel). The returned view is a
      * lightweight wrapper over the stack and the supplied
      * {@link RegistryAccess}; it is not cached and may be created freely on
      * every read/write site (设计文档 §读写 API).</p>
@@ -972,7 +976,7 @@ public final class ModularShootAPI {
     public static GunState getState(ItemStack gun, Player player) {
         Objects.requireNonNull(gun, "gun");
         Objects.requireNonNull(player, "player");
-        if (!isGun(gun)) {
+        if (!isGun(gun, player.registryAccess())) {
             return null;
         }
         return GunState.of(gun, player);
