@@ -1,6 +1,6 @@
 {
   "tags": ["c:support"],
   "priority": 10,
-  "name": "辅助",
+  "name": "lang:modularshoot.example.plugin_type.example_support",
   "color": "#66FF88"
 }

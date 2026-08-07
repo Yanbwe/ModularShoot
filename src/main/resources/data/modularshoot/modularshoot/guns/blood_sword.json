@@ -1,5 +1,5 @@
 {
-  "name": "§c血剑",
+  "name": "lang:modularshoot.example.gun.blood_sword",
   "texture": "modularshoot:textures/gun/blood_sword.png",
   "stats": {
     "modularshoot:hit_damage": 12.0,

@@ -11,7 +11,7 @@
     "alpha": 0.8,
     "width": 1
   },
-  "name": "§2守护碎片",
-  "brief": "守护结界",
-  "description": "散布减半，枪身描上守护蓝光。守护型插件互斥。"
+  "name": "lang:modularshoot.example.plugin.fragment_guard",
+  "brief": "lang:modularshoot.example.plugin.fragment_guard.brief",
+  "description": "lang:modularshoot.example.plugin.fragment_guard.desc"
 }

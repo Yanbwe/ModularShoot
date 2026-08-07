@@ -70,7 +70,7 @@ public final class PluginSubcommand {
         ResourceLocation pluginId = ResourceLocationArgument.getId(context, "plugin_id");
 
         if (PluginRegistry.getPlugin(source.getLevel(), pluginId).isEmpty()) {
-            source.sendFailure(Component.literal("插件定义不存在: " + pluginId)
+            source.sendFailure(Component.translatable("modularshoot.command.plugin_not_found", pluginId)
                     .withStyle(ChatFormatting.RED));
             return 0;
         }
@@ -82,7 +82,7 @@ public final class PluginSubcommand {
             }
         }
         final int given = count;
-        source.sendSuccess(() -> Component.literal("已给予插件: " + pluginId + " x" + given)
+        source.sendSuccess(() -> Component.translatable("modularshoot.command.plugin_given", pluginId, given)
                 .withStyle(ChatFormatting.GREEN), false);
         return 1;
     }

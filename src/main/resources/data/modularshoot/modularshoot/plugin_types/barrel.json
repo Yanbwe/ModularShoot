@@ -1,6 +1,6 @@
 {
   "tags": ["c:barrel"],
   "priority": 10,
-  "name": "枪管",
+  "name": "lang:modularshoot.example.plugin_type.barrel",
   "color": "#FFAA00"
 }

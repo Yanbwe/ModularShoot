@@ -67,18 +67,21 @@ public final class PluginDegradationHandler {
     /**
      * Builds the grey tooltip display name for a degraded plugin instance.
      *
-     * <p>The format is {@code "[失效插件] <path>"} where {@code <path>} is the
-     * path segment of the plugin id (e.g. for {@code modularshoot:rapid_barrel}
-     * the path is {@code rapid_barrel}). The whole line is styled grey and
-     * carries no brief or description, matching the design spec for the
-     * plugin tooltip bar (设计文档 §插件栏降级显示).</p>
+     * <p>The format is {@code "[失效插件] <path>"} (localised via the
+     * {@code modularshoot.tooltip.degraded_plugin} key, English: "Broken
+     * plugin <path>") where {@code <path>} is the path segment of the plugin
+     * id (e.g. for {@code modularshoot:rapid_barrel} the path is
+     * {@code rapid_barrel}). The whole line is styled grey and carries no
+     * brief or description, matching the design spec for the plugin tooltip
+     * bar (设计文档 §插件栏降级显示).</p>
      *
      * @param instance the degraded plugin instance; must not be {@code null}
      * @return a grey {@link Component} rendering {@code "[失效插件] <path>"}
      */
     public static Component getDegradedPluginName(PluginInstance instance) {
         String path = instance.pluginId().getPath();
-        return Component.literal("[失效插件] " + path).withStyle(ChatFormatting.GRAY);
+        return Component.translatable("modularshoot.tooltip.degraded_plugin", path)
+                .withStyle(ChatFormatting.GRAY);
     }
 
     /**

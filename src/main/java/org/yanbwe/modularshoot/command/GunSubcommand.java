@@ -51,7 +51,7 @@ public final class GunSubcommand {
         ResourceLocation gunId = ResourceLocationArgument.getId(context, "gun_id");
 
         if (GunRegistry.getGun(source.getLevel(), gunId).isEmpty()) {
-            source.sendFailure(Component.literal("枪械定义不存在: " + gunId)
+            source.sendFailure(Component.translatable("modularshoot.command.gun_not_found", gunId)
                     .withStyle(ChatFormatting.RED));
             return 0;
         }
@@ -65,7 +65,7 @@ public final class GunSubcommand {
         if (!player.getInventory().add(stack)) {
             player.drop(stack, false);
         }
-        source.sendSuccess(() -> Component.literal("已给予枪械: " + gunId)
+        source.sendSuccess(() -> Component.translatable("modularshoot.command.gun_given", gunId)
                 .withStyle(ChatFormatting.GREEN), false);
         return 1;
     }

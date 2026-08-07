@@ -242,7 +242,7 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
      * the framework's post-load validation cleanly are counted as warnings
      * here.</p>
      *
-     * @param name    the human-readable registry name (e.g. "枪械定义")
+     * @param name    the human-readable registry name (e.g. "gun definitions")
      * @param total   the total number of entries
      * @param results the validation results
      * @param isClean predicate returning {@code true} for entries that passed
@@ -268,7 +268,7 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
                 collectEntries(access, ModularShootRegistries.GUNS_KEY);
         Map<ResourceLocation, GunDatapackLoader.GunValidation> results =
                 GunDatapackLoader.validateGuns(entries);
-        return summarize("枪械定义", entries.size(), results.values(),
+        return summarize("gun definitions", entries.size(), results.values(),
                 GunDatapackLoader.GunValidation::valid);
     }
 
@@ -276,14 +276,14 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
         Map<ResourceLocation, PluginValidationResult> results =
                 PluginDatapackLoader.validateLoadedPlugins(access);
         results.forEach(DatapackReloadListener::logPluginValidation);
-        return summarize("插件定义", results.size(), results.values(),
+        return summarize("plugin definitions", results.size(), results.values(),
                 r -> r.valid() && r.warnings().isEmpty());
     }
 
     private static DatapackLoadSummary summarizePluginTypes(RegistryAccess access) {
         Map<ResourceLocation, PluginTypeDatapackLoader.TypeValidation> results =
                 PluginTypeDatapackLoader.validateLoadedTypes(access);
-        return summarize("插件类型定义", results.size(), results.values(),
+        return summarize("plugin type definitions", results.size(), results.values(),
                 PluginTypeDatapackLoader.TypeValidation::tagsPresent);
     }
 
@@ -292,14 +292,14 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
                 collectEntries(access, ModularShootRegistries.TRAITS_KEY);
         Map<ResourceLocation, TraitDatapackLoader.TraitValidation> results =
                 TraitDatapackLoader.validateTraits(entries);
-        return summarize("特性定义", entries.size(), results.values(),
+        return summarize("trait definitions", entries.size(), results.values(),
                 TraitDatapackLoader.TraitValidation::valid);
     }
 
     private static DatapackLoadSummary summarizeStates(RegistryAccess access) {
         List<StateDatapackLoader.StateValidation> results =
                 StateDatapackLoader.validateAllStates(access);
-        return summarize("状态定义", results.size(), results,
+        return summarize("state definitions", results.size(), results,
                 StateDatapackLoader.StateValidation::valid);
     }
 
@@ -308,7 +308,7 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
                 collectEntries(access, ModularShootRegistries.ATTRIBUTE_META_KEY);
         Map<ResourceLocation, AttributeMetaDatapackLoader.BindingValidation> results =
                 AttributeMetaDatapackLoader.validateBindings(entries);
-        return summarize("属性元数据", entries.size(), results.values(),
+        return summarize("attribute metadata", entries.size(), results.values(),
                 AttributeMetaDatapackLoader.BindingValidation::bindsRegistered);
     }
 
@@ -317,7 +317,7 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
                 collectEntries(access, ModularShootRegistries.VARIANTS_KEY);
         CrossReferenceValidator.validateVariants(access, entries);
         logNonFiniteWeights(entries);
-        return summarize("变体定义", entries.size(), entries.values(),
+        return summarize("variant definitions", entries.size(), entries.values(),
                 v -> Double.isFinite(v.baseWeight()));
     }
 

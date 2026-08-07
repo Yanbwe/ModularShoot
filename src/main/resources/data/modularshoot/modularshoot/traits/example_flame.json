@@ -1,9 +1,9 @@
 {
   "default_value": false,
-  "description": "命中时子弹携带烈焰视觉",
-  "name": "烈焰",
+  "description": "lang:modularshoot.example.trait.example_flame.desc",
+  "name": "lang:modularshoot.example.trait.example_flame",
   "color": "#FF6633",
-  "brief": "子弹染上烈焰之色",
+  "brief": "lang:modularshoot.example.trait.example_flame.brief",
   "force_show": false,
   "priority": 10,
   "visual_modifiers": [

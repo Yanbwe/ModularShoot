@@ -4,7 +4,7 @@
   "modifiers": [
     { "attribute": "modularshoot:fire_rate", "operation": "multiply", "value": 0.5 }
   ],
-  "name": "§b枪械碎片",
-  "brief": "扳机优化",
-  "description": "射速提升 50%。"
+  "name": "lang:modularshoot.example.plugin.fragment_gun",
+  "brief": "lang:modularshoot.example.plugin.fragment_gun.brief",
+  "description": "lang:modularshoot.example.plugin.fragment_gun.desc"
 }

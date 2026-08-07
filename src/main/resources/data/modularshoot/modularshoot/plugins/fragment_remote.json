@@ -4,7 +4,7 @@
   "modifiers": [
     { "attribute": "modularshoot:range", "operation": "add", "value": 20.0 }
   ],
-  "name": "§9远程碎片",
-  "brief": "远程模块",
-  "description": "射程 +20 格。"
+  "name": "lang:modularshoot.example.plugin.fragment_remote",
+  "brief": "lang:modularshoot.example.plugin.fragment_remote.brief",
+  "description": "lang:modularshoot.example.plugin.fragment_remote.desc"
 }

@@ -11,7 +11,7 @@
       { "type": "attach_layer", "render_mode": "billboard", "texture": "modularshoot:textures/bullet/default.png", "follow_rotation": true, "follow_scale": true, "offset": [0.0, 0.0, 0.0], "scale": 0.9, "tint": [0.3, 0.9, 0.5, 0.7] }
     ]
   },
-  "name": "§a治疗碎片",
-  "brief": "嗜血之息",
-  "description": "伤害提升 15%，子弹染上血光（嗜血特性）。"
+  "name": "lang:modularshoot.example.plugin.fragment_healing",
+  "brief": "lang:modularshoot.example.plugin.fragment_healing.brief",
+  "description": "lang:modularshoot.example.plugin.fragment_healing.desc"
 }

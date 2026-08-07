@@ -222,15 +222,15 @@ public final class TooltipBuilder {
         boolean shift = Screen.hasShiftDown();
 
         if (!ctrl && hasAttributeMeta(registryAccess)) {
-            hints.add(Component.literal("<按 [Ctrl] 展开属性>")
+            hints.add(Component.translatable("modularshoot.tooltip.hint_ctrl_attributes")
                     .withStyle(ChatFormatting.DARK_GRAY));
         }
         if (!alt && hasTraits(registryAccess)) {
-            hints.add(Component.literal("<按 [Alt] 展开特性>")
+            hints.add(Component.translatable("modularshoot.tooltip.hint_alt_traits")
                     .withStyle(ChatFormatting.DARK_GRAY));
         }
         if (!shift && !ModularShootAPI.getInstalledPlugins(stack).isEmpty()) {
-            hints.add(Component.literal("<按 [Shift] 展开插件>")
+            hints.add(Component.translatable("modularshoot.tooltip.hint_shift_plugins")
                     .withStyle(ChatFormatting.DARK_GRAY));
         }
         toolTip.addAll(hints);

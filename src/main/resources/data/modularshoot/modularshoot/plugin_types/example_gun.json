@@ -1,6 +1,6 @@
 {
   "tags": ["c:gun"],
   "priority": 15,
-  "name": "枪械",
+  "name": "lang:modularshoot.example.plugin_type.example_gun",
   "color": "#66CCFF"
 }

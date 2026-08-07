@@ -85,11 +85,11 @@ public final class DebugSubcommand {
         debugMode = on;
         if (on) {
             debugPlayerUuid = player.getUUID();
-            source.sendSuccess(() -> Component.literal("调试模式已开启")
+            source.sendSuccess(() -> Component.translatable("modularshoot.command.debug_on")
                     .withStyle(ChatFormatting.GREEN), false);
         } else {
             debugPlayerUuid = null;
-            source.sendSuccess(() -> Component.literal("调试模式已关闭")
+            source.sendSuccess(() -> Component.translatable("modularshoot.command.debug_off")
                     .withStyle(ChatFormatting.YELLOW), false);
         }
         return 1;

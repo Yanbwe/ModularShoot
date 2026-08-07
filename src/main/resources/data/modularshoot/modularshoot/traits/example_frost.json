@@ -1,9 +1,9 @@
 {
   "default_value": false,
-  "description": "子弹裹上寒霜之息",
-  "name": "霜寒",
+  "description": "lang:modularshoot.example.trait.example_frost.desc",
+  "name": "lang:modularshoot.example.trait.example_frost",
   "color": "#88BBFF",
-  "brief": "子弹凝结冰蓝霜气",
+  "brief": "lang:modularshoot.example.trait.example_frost.brief",
   "force_show": false,
   "priority": 10,
   "visual_modifiers": [

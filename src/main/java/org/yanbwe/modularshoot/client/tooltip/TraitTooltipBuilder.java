@@ -111,7 +111,8 @@ public final class TraitTooltipBuilder {
 
         boolean alt = Screen.hasAltDown();
         List<Component> lines = new ArrayList<>();
-        lines.add(Component.literal("特性:").withStyle(ChatFormatting.GRAY));
+        lines.add(Component.translatable("modularshoot.tooltip.trait_header")
+                .withStyle(ChatFormatting.GRAY));
         for (TraitEntry entry : entries) {
             lines.addAll(buildLines(entry, alt));
         }

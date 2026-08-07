@@ -87,9 +87,10 @@ public final class GunDegradationHandler {
      * Builds the degraded display name for a gun whose definition is
      * missing.
      *
-     * <p>The name is a grey {@code "未知枪械 (<path>)"} where
-     * {@code <path>} is the path portion of the gunId (e.g. for
-     * {@code somemod:heavy_rifle} the path is {@code heavy_rifle}).
+     * <p>The name is a grey {@code "未知枪械 (<path>)"} (localised via the
+     * {@code modularshoot.tooltip.unknown_gun} key, English: "Unknown gun
+     * (<path>)") where {@code <path>} is the path portion of the gunId (e.g.
+     * for {@code somemod:heavy_rifle} the path is {@code heavy_rifle}).
      * When the stack carries no gunId at all, the placeholder
      * {@code "unknown"} is used.</p>
      *
@@ -100,7 +101,7 @@ public final class GunDegradationHandler {
         Objects.requireNonNull(stack, "stack");
         ResourceLocation gunId = ModularShootAPI.getGunId(stack);
         String pathPart = gunId != null ? gunId.getPath() : "unknown";
-        return Component.literal("未知枪械 (" + pathPart + ")")
+        return Component.translatable("modularshoot.tooltip.unknown_gun", pathPart)
                 .withStyle(ChatFormatting.GRAY);
     }
 

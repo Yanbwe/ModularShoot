@@ -20,7 +20,7 @@
     "tint": [1.0, 0.5, 0.2, 1.0],
     "blend": "add"
   },
-  "name": "§6火焰碎片",
-  "brief": "火球术",
-  "description": "子弹染上烈焰，火球出现概率大幅提升。与寒冰碎片互斥。"
+  "name": "lang:modularshoot.example.plugin.fragment_fire",
+  "brief": "lang:modularshoot.example.plugin.fragment_fire.brief",
+  "description": "lang:modularshoot.example.plugin.fragment_fire.desc"
 }

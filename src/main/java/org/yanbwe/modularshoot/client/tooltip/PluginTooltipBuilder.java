@@ -148,7 +148,7 @@ public final class PluginTooltipBuilder {
         List<Component> lines = new ArrayList<>();
         if (defOpt.isEmpty()) {
             // Plugin definition missing: degrade to [失效插件] + 未知 install target.
-            lines.add(Component.literal("[失效插件] " + pluginId.getPath())
+            lines.add(Component.translatable("modularshoot.tooltip.degraded_plugin", pluginId.getPath())
                     .withStyle(ChatFormatting.GRAY));
             lines.add(PluginTypeDegradationHandler.getDegradedInstallTarget());
         } else {
@@ -201,12 +201,12 @@ public final class PluginTooltipBuilder {
 
         matched.sort(PluginTooltipBuilder::compareTypes);
         Set<ResourceLocation> validSet = Set.copyOf(validIds);
-        MutableComponent line = Component.literal("可安装至: ");
+        MutableComponent line = Component.translatable("modularshoot.tooltip.installable_to");
         boolean first = true;
         for (MatchedType entry : matched) {
             if (validSet.contains(entry.id())) {
                 if (!first) {
-                    line.append(Component.literal("、"));
+                    line.append(Component.translatable("modularshoot.tooltip.list_separator"));
                 }
                 first = false;
                 line.append(TooltipUtils.resolveText(resolveTypeName(entry.id(), entry.definition())));
@@ -318,7 +318,7 @@ public final class PluginTooltipBuilder {
         MutableComponent arg = Component.empty();
         for (int i = 0; i < names.size(); i++) {
             if (i > 0) {
-                arg.append(Component.literal("、"));
+                arg.append(Component.translatable("modularshoot.tooltip.list_separator"));
             }
             arg.append(TooltipUtils.resolveText(names.get(i)));
         }
@@ -350,13 +350,15 @@ public final class PluginTooltipBuilder {
      */
     private static void addTagSection(List<Component> lines, PluginDefinition def) {
         if (Screen.hasShiftDown()) {
-            lines.add(Component.literal("标签:").withStyle(ChatFormatting.GRAY));
+            lines.add(Component.translatable("modularshoot.tooltip.tags_header").withStyle(ChatFormatting.GRAY));
             for (ResourceLocation tag : def.tags()) {
                 lines.add(Component.literal("  " + tag).withStyle(ChatFormatting.GRAY));
             }
-            lines.add(Component.literal("<按 [Shift] 收起标签>").withStyle(ChatFormatting.DARK_GRAY));
+            lines.add(Component.translatable("modularshoot.tooltip.hint_shift_collapse_tags")
+                    .withStyle(ChatFormatting.DARK_GRAY));
         } else {
-            lines.add(Component.literal("<按 [Shift] 展开标签>").withStyle(ChatFormatting.DARK_GRAY));
+            lines.add(Component.translatable("modularshoot.tooltip.hint_shift_expand_tags")
+                    .withStyle(ChatFormatting.DARK_GRAY));
         }
     }
 

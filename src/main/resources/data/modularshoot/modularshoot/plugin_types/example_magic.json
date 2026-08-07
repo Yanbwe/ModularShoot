@@ -1,6 +1,6 @@
 {
   "tags": ["c:magic"],
   "priority": 20,
-  "name": "魔法",
+  "name": "lang:modularshoot.example.plugin_type.example_magic",
   "color": "#AA66FF"
 }

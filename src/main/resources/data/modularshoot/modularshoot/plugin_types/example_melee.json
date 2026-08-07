@@ -1,6 +1,6 @@
 {
   "tags": ["c:melee"],
   "priority": 30,
-  "name": "近战",
+  "name": "lang:modularshoot.example.plugin_type.example_melee",
   "color": "#FF6644"
 }

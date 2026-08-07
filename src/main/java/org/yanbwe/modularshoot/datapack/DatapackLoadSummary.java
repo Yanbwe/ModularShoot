@@ -104,20 +104,20 @@ public record DatapackLoadSummary(
      * Formats this summary as a single human-readable log line.
      *
      * <p>The line reports the total and, when present, the warning count:
-     * {@code "共加载 42 个枪械定义，3 个警告"}. The failure segment is
+     * {@code "Loaded 42 gun definitions, 3 warnings"}. The failure segment is
      * intentionally omitted: {@code failed} is always {@code 0} in the
      * post-reload context (a single parse failure aborts the whole registry
      * load and this summary is never produced &mdash; see the class
-     * javadoc), so a constant "0 个失败" would only mislead operators into
+     * javadoc), so a constant "0 failures" would only mislead operators into
      * believing a failed load still produced a summary.</p>
      *
      * @return the formatted summary line
      */
     public String formatSummary() {
         final StringBuilder builder = new StringBuilder();
-        builder.append("共加载 ").append(totalAttempted).append(" 个").append(registryName);
+        builder.append("Loaded ").append(totalAttempted).append(" ").append(registryName);
         if (warnings > 0) {
-            builder.append("，").append(warnings).append(" 个警告");
+            builder.append(", ").append(warnings).append(" warnings");
         }
         return builder.toString();
     }
@@ -139,7 +139,7 @@ public record DatapackLoadSummary(
             throw new IllegalArgumentException("summaries must not be null");
         }
         if (summaries.isEmpty()) {
-            return "无数据包加载汇总。";
+            return "No datapack load summary.";
         }
         return summaries.stream()
                 .map(DatapackLoadSummary::formatSummary)

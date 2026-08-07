@@ -1,5 +1,5 @@
 {
-  "name": "§b复合手杖",
+  "name": "lang:modularshoot.example.gun.composite_cane",
   "texture": "modularshoot:textures/gun/composite_cane.png",
   "stats": {
     "modularshoot:hit_damage": 8.0,

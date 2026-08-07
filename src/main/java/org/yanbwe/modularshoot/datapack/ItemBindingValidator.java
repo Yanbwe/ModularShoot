@@ -97,15 +97,16 @@ public final class ItemBindingValidator {
             GunItemBinding binding = entry.getValue();
             if (!BuiltInRegistries.ITEM.containsKey(binding.itemId())) {
                 DatapackErrorHandler.logReferenceWarning(key,
-                        "绑定物品不存在: " + binding.itemId());
+                        "Bound item not found: " + binding.itemId());
             }
             if (!gunKeys.contains(binding.gunId())) {
                 DatapackErrorHandler.logReferenceWarning(key,
-                        "绑定枪械不存在: " + binding.gunId());
+                        "Bound gun not found: " + binding.gunId());
             }
             if (javaApiItemIds.contains(binding.itemId())) {
                 DatapackErrorHandler.logReferenceWarning(key,
-                        "与 Java API 绑定冲突，Java API 优先: " + binding.itemId());
+                        "Conflict with Java API binding; Java API takes priority: "
+                                + binding.itemId());
             }
         }
         warnDuplicateBindings(entries, GunItemBinding::itemId);
@@ -135,15 +136,16 @@ public final class ItemBindingValidator {
             PluginItemBinding binding = entry.getValue();
             if (!BuiltInRegistries.ITEM.containsKey(binding.itemId())) {
                 DatapackErrorHandler.logReferenceWarning(key,
-                        "绑定物品不存在: " + binding.itemId());
+                        "Bound item not found: " + binding.itemId());
             }
             if (!pluginKeys.contains(binding.pluginId())) {
                 DatapackErrorHandler.logReferenceWarning(key,
-                        "绑定插件不存在: " + binding.pluginId());
+                        "Bound plugin not found: " + binding.pluginId());
             }
             if (javaApiItemIds.contains(binding.itemId())) {
                 DatapackErrorHandler.logReferenceWarning(key,
-                        "与 Java API 绑定冲突，Java API 优先: " + binding.itemId());
+                        "Conflict with Java API binding; Java API takes priority: "
+                                + binding.itemId());
             }
         }
         warnDuplicateBindings(entries, PluginItemBinding::itemId);
@@ -210,8 +212,8 @@ public final class ItemBindingValidator {
         for (ResourceLocation duplicateKey : findDuplicateItemKeys(entries, itemIdExtractor)) {
             ResourceLocation itemId = itemIdExtractor.apply(entries.get(duplicateKey));
             DatapackErrorHandler.logReferenceWarning(duplicateKey,
-                    "同一物品 ID 重复绑定: " + itemId
-                            + "（字典序最小条目 key 胜出，本条目绑定被忽略）");
+                    "Duplicate binding for item id: " + itemId
+                            + " (lexicographically smallest entry key wins; this binding is ignored)");
         }
     }
 

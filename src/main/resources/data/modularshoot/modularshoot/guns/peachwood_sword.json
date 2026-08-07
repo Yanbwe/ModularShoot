@@ -1,5 +1,5 @@
 {
-  "name": "§d桃木剑",
+  "name": "lang:modularshoot.example.gun.peachwood_sword",
   "texture": "modularshoot:textures/gun/peachwood_sword.png",
   "stats": {
     "modularshoot:hit_damage": 10.0,

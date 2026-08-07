@@ -95,8 +95,9 @@ public final class VariantsSubcommand {
                             ? Component.translatable("modularshoot.command.variant_normal")
                             : Component.literal(entry.variantId().toString()))
                     .withStyle(ChatFormatting.GRAY)
-                    .append(Component.literal(": 权重 " + formatWeight(entry.finalWeight())
-                            + " (" + formatPercent(percent) + ")").withStyle(ChatFormatting.GREEN));
+                    .append(Component.translatable("modularshoot.command.variant_weight",
+                            formatWeight(entry.finalWeight()), formatPercent(percent))
+                            .withStyle(ChatFormatting.GREEN));
         }
         return root;
     }

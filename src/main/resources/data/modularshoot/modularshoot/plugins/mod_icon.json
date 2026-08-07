@@ -10,7 +10,7 @@
       { "type": "tint", "color": [1.0, 0.9, 0.35, 1.0] }
     ]
   },
-  "name": "§e模组之魂",
-  "brief": "夺舍演示",
-  "description": "这是 ModularShoot 的模组图标。经夺舍绑定成为插件：射速 +10%，子弹染上金魂之光。"
+  "name": "lang:modularshoot.example.plugin.mod_icon",
+  "brief": "lang:modularshoot.example.plugin.mod_icon.brief",
+  "description": "lang:modularshoot.example.plugin.mod_icon.desc"
 }

@@ -10,7 +10,7 @@
     "alpha": 0.9,
     "width": 2
   },
-  "name": "§e闪光碎片",
-  "brief": "闪光圣物",
-  "description": "子弹变大发亮，枪身描上金色圣光。"
+  "name": "lang:modularshoot.example.plugin.fragment_shining",
+  "brief": "lang:modularshoot.example.plugin.fragment_shining.brief",
+  "description": "lang:modularshoot.example.plugin.fragment_shining.desc"
 }

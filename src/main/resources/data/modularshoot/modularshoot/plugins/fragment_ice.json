@@ -12,7 +12,7 @@
       { "type": "tint", "color": [0.6, 0.85, 1.0, 1.0] }
     ]
   },
-  "name": "§b寒冰碎片",
-  "brief": "冰锥术",
-  "description": "子弹凝结霜寒，冰锥出现概率约 33%（单独安装时）。与火焰碎片互斥。"
+  "name": "lang:modularshoot.example.plugin.fragment_ice",
+  "brief": "lang:modularshoot.example.plugin.fragment_ice.brief",
+  "description": "lang:modularshoot.example.plugin.fragment_ice.desc"
 }

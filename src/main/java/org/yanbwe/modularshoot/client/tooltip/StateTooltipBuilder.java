@@ -86,7 +86,8 @@ public final class StateTooltipBuilder {
         }
         visible.sort(StateTooltipBuilder::compareEntries);
         List<Component> lines = new ArrayList<>(visible.size() + 1);
-        lines.add(Component.literal("状态:").withStyle(ChatFormatting.GRAY));
+        lines.add(Component.translatable("modularshoot.tooltip.state_header")
+                .withStyle(ChatFormatting.GRAY));
         for (StateEntry entry : visible) {
             lines.add(buildLine(entry));
         }
@@ -383,7 +384,13 @@ public final class StateTooltipBuilder {
      * Formats a state value using the display template.
      *
      * <p>Replaces the {@code {value}} placeholder in the format template
-     * with the string representation of the value.</p>
+     * with the string representation of the value. Templates prefixed with
+     * {@code lang:} are treated as translation keys (matching the
+     * {@link TooltipUtils#resolveText} convention): the key is translated
+     * first and the {@code {value}} placeholder is replaced inside the
+     * localised template afterwards. Tooltips are only built on the client,
+     * so {@link Component#translatable} + {@code getString()} resolves
+     * against the client's current language.</p>
      *
      * @param value  the raw value (may be {@code null} for UUID)
      * @param type   the declared value type
@@ -392,6 +399,9 @@ public final class StateTooltipBuilder {
      */
     private static String formatValue(Object value, StateValueType type, String format) {
         String valueStr = valueToString(value, type);
+        if (format.startsWith("lang:")) {
+            format = Component.translatable(format.substring(5)).getString();
+        }
         return format.replace("{value}", valueStr);
     }
 

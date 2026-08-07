@@ -57,7 +57,8 @@ public final class BulletsSubcommand {
      * total count, followed by up to {@link #MAX_SHOWN} per-bullet lines.
      */
     private static Component buildBulletsComponent(ResourceLocation dimension, Collection<BulletRecord> bullets) {
-        MutableComponent root = Component.literal("当前世界 [" + dimension + "] 活跃子弹: " + bullets.size())
+        MutableComponent root = Component.translatable("modularshoot.command.active_bullets",
+                        dimension, bullets.size())
                 .withStyle(ChatFormatting.AQUA);
         int shown = 0;
         for (BulletRecord bullet : bullets) {

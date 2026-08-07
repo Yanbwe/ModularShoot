@@ -117,7 +117,8 @@ public final class AttributeTooltipBuilder {
         entries.sort(AttributeTooltipBuilder::compareEntries);
 
         List<Component> lines = new ArrayList<>(entries.size() + 1);
-        lines.add(Component.literal("属性:").withStyle(ChatFormatting.GRAY));
+        lines.add(Component.translatable("modularshoot.tooltip.attribute_header")
+                .withStyle(ChatFormatting.GRAY));
         for (AttributeEntry entry : entries) {
             lines.add(buildLine(entry));
         }

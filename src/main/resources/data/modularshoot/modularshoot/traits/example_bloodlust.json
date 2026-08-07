@@ -1,9 +1,9 @@
 {
   "default_value": false,
-  "description": "鲜血充盈弹丸",
-  "name": "嗜血",
+  "description": "lang:modularshoot.example.trait.example_bloodlust.desc",
+  "name": "lang:modularshoot.example.trait.example_bloodlust",
   "color": "#CC2222",
-  "brief": "子弹染上血光",
+  "brief": "lang:modularshoot.example.trait.example_bloodlust.brief",
   "force_show": false,
   "priority": 10,
   "visual_modifiers": [

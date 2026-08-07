@@ -3,9 +3,9 @@
   "value_type": "int",
   "default_value": 0,
   "display": {
-    "name": "连杀层数",
+    "name": "lang:modularshoot.example.state.visual_killstreak",
     "color": "#FFAA00",
-    "format": "{value} 层",
+    "format": "lang:modularshoot.example.state.visual_killstreak.format",
     "priority": 10,
     "hide_default": true
   },

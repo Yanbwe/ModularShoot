@@ -186,8 +186,12 @@ public final class ShootingEngine {
      * Runs all registered {@link ShootPredicate}s (设计文档 §步骤三).
      *
      * <p>On the first failing predicate the reason is shown to the player on
-     * the action bar and the shot is aborted. When no predicates are
-     * registered the shot trivially passes.</p>
+     * the action bar and the shot is aborted. A reason prefixed with
+     * {@code lang:} is treated as a translation key (matching
+     * {@link org.yanbwe.modularshoot.client.tooltip.TooltipUtils#resolveText}),
+     * so predicate registrants can return localised reasons; any other reason
+     * is shown verbatim. When no predicates are registered the shot trivially
+     * passes.</p>
      *
      * @param player   the shooting player
      * @param gunStack the gun item stack being fired
@@ -200,7 +204,11 @@ public final class ShootingEngine {
             return true;
         }
         String reason = result.getReason();
-        player.displayClientMessage(Component.literal(reason != null ? reason : ""), true);
+        player.displayClientMessage(
+                reason != null && reason.startsWith("lang:")
+                        ? Component.translatable(reason.substring(5))
+                        : Component.literal(reason != null ? reason : ""),
+                true);
         return false;
     }
 

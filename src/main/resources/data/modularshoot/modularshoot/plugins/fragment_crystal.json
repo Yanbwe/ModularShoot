@@ -17,7 +17,7 @@
     "tint": [0.7, 0.4, 1.0, 1.0],
     "blend": "screen"
   },
-  "name": "§d水晶碎片",
-  "brief": "水晶加速",
-  "description": "弹速 +10，子弹泛紫光，枪身浮现水晶光点。"
+  "name": "lang:modularshoot.example.plugin.fragment_crystal",
+  "brief": "lang:modularshoot.example.plugin.fragment_crystal.brief",
+  "description": "lang:modularshoot.example.plugin.fragment_crystal.desc"
 }

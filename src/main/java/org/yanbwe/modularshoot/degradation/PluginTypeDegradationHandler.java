@@ -94,7 +94,8 @@ public final class PluginTypeDegradationHandler {
 
     /**
      * Returns the grey "{@code [未知种类]}" component used as the display name
-     * for a degraded plugin-type group (设计文档 line 2338).
+     * for a degraded plugin-type group (设计文档 line 2338), localised via the
+     * {@code modularshoot.tooltip.unknown_type} key (English: "Unknown type").
      *
      * <p>This is a fresh component on every call; callers may freely append to
      * or restyle it without affecting other callers.</p>
@@ -102,13 +103,16 @@ public final class PluginTypeDegradationHandler {
      * @return a grey {@link Component} literal reading {@code [未知种类]}
      */
     public static Component getDegradedTypeName() {
-        return Component.literal("[未知种类]").withStyle(ChatFormatting.GRAY);
+        return Component.translatable("modularshoot.tooltip.unknown_type")
+                .withStyle(ChatFormatting.GRAY);
     }
 
     /**
      * Returns the grey "{@code 可安装至: 未知}" component used for a plugin
      * item's "installable into" tooltip line when every matching category is
-     * missing (设计文档 line 2334).
+     * missing (设计文档 line 2334), localised via the
+     * {@code modularshoot.tooltip.installable_unknown} key (English:
+     * "Installs into: unknown").
      *
      * <p>This is a fresh component on every call.</p>
      *
@@ -116,7 +120,8 @@ public final class PluginTypeDegradationHandler {
      *         {@code 可安装至: 未知}
      */
     public static Component getDegradedInstallTarget() {
-        return Component.literal("可安装至: 未知").withStyle(ChatFormatting.GRAY);
+        return Component.translatable("modularshoot.tooltip.installable_unknown")
+                .withStyle(ChatFormatting.GRAY);
     }
 
     /**

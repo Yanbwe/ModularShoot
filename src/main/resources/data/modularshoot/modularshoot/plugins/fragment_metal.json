@@ -9,7 +9,7 @@
       { "type": "attach_layer", "render_mode": "billboard", "texture": "modularshoot:textures/bullet/default.png", "follow_rotation": true, "follow_scale": true, "offset": [0.0, 0.0, 0.0], "scale": 1.1, "tint": [0.8, 0.8, 0.85, 1.0] }
     ]
   },
-  "name": "§7金属碎片",
-  "brief": "剑刃穿透",
-  "description": "实体穿透 +1，子弹附带金属刃层。"
+  "name": "lang:modularshoot.example.plugin.fragment_metal",
+  "brief": "lang:modularshoot.example.plugin.fragment_metal.brief",
+  "description": "lang:modularshoot.example.plugin.fragment_metal.desc"
 }

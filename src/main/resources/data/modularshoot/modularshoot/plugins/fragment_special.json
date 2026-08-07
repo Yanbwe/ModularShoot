@@ -7,7 +7,7 @@
     { "attribute": "modularshoot:fire_rate", "operation": "multiply", "value": 0.2 },
     { "attribute": "modularshoot:hit_damage", "operation": "multiply", "value": 0.2 }
   ],
-  "name": "§5特殊碎片",
-  "brief": "特殊改造",
-  "description": "射速与伤害各提升 20%，稀有度 +5。"
+  "name": "lang:modularshoot.example.plugin.fragment_special",
+  "brief": "lang:modularshoot.example.plugin.fragment_special.brief",
+  "description": "lang:modularshoot.example.plugin.fragment_special.desc"
 }

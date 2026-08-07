@@ -1,6 +1,6 @@
 {
   "tags": ["c:accessory"],
   "priority": 5,
-  "name": "配件",
+  "name": "lang:modularshoot.example.plugin_type.accessory",
   "color": "#88CCFF"
 }

@@ -121,7 +121,8 @@ public final class PluginBarTooltipBuilder {
 
         boolean shift = Screen.hasShiftDown();
         List<Component> lines = new ArrayList<>();
-        lines.add(Component.literal("插件:").withStyle(ChatFormatting.GRAY));
+        lines.add(Component.translatable("modularshoot.tooltip.plugin_header")
+                .withStyle(ChatFormatting.GRAY));
 
         // Render every configured category, sorted by priority descending
         // (设计文档 line 1473).
