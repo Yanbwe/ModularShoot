@@ -8,9 +8,9 @@ import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.ItemStack;
 
 import org.yanbwe.modularshoot.ModularShoot;
+import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.attribute.AttributeModifierService;
 import org.yanbwe.modularshoot.creative.ModularShootCreativeTabs;
-import org.yanbwe.modularshoot.item.ModularShootItems;
 
 /**
  * Handles framework-specific behaviours that must run after a datapack
@@ -153,13 +153,13 @@ public final class ReloadBehaviorHandler {
     private static int refreshGunsInInventory(ServerPlayer player, RegistryAccess registryAccess) {
         int count = 0;
         for (ItemStack stack : player.getInventory().items) {
-            if (stack.is(ModularShootItems.GUN_ITEM.get())) {
+            if (ModularShootAPI.isGun(stack, registryAccess)) {
                 AttributeModifierService.refreshModifiers(stack, registryAccess);
                 count++;
             }
         }
         ItemStack offhand = player.getOffhandItem();
-        if (offhand.is(ModularShootItems.GUN_ITEM.get())) {
+        if (ModularShootAPI.isGun(offhand, registryAccess)) {
             AttributeModifierService.refreshModifiers(offhand, registryAccess);
             count++;
         }

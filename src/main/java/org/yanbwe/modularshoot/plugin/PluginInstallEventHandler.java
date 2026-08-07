@@ -3,6 +3,7 @@ package org.yanbwe.modularshoot.plugin;
 import java.util.Objects;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -14,9 +15,9 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.ItemStackedOnOtherEvent;
+import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
-import org.yanbwe.modularshoot.item.ModularShootItems;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 import org.yanbwe.modularshoot.registry.gun.GunSounds;
 
@@ -102,8 +103,12 @@ public final class PluginInstallEventHandler {
      * <p>Filter order:</p>
      * <ol>
      *   <li>right-click only ({@link ClickAction#SECONDARY});</li>
-     *   <li>carried item is a {@code modularshoot:plugin} with {@code plugin_data};</li>
-     *   <li>slot item is a {@code modularshoot:gun};</li>
+     *   <li>carried item is a binding-aware plugin (native
+     *       {@code modularshoot:plugin} with {@code plugin_data}, or an item
+     *       bound via the {@code modularshoot:plugin_items} binding table);</li>
+     *   <li>slot item is a binding-aware gun (native {@code modularshoot:gun}
+     *       or an item bound via the {@code modularshoot:gun_items} binding
+     *       table);</li>
      *   <li>slot allows modification ({@link Slot#allowModification}).</li>
      * </ol>
      * <p>On success the modified gun copy is placed into the slot via
@@ -136,8 +141,8 @@ public final class PluginInstallEventHandler {
 
         // 竞态兜底：绑定枪械的 gun_data 由服务端 tick 通道惰性附加（拿起 1 tick
         // 内，设计规格 §5.3），但容器槽位中的枪可能从未被拿起；安装手势前先确保
-        // 组件存在，保证 PluginInstallService 的 no_gun_data 守卫通过。注意：
-        // 本调用不改变本类的识别判定逻辑（is(GUN_ITEM) 判定改造属于后续任务）。
+        // 组件存在，保证 PluginInstallService 的 no_gun_data 守卫通过。本类的
+        // 识别判定已是绑定感知（shouldHandle 用 ModularShootAPI.isGun）。
         GunRegistry.ensureGunData(stackedOnItem, player.registryAccess());
 
         // Attempt installation (operates on copies, never mutates originals).
@@ -156,8 +161,8 @@ public final class PluginInstallEventHandler {
      *
      * <p>Filter order (matching the Javadoc of
      * {@link #onItemStackedOnOther}): right-click only, carried item is a
-     * {@code modularshoot:plugin}, slot item is a {@code modularshoot:gun},
-     * slot allows modification.</p>
+     * binding-aware plugin, slot item is a binding-aware gun, slot allows
+     * modification.</p>
      *
      * @param player the player involved in the stacking event
      * @param event  the stacking event fired by the container menu
@@ -169,12 +174,12 @@ public final class PluginInstallEventHandler {
         if (event.getClickAction() != ClickAction.SECONDARY) {
             return false;
         }
-        // Carried item must be a modularshoot:plugin with plugin_data.
-        if (!isPluginStack(event.getCarriedItem())) {
+        // Carried item must be a binding-aware plugin.
+        if (!isPluginStack(event.getCarriedItem(), player.registryAccess())) {
             return false;
         }
-        // Slot item must be a modularshoot:gun.
-        if (!event.getStackedOnItem().is(ModularShootItems.GUN_ITEM.get())) {
+        // Slot item must be a binding-aware gun.
+        if (!ModularShootAPI.isGun(event.getStackedOnItem(), player.registryAccess())) {
             return false;
         }
         // Slot must allow modification (Apotheosis guard).
@@ -266,18 +271,18 @@ public final class PluginInstallEventHandler {
     }
 
     /**
-     * Checks whether a stack is a framework plugin item carrying
-     * {@link org.yanbwe.modularshoot.component.PluginData}.
+     * Checks whether a stack is a binding-aware plugin item (设计规格 物品绑定
+     * 系统 §4.1): a native {@code modularshoot:plugin} carrying
+     * {@link org.yanbwe.modularshoot.component.PluginData}, or an item whose
+     * id is bound to a plugin via the {@code modularshoot:plugin_items}
+     * binding table.
      *
-     * @param stack the stack to test
-     * @return {@code true} when the stack is a {@code modularshoot:plugin} item
-     *         with a {@code plugin_data} component
+     * @param stack  the stack to test
+     * @param access the runtime registry view used for the binding channel
+     * @return {@code true} when the stack is a plugin via either channel
      */
-    private static boolean isPluginStack(ItemStack stack) {
-        if (!stack.is(ModularShootItems.PLUGIN_ITEM.get())) {
-            return false;
-        }
-        return stack.has(ModularShootDataComponents.PLUGIN_DATA.get());
+    private static boolean isPluginStack(ItemStack stack, RegistryAccess access) {
+        return ModularShootAPI.resolvePluginId(stack, access).isPresent();
     }
 
     /**

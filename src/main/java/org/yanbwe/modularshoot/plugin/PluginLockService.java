@@ -5,11 +5,11 @@ import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.world.item.ItemStack;
+import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.attribute.AttributeModifierService;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginInstance;
-import org.yanbwe.modularshoot.item.ModularShootItems;
 
 /**
  * Runtime lock API for installed plugins on a gun stack.
@@ -65,7 +65,9 @@ public final class PluginLockService {
      *
      * <p>This is a no-op when any of the following holds:
      * <ul>
-     *   <li>the stack is not a {@code modularshoot:gun} item;</li>
+     *   <li>the stack is not a binding-aware gun (native
+     *       {@code modularshoot:gun} item or an item bound via the
+     *       {@code modularshoot:gun_items} binding table);</li>
      *   <li>the stack carries no {@code gun_data} component;</li>
      *   <li>no installed plugin matches the given {@code instanceUuid};</li>
      *   <li>the matching plugin is already in the requested lock state
@@ -81,7 +83,7 @@ public final class PluginLockService {
      */
     public static void setPluginLocked(
             ItemStack gun, UUID instanceUuid, boolean locked, RegistryAccess registryAccess) {
-        if (!applyLockState(gun, instanceUuid, locked)) {
+        if (!applyLockState(gun, instanceUuid, locked, registryAccess)) {
             return;
         }
         AttributeModifierService.refreshModifiers(gun, registryAccess);
@@ -93,7 +95,9 @@ public final class PluginLockService {
      *
      * <p><strong>This overload does not refresh attribute modifiers.</strong>
      * It is retained for backward compatibility with callers that do not have
-     * a {@link RegistryAccess} available. Because a lock-state change does not
+     * a {@link RegistryAccess} available; gun recognition therefore uses the
+     * degraded channel (component + Java-API binding only, 设计规格 物品绑定
+     * 系统 §4.1). Because a lock-state change does not
      * alter which modifiers are active (a locked plugin still contributes its
      * modifiers &mdash; lock only prevents non-forced uninstall), skipping the
      * refresh is safe in practice: the modifier set on the stack remains
@@ -115,7 +119,7 @@ public final class PluginLockService {
      */
     @Deprecated
     public static void setPluginLocked(ItemStack gun, UUID instanceUuid, boolean locked) {
-        applyLockState(gun, instanceUuid, locked);
+        applyLockState(gun, instanceUuid, locked, RegistryAccess.EMPTY);
     }
 
     /**
@@ -127,16 +131,19 @@ public final class PluginLockService {
      * can share the same validation and mutation logic. The caller decides
      * whether to refresh attribute modifiers afterwards.</p>
      *
-     * @param gun          the gun item stack to modify (mutated on success)
-     * @param instanceUuid the instance uuid of the plugin to lock/unlock
-     * @param locked       {@code true} to lock, {@code false} to unlock
+     * @param gun            the gun item stack to modify (mutated on success)
+     * @param instanceUuid   the instance uuid of the plugin to lock/unlock
+     * @param locked         {@code true} to lock, {@code false} to unlock
+     * @param registryAccess the runtime registry view used for binding-aware
+     *                       gun recognition
      * @return {@code true} if the lock state was changed and the component
      *         was written; {@code false} if any guard condition failed (not a
-     *         gun, no gun data, plugin absent, or already in the requested
-     *         state)
+     *         binding-aware gun, no gun data, plugin absent, or already in the
+     *         requested state)
      */
-    private static boolean applyLockState(ItemStack gun, UUID instanceUuid, boolean locked) {
-        if (!gun.is(ModularShootItems.GUN_ITEM.get())) {
+    private static boolean applyLockState(
+            ItemStack gun, UUID instanceUuid, boolean locked, RegistryAccess registryAccess) {
+        if (!ModularShootAPI.isGun(gun, registryAccess)) {
             return false;
         }
         GunData gunData = gun.get(ModularShootDataComponents.GUN_DATA.get());
@@ -166,14 +173,18 @@ public final class PluginLockService {
     /**
      * Queries whether a specific installed plugin instance is locked.
      *
+     * <p>Gun recognition uses the degraded channel (component + Java-API
+     * binding only, 设计规格 物品绑定系统 §4.1) since the method takes no
+     * {@link RegistryAccess}.</p>
+     *
      * @param gun          the gun item stack to inspect
      * @param instanceUuid the instance uuid of the plugin to query
      * @return {@code true} if the plugin exists and is locked; {@code false}
-     *         if the stack is not a gun, carries no gun data, the plugin is
-     *         absent, or the plugin is unlocked
+     *         if the stack is not a binding-aware gun, carries no gun data,
+     *         the plugin is absent, or the plugin is unlocked
      */
     public static boolean isPluginLocked(ItemStack gun, UUID instanceUuid) {
-        if (!gun.is(ModularShootItems.GUN_ITEM.get())) {
+        if (!ModularShootAPI.isGun(gun)) {
             return false;
         }
         GunData gunData = gun.get(ModularShootDataComponents.GUN_DATA.get());
