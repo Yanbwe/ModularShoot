@@ -1,9 +1,9 @@
 {
   "tags": ["c:magic"],
   "item_icon": "modularshoot:textures/plugins/fragment_fire.png",
-  "adds_variants": { "modularshoot:dajin_fireball": 0.5 },
+  "adds_variants": { "modularshoot:example_fireball": 0.5 },
   "exclusive_group": "group:element",
-  "traits": { "modularshoot:dajin_flame": true },
+  "traits": { "modularshoot:example_flame": true },
   "modifiers": [
     { "attribute": "modularshoot:hit_damage", "operation": "multiply", "value": 0.2 }
   ],

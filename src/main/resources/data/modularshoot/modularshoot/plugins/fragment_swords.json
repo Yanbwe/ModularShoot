@@ -1,7 +1,7 @@
 {
   "tags": ["c:melee"],
   "item_icon": "modularshoot:textures/plugins/fragment_swords.png",
-  "adds_variants": { "modularshoot:dajin_heavy_blade": 0.4 },
+  "adds_variants": { "modularshoot:example_heavy_blade": 0.4 },
   "exclusive_group": "group:blade",
   "modifiers": [
     { "attribute": "modularshoot:hit_damage", "operation": "add", "value": 4.0 }

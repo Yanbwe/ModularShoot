@@ -14,8 +14,8 @@
   },
   "traits": {},
   "slots": {
-    "modularshoot:dajin_melee": 2,
-    "modularshoot:dajin_support": 1
+    "modularshoot:example_melee": 2,
+    "modularshoot:example_support": 1
   },
   "sounds": {
     "shoot": "minecraft:entity.player.attack.sweep",

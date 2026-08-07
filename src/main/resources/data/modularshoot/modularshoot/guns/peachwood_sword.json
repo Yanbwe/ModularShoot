@@ -13,8 +13,8 @@
   },
   "traits": {},
   "slots": {
-    "modularshoot:dajin_melee": 1,
-    "modularshoot:dajin_magic": 1,
+    "modularshoot:example_melee": 1,
+    "modularshoot:example_magic": 1,
     "modularshoot:barrel": 1
   },
   "sounds": {

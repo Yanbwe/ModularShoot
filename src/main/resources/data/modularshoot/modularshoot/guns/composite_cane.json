@@ -12,10 +12,10 @@
   },
   "traits": {},
   "slots": {
-    "modularshoot:dajin_magic": 2,
-    "modularshoot:dajin_support": 1
+    "modularshoot:example_magic": 2,
+    "modularshoot:example_support": 1
   },
-  "variants": { "modularshoot:dajin_fireball": 0.5 },
+  "variants": { "modularshoot:example_fireball": 0.5 },
   "sounds": {
     "shoot": "minecraft:entity.blaze.shoot",
     "hit_entity": "minecraft:entity.arrow.hit_player",

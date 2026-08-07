@@ -1,9 +1,9 @@
 {
   "tags": ["c:magic"],
   "item_icon": "modularshoot:textures/plugins/fragment_ice.png",
-  "adds_variants": { "modularshoot:dajin_ice_shard": 0.5 },
+  "adds_variants": { "modularshoot:example_ice_shard": 0.5 },
   "exclusive_group": "group:element",
-  "traits": { "modularshoot:dajin_frost": true },
+  "traits": { "modularshoot:example_frost": true },
   "modifiers": [
     { "attribute": "modularshoot:bullet_speed", "operation": "multiply", "value": 0.3 }
   ],

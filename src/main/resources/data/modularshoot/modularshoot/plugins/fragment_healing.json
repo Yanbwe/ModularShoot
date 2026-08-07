@@ -1,7 +1,7 @@
 {
   "tags": ["c:support"],
   "item_icon": "modularshoot:textures/plugins/fragment_healing.png",
-  "traits": { "modularshoot:dajin_bloodlust": true },
+  "traits": { "modularshoot:example_bloodlust": true },
   "modifiers": [
     { "attribute": "modularshoot:hit_damage", "operation": "multiply", "value": 0.15 }
   ],
