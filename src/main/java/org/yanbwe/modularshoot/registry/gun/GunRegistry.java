@@ -13,6 +13,7 @@ import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.attribute.AttributeModifierService;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
@@ -314,5 +315,62 @@ public final class GunRegistry {
         ItemStack stack = new ItemStack(ModularShootItems.GUN_ITEM.get());
         stack.set(ModularShootDataComponents.GUN_DATA.get(), GunData.create(gunId, instanceUuid));
         return stack;
+    }
+
+    // ---- Lazy attachment for bound guns ---------------------------------
+
+    /**
+     * Lazily attaches a fresh {@link GunData} to a stack that is recognized
+     * as a gun by the binding channel (设计规格 物品绑定系统 §5.2).
+     *
+     * <p>Bound guns (items whose id is mapped to a gun via the
+     * {@code modularshoot:gun_items} binding table) enter the world without a
+     * {@code gun_data} component; this method is the service-side lazy
+     * attachment entry point that attaches one on demand so the stack becomes
+     * fully isomorphic with a native {@code modularshoot:gun} stack.</p>
+     *
+     * <p><b>No-op contract:</b></p>
+     * <ul>
+     *   <li>the stack is empty &mdash; returned untouched (a
+     *       {@code gun_data} component must never be attached to an empty
+     *       stack);</li>
+     *   <li>{@link ModularShootAPI#resolveGunId} returns empty for the stack
+     *       (not a gun via either channel) &mdash; returned untouched;</li>
+     *   <li>the stack already carries {@code gun_data} &mdash; idempotent:
+     *       the existing component (uuid, plugins, version) is left exactly
+     *       as-is.</li>
+     * </ul>
+     *
+     * <p>The attached component is a fresh {@link GunData#create} instance:
+     * empty plugin list, {@code modifierVersion} 0 and a new random instance
+     * uuid &mdash; structurally identical to a freshly created native gun.
+     * Being part of the item's synced data, the component reaches clients
+     * through the regular item sync (≤ 1 tick) with no extra packet.</p>
+     *
+     * <p><strong>Server-only.</strong> The primary call path is the server-side
+     * tick channel ({@link org.yanbwe.modularshoot.registry.binding.BoundGunAttachHandler},
+     * 设计规格 物品绑定系统 §5.3); the client has no such path and must never
+     * attach components on its own &mdash; it always receives them via item
+     * sync.</p>
+     *
+     * @param stack  the stack to lazily attach {@code gun_data} to; may be empty
+     * @param access the runtime registry view used to resolve the binding
+     *               channel; must not be {@code null}
+     */
+    public static void ensureGunData(ItemStack stack, RegistryAccess access) {
+        Objects.requireNonNull(stack, "stack");
+        Objects.requireNonNull(access, "access");
+        if (stack.isEmpty()) {
+            return;
+        }
+        Optional<ResourceLocation> gunId = ModularShootAPI.resolveGunId(stack, access);
+        if (gunId.isEmpty()) {
+            return;
+        }
+        if (stack.has(ModularShootDataComponents.GUN_DATA.get())) {
+            return;
+        }
+        stack.set(ModularShootDataComponents.GUN_DATA.get(),
+                GunData.create(gunId.get(), UUID.randomUUID()));
     }
 }

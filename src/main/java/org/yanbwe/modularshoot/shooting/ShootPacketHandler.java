@@ -12,6 +12,7 @@ import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.network.ShootAnimSyncService;
+import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 
 /**
  * Server-side orchestrator for
@@ -76,8 +77,16 @@ public final class ShootPacketHandler {
         }
         GunData gunData = readGunData(mainHand);
         if (gunData == null) {
-            ModularShoot.LOGGER.warn("Shoot rejected: gun has no gun_data component (player={})", player.getName().getString());
-            return;
+            // 竞态兜底：绑定枪械的 gun_data 由服务端 tick 通道在拿起 1 tick 内
+            // 附加（设计规格 物品绑定系统 §5.3），但客户端可能在附加完成前就
+            // 发出首枪——先尝试立即附加再重读一次。重读仍为空（非绑定物品，
+            // 或绑定已被移除）才保留原有的拒绝日志。
+            GunRegistry.ensureGunData(mainHand, player.registryAccess());
+            gunData = readGunData(mainHand);
+            if (gunData == null) {
+                ModularShoot.LOGGER.warn("Shoot rejected: gun has no gun_data component (player={})", player.getName().getString());
+                return;
+            }
         }
         if (!validateModifierVersion(player, packetModifierVersion, gunData.modifierVersion())) {
             ModularShoot.LOGGER.warn("Shoot rejected: modifier version mismatch (player={}, packet={}, server={})",
