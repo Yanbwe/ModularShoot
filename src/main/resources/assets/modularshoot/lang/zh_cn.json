@@ -37,5 +37,13 @@
   "modularshoot.command.plugin_unlocked": "[未锁定]",
   "modularshoot.command.variants_header": "枪械变体池",
   "modularshoot.command.variants_empty": "无候选（声明池权重全为 0）",
-  "modularshoot.command.variant_normal": "普通弹（默认兜底）"
+  "modularshoot.command.variant_normal": "普通弹（默认兜底）",
+  "modularshoot.configuration.section.modularshoot.client.toml": "ModularShoot 客户端配置",
+  "modularshoot.configuration.nearTranslucency": "近相机半透明",
+  "modularshoot.configuration.nearTranslucency.enabled": "启用近相机半透明",
+  "modularshoot.configuration.nearTranslucency.enabled.tooltip": "子弹靠近摄像机时半透明渲染，避免贴脸飞行时遮挡视野。",
+  "modularshoot.configuration.nearTranslucency.fadeDistance": "淡出距离",
+  "modularshoot.configuration.nearTranslucency.fadeDistance.tooltip": "子弹距离摄像机达到该值（格）后完全不透明；距离 0 处为最小不透明度，中间按 smoothstep 曲线平滑过渡。",
+  "modularshoot.configuration.nearTranslucency.minOpacity": "最小不透明度",
+  "modularshoot.configuration.nearTranslucency.minOpacity.tooltip": "子弹紧贴摄像机（距离 0）时的不透明度，设 1.0 等效关闭淡出。"
 }

@@ -37,5 +37,13 @@
   "modularshoot.command.plugin_unlocked": "[Unlocked]",
   "modularshoot.command.variants_header": "Gun variant pool",
   "modularshoot.command.variants_empty": "No candidates (declared pool has all-zero weights)",
-  "modularshoot.command.variant_normal": "Normal bullet (default fallback)"
+  "modularshoot.command.variant_normal": "Normal bullet (default fallback)",
+  "modularshoot.configuration.section.modularshoot.client.toml": "ModularShoot Client",
+  "modularshoot.configuration.nearTranslucency": "Near-Camera Translucency",
+  "modularshoot.configuration.nearTranslucency.enabled": "Enable near-camera translucency",
+  "modularshoot.configuration.nearTranslucency.enabled.tooltip": "Bullets close to the camera are drawn semi-transparent so they don't occlude your view.",
+  "modularshoot.configuration.nearTranslucency.fadeDistance": "Fade Distance",
+  "modularshoot.configuration.nearTranslucency.fadeDistance.tooltip": "Distance (blocks) at which a bullet becomes fully opaque; at distance 0 the minimum opacity applies, ramping smoothly in between via a smoothstep curve.",
+  "modularshoot.configuration.nearTranslucency.minOpacity": "Minimum Opacity",
+  "modularshoot.configuration.nearTranslucency.minOpacity.tooltip": "Opacity at distance 0; set to 1.0 to effectively disable the fade."
 }

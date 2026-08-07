@@ -54,8 +54,8 @@ public final class ModularShootClientConfig {
                 .comment(
                         "淡出距离（格）：子弹距离摄像机达到该值后完全不透明。",
                         "距离 0 处为最小不透明度，中间按 smoothstep 曲线平滑过渡。",
-                        "范围 0.5–16.0，默认 2.0。")
-                .defineInRange("nearTranslucency.fadeDistance", 2.0, 0.5, 16.0);
+                        "范围 0.5–16.0，默认 4.0。")
+                .defineInRange("nearTranslucency.fadeDistance", 4.0, 0.5, 16.0);
 
         MIN_OPACITY = builder
                 .comment(
