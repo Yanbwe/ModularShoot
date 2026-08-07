@@ -6,31 +6,30 @@ import net.neoforged.bus.api.ICancellableEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 
 /**
- * Fired on the server when a player presses the reload key (default: R) while
+ * Fired on the server when the player presses the action key (default: R) while
  * holding a gun in the main hand.
  *
  * <p><b>Framework responsibility:</b> the framework only <em>triggers</em>
- * this event — it does <strong>not</strong> implement any reload logic. The
- * framework does not read ammunition state, play reload animations, modify
- * item durability, or perform any other reload-specific behavior. All such
- * behavior is the responsibility of other mods that subscribe to this
- * event.</p>
+ * this event — it does <strong>not</strong> implement any action logic. It
+ * does not play animations, modify item durability, or perform any other
+ * concrete action behavior. All such behavior — whether skills, item usage,
+ * or other gameplay mechanics — is the responsibility of mods that subscribe
+ * to this event.</p>
  *
- * <p><b>Trigger flow:</b> the client detects the reload key press (via
- * {@link org.yanbwe.modularshoot.client.keybind.ReloadKeyBinding}) and
+ * <p><b>Trigger flow:</b> the client detects the action key press (via
+ * {@link org.yanbwe.modularshoot.client.keybind.ActionKeyBinding}) and
  * forwards it to the server through a
- * {@link org.yanbwe.modularshoot.network.ReloadC2SPacket}. The server-side
+ * {@link org.yanbwe.modularshoot.network.ActionC2SPacket}. The server-side
  * handler validates that the player's main-hand item is a gun, constructs
  * this event, and posts it on the {@code NeoForge.EVENT_BUS} (game bus).
- * This keeps the server authoritative: a hacked client cannot trigger a
- * reload event for a non-gun item.</p>
+ * This keeps the server authoritative: a hacked client cannot trigger an
+ * action event for a non-gun item.</p>
  *
  * <p><b>Extension point:</b> other mods listen via
  * {@code @SubscribeEvent} on the {@code NeoForge.EVENT_BUS} to implement
- * concrete reload behavior, such as consuming ammunition from the inventory,
- * playing a reload animation, applying a reload cooldown, etc. If no
- * listener handles the event, the framework performs no action on its
- * own.</p>
+ * concrete action behavior, such as activating skills, using items,
+ * applying a cooldown, or other gameplay mechanics. If no listener handles
+ * the event, the framework performs no action on its own.</p>
  *
  * <p><b>Stack mutation contract (S19 fix):</b> the gun {@link ItemStack}
  * carried by this event is a <em>live reference</em> to the player's
@@ -48,7 +47,7 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
  *
  * <p>This event is {@linkplain ICancellableEvent cancelable}. Canceling it
  * prevents subsequent handlers in the same bus dispatch from receiving the
- * event, allowing a higher-priority listener to claim the reload action
+ * event, allowing a higher-priority listener to claim the action
  * exclusively.</p>
  *
  * <p>This event is fired on the {@code NeoForge.EVENT_BUS} (game bus), not
@@ -56,32 +55,32 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
  *
  * @see PlayerEvent
  */
-public class ReloadEvent extends PlayerEvent implements ICancellableEvent {
+public class ActionEvent extends PlayerEvent implements ICancellableEvent {
 
     private final ItemStack gun;
 
     /**
-     * @param player the player pressing the reload key; never {@code null}
+     * @param player the player pressing the action key; never {@code null}
      * @param gun    the gun {@link ItemStack} in the player's main hand at the
-     *               moment the reload was requested; a <em>live reference</em>
+     *               moment the action was requested; a <em>live reference</em>
      *               — the caller must not mutate this stack after the event
      *               has been posted (see class-level <b>Stack mutation
      *               contract</b>)
      */
-    public ReloadEvent(Player player, ItemStack gun) {
+    public ActionEvent(Player player, ItemStack gun) {
         super(player);
         this.gun = gun;
     }
 
     /**
-     * Returns the player who triggered the reload request.
+     * Returns the player who triggered the action request.
      *
      * <p>This is a semantic alias for {@link #getEntity()} (which already
      * returns {@link Player} via covariant return on {@link PlayerEvent}).
      * Provided so listener code reads naturally:
      * {@code event.getPlayer()} rather than {@code event.getEntity()}.</p>
      *
-     * @return the player who pressed the reload key
+     * @return the player who pressed the action key
      */
     public Player getPlayer() {
         return getEntity();
@@ -89,11 +88,11 @@ public class ReloadEvent extends PlayerEvent implements ICancellableEvent {
 
     /**
      * Returns the gun item stack in the player's main hand at the moment the
-     * reload was requested.
+     * action was requested.
      *
      * <p>This is a <em>live reference</em> to the player's main-hand stack,
      * not a defensive copy (see the class-level <b>Stack mutation
-     * contract</b>). The caller (the server-side reload handler) must not
+     * contract</b>). The caller (the server-side action handler) must not
      * mutate this stack after the event has been posted; listeners that
      * need a stable snapshot should {@link ItemStack#copy()} it.</p>
      *
