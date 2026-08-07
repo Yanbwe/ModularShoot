@@ -1,5 +1,6 @@
 package org.yanbwe.modularshoot.shooting;
 
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -61,7 +62,7 @@ import org.yanbwe.modularshoot.ModularShootAPI;
  * {@link LeftClickInterceptHandler}.</p>
  *
  * @see GunRightClickEvent
- * @see ModularShootAPI#isGun(ItemStack)
+ * @see ModularShootAPI#isGun(ItemStack, RegistryAccess)
  */
 @EventBusSubscriber(modid = ModularShoot.MODID)
 public final class RightClickHandler {
@@ -184,8 +185,10 @@ public final class RightClickHandler {
     /**
      * Checks whether the player's main-hand item is a framework gun.
      *
-     * <p>Delegates to {@link ModularShootAPI#isGun(ItemStack)} after reading
-     * the main-hand stack. Extracted as a helper so both listeners share a
+     * <p>Delegates to {@link ModularShootAPI#isGun(ItemStack, RegistryAccess)}
+     * after reading the main-hand stack, passing the player's runtime
+     * {@link RegistryAccess} so datapack-bound guns are recognized. Extracted
+     * as a helper so both listeners share a
      * single source of truth for the gun-detection predicate, matching the
      * pattern in {@link LeftClickInterceptHandler#isMainHandGun}.</p>
      *
@@ -193,7 +196,7 @@ public final class RightClickHandler {
      * @return {@code true} when the main-hand stack is a {@code modularshoot:gun}
      */
     private static boolean isMainHandGun(Player player) {
-        return ModularShootAPI.isGun(player.getMainHandItem());
+        return ModularShootAPI.isGun(player.getMainHandItem(), player.registryAccess());
     }
 
     /**

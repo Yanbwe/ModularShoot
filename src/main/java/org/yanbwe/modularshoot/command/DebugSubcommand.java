@@ -116,7 +116,7 @@ public final class DebugSubcommand {
             return;
         }
         ItemStack gun = player.getMainHandItem();
-        if (!ModularShootAPI.isGun(gun)) {
+        if (!ModularShootAPI.isGun(gun, player.registryAccess())) {
             return;
         }
         player.displayClientMessage(buildDebugComponent(player, gun), true);

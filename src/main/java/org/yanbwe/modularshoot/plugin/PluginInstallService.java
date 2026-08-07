@@ -12,6 +12,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.common.NeoForge;
 import org.jetbrains.annotations.Nullable;
+import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.attribute.AttributeModifierService;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
@@ -19,6 +20,7 @@ import org.yanbwe.modularshoot.component.PluginData;
 import org.yanbwe.modularshoot.component.PluginInstance;
 import org.yanbwe.modularshoot.plugin.event.PostPluginInstallEvent;
 import org.yanbwe.modularshoot.plugin.event.PrePluginInstallEvent;
+import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 
 /**
  * Installation pipeline that writes a plugin into a gun's data component
@@ -115,17 +117,26 @@ public final class PluginInstallService {
     /**
      * Installs a plugin from a plugin item stack into a gun item stack.
      *
-     * <p>Reads the {@code pluginId} from the plugin stack's {@link PluginData}
-     * component, runs every validation gate, and &mdash; on success &mdash;
-     * works on <strong>copies</strong> of the input stacks so the originals
-     * are never mutated. The caller receives the modified copies via
+     * <p>Resolves the {@code pluginId} from the plugin stack's {@link PluginData}
+     * component, falling back to the binding table when the component is
+     * absent (bound plugin, 设计规格 物品绑定系统 §4.1). The target gun may
+     * likewise carry no {@code gun_data} when it is recognized via the binding
+     * channel: a fresh component is lazily attached on the working copy
+     * (设计规格 物品绑定系统 §5.2) before validation. Every validation gate
+     * then runs and &mdash; on success &mdash; the pipeline works on
+     * <strong>copies</strong> of the input stacks so the originals are never
+     * mutated. The caller receives the modified copies via
      * {@link InstallResult} and is responsible for writing them back to the
      * appropriate container slots via {@code Slot.set()} / {@code SlotAccess.set()}
      * (following the Apotheosis pattern).</p>
      *
-     * @param gun            the gun item stack to inspect (not mutated)
+     * @param gun            the gun item stack to inspect (not mutated); may
+     *                       carry no {@code gun_data} when recognized via the
+     *                       binding channel (the component is attached on the
+     *                       working copy)
      * @param pluginStack    the plugin item stack to inspect (not mutated);
-     *                       must carry {@link PluginData}
+     *                       may carry no {@link PluginData} when recognized
+     *                       via the binding channel
      * @param player         the player performing the installation; supplies the
      *                       random source for category auto-selection
      * @param registryAccess the runtime registry view (from a loaded world)
@@ -134,33 +145,48 @@ public final class PluginInstallService {
      */
     public static InstallResult installPlugin(
             ItemStack gun, ItemStack pluginStack, Player player, RegistryAccess registryAccess) {
-        // a. Read the plugin id from the plugin stack's component.
+        // a. Resolve the plugin id from the plugin stack's component, falling
+        //    back to the binding table when the component is absent (bound
+        //    plugin, 设计规格 物品绑定系统 §4.1).
         PluginData pluginData = pluginStack.get(ModularShootDataComponents.PLUGIN_DATA.get());
-        if (pluginData == null) {
+        ResourceLocation pluginId = (pluginData != null)
+                ? pluginData.pluginId()
+                : ModularShootAPI.resolvePluginId(pluginStack, registryAccess).orElse(null);
+        if (pluginId == null) {
             return InstallResult.failure(
                     Component.translatable("modularshoot.install.error.not_plugin"));
-        }
-        ResourceLocation pluginId = pluginData.pluginId();
-
-        // a2. Guard: the target gun must carry a gun_data component. Without it
-        //     the downstream matching service returns an empty candidate list,
-        //     which would surface as the misleading "No matching slot available"
-        //     message. Fail fast with an explicit reason instead (S29 fix).
-        if (!gun.has(ModularShootDataComponents.GUN_DATA.get())) {
-            return InstallResult.failure(
-                    Component.translatable("modularshoot.install.error.no_gun_data"));
-        }
-
-        // b-h. Validate every gate and select the target category.
-        SelectionOutcome outcome = validateAndSelect(gun, pluginId, player, registryAccess);
-        if (!outcome.result().valid()) {
-            return InstallResult.failure(outcome.result().errorMessage()
-                    .orElse(Component.translatable("modularshoot.install.error.generic")));
         }
 
         // i-o. Work on copies so the originals are never mutated (Apotheosis pattern).
         ItemStack resultGun = gun.copy();
         ItemStack resultPlugin = pluginStack.copy();
+
+        // a2. Server-only lazy attachment: the target gun must carry a
+        //     gun_data component. Bound guns enter the world without one
+        //     (设计规格 物品绑定系统 §5.2), so the component is lazily attached
+        //     on the working copy first — idempotent, native guns are
+        //     untouched. Attachment happens on the server side only: on the
+        //     client (e.g. the creative-menu path, where the event fires
+        //     client-side only) the stack is left as-is and the guard below
+        //     degrades naturally into the existing no_gun_data error (S2 fix).
+        //     Without the component the downstream matching service returns an
+        //     empty candidate list, which would surface as the misleading
+        //     "No matching slot available" message. Fail fast with an explicit
+        //     reason instead (S29 fix).
+        if (!player.level().isClientSide()) {
+            GunRegistry.ensureGunData(resultGun, registryAccess);
+        }
+        if (!resultGun.has(ModularShootDataComponents.GUN_DATA.get())) {
+            return InstallResult.failure(
+                    Component.translatable("modularshoot.install.error.no_gun_data"));
+        }
+
+        // b-h. Validate every gate and select the target category.
+        SelectionOutcome outcome = validateAndSelect(resultGun, pluginId, player, registryAccess);
+        if (!outcome.result().valid()) {
+            return InstallResult.failure(outcome.result().errorMessage()
+                    .orElse(Component.translatable("modularshoot.install.error.generic")));
+        }
 
         executeInstall(resultGun, resultPlugin, pluginId, outcome.selectedTypeId(), player, registryAccess);
 

@@ -1,5 +1,6 @@
 package org.yanbwe.modularshoot.event;
 
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Player;
@@ -9,7 +10,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
 import org.yanbwe.modularshoot.ModularShoot;
-import org.yanbwe.modularshoot.item.ModularShootItems;
+import org.yanbwe.modularshoot.ModularShootAPI;
 
 /**
  * Enforces the design-mandated offhand restriction for guns.
@@ -26,7 +27,7 @@ import org.yanbwe.modularshoot.item.ModularShootItems;
  * guard so inventory state is authored on the authoritative side only, matching the
  * NeoForge-recommended pattern for {@link PlayerTickEvent} handlers.</p>
  *
- * @see ModularShootItems#GUN_ITEM
+ * @see ModularShootAPI#isGun(ItemStack, RegistryAccess)
  */
 @EventBusSubscriber(modid = ModularShoot.MODID)
 public final class OffhandRestrictionHandler {
@@ -58,7 +59,7 @@ public final class OffhandRestrictionHandler {
 
         ItemStack offhand = player.getOffhandItem();
         // Non-gun items (including empty stacks) are left untouched.
-        if (!offhand.is(ModularShootItems.GUN_ITEM.get())) {
+        if (!ModularShootAPI.isGun(offhand, player.registryAccess())) {
             return;
         }
 

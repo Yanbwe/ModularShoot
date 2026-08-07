@@ -1,6 +1,7 @@
 package org.yanbwe.modularshoot.shooting;
 
 import java.util.Objects;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
@@ -12,6 +13,7 @@ import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.network.ShootAnimSyncService;
+import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 
 /**
  * Server-side orchestrator for
@@ -70,14 +72,22 @@ public final class ShootPacketHandler {
         // (设计文档 §isFiring 标记维护: 收到 ShootC2SPacket 即置 true).
         ShootAnimSyncService.getInstance().onShootPacketReceived(player);
         ItemStack mainHand = player.getMainHandItem();
-        if (!isMainHandGun(mainHand)) {
+        if (!isMainHandGun(mainHand, player)) {
             ModularShoot.LOGGER.warn("Shoot rejected: main hand is not a gun (player={})", player.getName().getString());
             return;
         }
         GunData gunData = readGunData(mainHand);
         if (gunData == null) {
-            ModularShoot.LOGGER.warn("Shoot rejected: gun has no gun_data component (player={})", player.getName().getString());
-            return;
+            // 竞态兜底：绑定枪械的 gun_data 由服务端 tick 通道在拿起 1 tick 内
+            // 附加（设计规格 物品绑定系统 §5.3），但客户端可能在附加完成前就
+            // 发出首枪——先尝试立即附加再重读一次。重读仍为空（非绑定物品，
+            // 或绑定已被移除）才保留原有的拒绝日志。
+            GunRegistry.ensureGunData(mainHand, player.registryAccess());
+            gunData = readGunData(mainHand);
+            if (gunData == null) {
+                ModularShoot.LOGGER.warn("Shoot rejected: gun has no gun_data component (player={})", player.getName().getString());
+                return;
+            }
         }
         if (!validateModifierVersion(player, packetModifierVersion, gunData.modifierVersion())) {
             ModularShoot.LOGGER.warn("Shoot rejected: modifier version mismatch (player={}, packet={}, server={})",
@@ -101,11 +111,16 @@ public final class ShootPacketHandler {
     /**
      * Checks whether the main-hand item is a framework gun.
      *
+     * <p>Delegates to {@link ModularShootAPI#isGun(ItemStack, RegistryAccess)}
+     * with the player's runtime {@link RegistryAccess} so datapack-bound guns
+     * are recognized (绑定感知识别).</p>
+     *
      * @param mainHand the main-hand item stack
+     * @param player   the shooting player whose registry access to use
      * @return {@code true} when the stack is a {@code modularshoot:gun} item
      */
-    private static boolean isMainHandGun(ItemStack mainHand) {
-        return ModularShootAPI.isGun(mainHand);
+    private static boolean isMainHandGun(ItemStack mainHand, ServerPlayer player) {
+        return ModularShootAPI.isGun(mainHand, player.registryAccess());
     }
 
     /**

@@ -53,7 +53,7 @@ public abstract class LivingEntitySwingMixin {
         if (!(self instanceof Player player) || !player.level().isClientSide()) {
             return;
         }
-        if (ModularShootAPI.isGun(player.getMainHandItem())) {
+        if (ModularShootAPI.isGun(player.getMainHandItem(), player.registryAccess())) {
             ci.cancel();
         }
     }

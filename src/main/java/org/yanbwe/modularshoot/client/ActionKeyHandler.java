@@ -1,6 +1,7 @@
 package org.yanbwe.modularshoot.client;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.api.distmarker.Dist;
@@ -41,8 +42,9 @@ import org.yanbwe.modularshoot.network.ActionC2SPacket;
  * the previous tick's flag and send the packet one tick late.</p>
  *
  * <p><b>Gun guard:</b> the client checks
- * {@link ModularShootAPI#isGun(ItemStack)} on the main-hand item before
- * sending, avoiding a wasted round-trip for non-gun items. The server
+ * {@link ModularShootAPI#isGun(ItemStack, RegistryAccess)} on the main-hand
+ * item before sending, avoiding a wasted round-trip for non-gun items. The
+ * server
  * re-checks this anyway (defense in depth against a hacked client).</p>
  *
  * @see ActionKeyBinding for the key binding and press-detection logic
@@ -99,7 +101,7 @@ public final class ActionKeyHandler {
      */
     private static void sendActionRequest(Player player) {
         ItemStack mainHand = player.getMainHandItem();
-        if (!ModularShootAPI.isGun(mainHand)) {
+        if (!ModularShootAPI.isGun(mainHand, player.registryAccess())) {
             return;
         }
         PacketDistributor.sendToServer(new ActionC2SPacket());

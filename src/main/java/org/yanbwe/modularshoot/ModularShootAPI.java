@@ -7,10 +7,12 @@ import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ItemLike;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.bullet.BulletSnapshot;
@@ -19,7 +21,6 @@ import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginData;
 import org.yanbwe.modularshoot.component.PluginInstance;
 import org.yanbwe.modularshoot.datapack.RegistrationCoordinator;
-import org.yanbwe.modularshoot.item.ModularShootItems;
 import org.yanbwe.modularshoot.plugin.PluginDefinition;
 import org.yanbwe.modularshoot.plugin.PluginExtraValueService;
 import org.yanbwe.modularshoot.plugin.PluginInstallService;
@@ -31,6 +32,10 @@ import org.yanbwe.modularshoot.plugin.PluginUninstallService;
 import org.yanbwe.modularshoot.plugin.PluginValidationService;
 import org.yanbwe.modularshoot.plugin.PluginValidator;
 import org.yanbwe.modularshoot.plugin.UninstallResult;
+import org.yanbwe.modularshoot.registry.binding.GunItemBinding;
+import org.yanbwe.modularshoot.registry.binding.GunItemBindingRegistry;
+import org.yanbwe.modularshoot.registry.binding.PluginItemBinding;
+import org.yanbwe.modularshoot.registry.binding.PluginItemBindingRegistry;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 import org.yanbwe.modularshoot.damage.DamageHandler;
@@ -88,37 +93,93 @@ public final class ModularShootAPI {
     // ---- Plugin item queries --------------------------------------------
 
     /**
-     * Checks whether the given stack is a framework {@code modularshoot:plugin}
-     * item.
+     * Checks whether the given stack is a plugin (设计规格 物品绑定系统 §4.1).
      *
-     * <p>All plugin stacks share the single {@code modularshoot:plugin} item id;
-     * the concrete plugin is selected by the {@code plugin_data} component. This
-     * check tests the item type only, not the presence of the component.</p>
+     * <p>Dual-channel recognition with the <b>component channel first</b> and
+     * the <b>binding channel as fallback</b>: a stack is a plugin when it
+     * carries the {@code plugin_data} component, or when its item id is bound
+     * to a plugin entry via the {@code modularshoot:plugin_items} binding
+     * table (Java API channel, see {@link PluginItemBindingRegistry}). This
+     * is the <b>degraded overload</b> for callers without a registry view
+     * (e.g. the main menu): it checks the component channel plus the
+     * Java-API binding channel only — the datapack binding channel is
+     * skipped because {@link RegistryAccess#EMPTY} never contains the
+     * datapack registries (semantically equivalent to "Java-API bindings
+     * only"). Runtime callers should prefer
+     * {@link #isPlugin(ItemStack, RegistryAccess)}.</p>
      *
      * @param stack the stack to inspect; must not be {@code null}
-     * @return {@code true} when the stack is a {@code modularshoot:plugin} item
+     * @return {@code true} when the stack is a plugin via either channel
      */
     public static boolean isPlugin(ItemStack stack) {
+        return isPlugin(stack, RegistryAccess.EMPTY, false);
+    }
+
+    /**
+     * Checks whether the given stack is a plugin (设计规格 物品绑定系统 §4.1).
+     *
+     * <p>Dual-channel recognition with the <b>component channel first</b> and
+     * the <b>binding channel as fallback</b>: a stack is a plugin when it
+     * carries the {@code plugin_data} component, or when its item id is bound
+     * to a plugin entry via the {@code modularshoot:plugin_items} binding
+     * table (Java API plus datapack channels, see
+     * {@link PluginItemBindingRegistry}). The datapack channel requires the
+     * runtime {@link RegistryAccess} of a loaded world; supply
+     * {@code player.level().registryAccess()} or equivalent.</p>
+     *
+     * @param stack  the stack to inspect; must not be {@code null}
+     * @param access the runtime registry view; must not be {@code null}
+     * @return {@code true} when the stack is a plugin via either channel
+     */
+    public static boolean isPlugin(ItemStack stack, RegistryAccess access) {
+        return isPlugin(stack, access, true);
+    }
+
+    /**
+     * Resolves the plugin definition id of a plugin stack (设计规格 物品绑定系统
+     * §4.1).
+     *
+     * <p>Dual-channel resolution: the <b>component channel is checked
+     * first</b> — a {@code plugin_data} component yields its
+     * {@link PluginData#pluginId()}; when no component is present, the
+     * binding channel resolves the plugin id from the
+     * {@code modularshoot:plugin_items} binding table (Java API plus
+     * datapack). Returns {@link Optional#empty()} when neither channel
+     * identifies a plugin.</p>
+     *
+     * @param stack  the stack to inspect; must not be {@code null}
+     * @param access the runtime registry view; must not be {@code null}
+     * @return the plugin definition id, or empty when the stack is not a
+     *         plugin
+     */
+    public static Optional<ResourceLocation> resolvePluginId(
+            ItemStack stack, RegistryAccess access) {
         Objects.requireNonNull(stack, "stack");
-        return stack.is(ModularShootItems.PLUGIN_ITEM.get());
+        Objects.requireNonNull(access, "access");
+        PluginData pluginData = stack.get(ModularShootDataComponents.PLUGIN_DATA.get());
+        if (pluginData != null) {
+            return Optional.of(pluginData.pluginId());
+        }
+        return findBoundPluginId(stack, access, true);
     }
 
     /**
      * Reads the plugin definition id bound to a plugin stack.
      *
-     * <p>Delegates to the {@code plugin_data} component carried by the stack.
-     * Returns {@link Optional#empty()} when the stack is not a plugin item or
-     * carries no {@code plugin_data} component.</p>
+     * <p>Delegates to the {@code plugin_data} component carried by the stack;
+     * the component is read directly from any stack without an item-id
+     * precheck (设计规格 物品绑定系统 §4.2). Returns
+     * {@link Optional#empty()} when the stack carries no {@code plugin_data}
+     * component — binding-table plugins get the component lazily attached on
+     * first use (设计规格 物品绑定系统 §5), so an empty result before
+     * attachment is expected.</p>
      *
      * @param stack the stack to inspect; must not be {@code null}
-     * @return the plugin definition id, or empty when the stack is not a plugin
-     *         or has no binding
+     * @return the plugin definition id, or empty when the stack has no
+     *         component
      */
     public static Optional<ResourceLocation> getPluginId(ItemStack stack) {
         Objects.requireNonNull(stack, "stack");
-        if (!stack.is(ModularShootItems.PLUGIN_ITEM.get())) {
-            return Optional.empty();
-        }
         PluginData data = stack.get(ModularShootDataComponents.PLUGIN_DATA.get());
         return data == null ? Optional.empty() : Optional.of(data.pluginId());
     }
@@ -126,19 +187,18 @@ public final class ModularShootAPI {
     /**
      * Returns the {@link PluginData} component of a plugin stack.
      *
-     * <p>Delegates to the {@code plugin_data} component carried by the stack.
-     * Returns {@link Optional#empty()} when the stack is not a plugin item or
-     * carries no {@code plugin_data} component.</p>
+     * <p>Delegates to the {@code plugin_data} component carried by the stack;
+     * the component is read directly from any stack without an item-id
+     * precheck (设计规格 物品绑定系统 §4.2). Returns {@link Optional#empty()}
+     * when the stack carries no {@code plugin_data} component — binding-table
+     * plugins get the component lazily attached on first use (设计规格 物品绑定
+     * 系统 §5), so an empty result before attachment is expected.</p>
      *
      * @param stack the stack to inspect; must not be {@code null}
-     * @return the {@link PluginData}, or empty when the stack is not a plugin
-     *         or has no component
+     * @return the {@link PluginData}, or empty when the stack has no component
      */
     public static Optional<PluginData> getPluginData(ItemStack stack) {
         Objects.requireNonNull(stack, "stack");
-        if (!stack.is(ModularShootItems.PLUGIN_ITEM.get())) {
-            return Optional.empty();
-        }
         return Optional.ofNullable(stack.get(ModularShootDataComponents.PLUGIN_DATA.get()));
     }
 
@@ -745,20 +805,20 @@ public final class ModularShootAPI {
     /**
      * Reads the gun definition id bound to a gun stack.
      *
-     * <p>Reads the {@code gun_data} component carried by the stack and returns
-     * its {@code gunId}. Returns {@code null} when the stack is not a
-     * {@code modularshoot:gun} item or carries no {@code gun_data} component.</p>
+     * <p>Delegates to the {@code gun_data} component carried by the stack;
+     * the component is read directly from any stack without an item-id
+     * precheck (设计规格 物品绑定系统 §4.2). Returns {@code null} when the
+     * stack carries no {@code gun_data} component — binding-table guns get
+     * the component lazily attached on first use (设计规格 物品绑定系统 §5),
+     * so a {@code null} result before attachment is expected.</p>
      *
-     * @param gun the gun item stack to inspect; must not be {@code null}
-     * @return the gun definition id, or {@code null} when the stack is not a gun
-     *         or has no gun data
+     * @param gun the stack to inspect; must not be {@code null}
+     * @return the gun definition id, or {@code null} when the stack has no
+     *         component
      */
     @Nullable
     public static ResourceLocation getGunId(ItemStack gun) {
         Objects.requireNonNull(gun, "gun");
-        if (!gun.is(ModularShootItems.GUN_ITEM.get())) {
-            return null;
-        }
         GunData gunData = gun.get(ModularShootDataComponents.GUN_DATA.get());
         return gunData == null ? null : gunData.gunId();
     }
@@ -766,39 +826,143 @@ public final class ModularShootAPI {
     /**
      * Returns the {@link GunData} component of a gun stack.
      *
-     * <p>Delegates to the {@code gun_data} component carried by the stack.
-     * Returns {@link Optional#empty()} when the stack is not a
-     * {@code modularshoot:gun} item or carries no {@code gun_data} component.
-     * Upper-layer mods can use this to access the full per-gun runtime state
-     * (gun id, instance uuid, installed plugins, modifier version, state
-     * payload) rather than only the gun id exposed by {@link #getGunId}.</p>
+     * <p>Delegates to the {@code gun_data} component carried by the stack;
+     * the component is read directly from any stack without an item-id
+     * precheck (设计规格 物品绑定系统 §4.2). Returns {@link Optional#empty()}
+     * when the stack carries no {@code gun_data} component — binding-table
+     * guns get the component lazily attached on first use (设计规格 物品绑定
+     * 系统 §5), so an empty result before attachment is expected. Upper-layer
+     * mods can use this to access the full per-gun runtime state (gun id,
+     * instance uuid, installed plugins, modifier version, state payload)
+     * rather than only the gun id exposed by {@link #getGunId}.</p>
      *
      * @param gun the stack to inspect; must not be {@code null}
-     * @return the {@link GunData}, or empty when the stack is not a gun
-     *         or has no component
+     * @return the {@link GunData}, or empty when the stack has no component
      */
     public static Optional<GunData> getGunData(ItemStack gun) {
         Objects.requireNonNull(gun, "gun");
-        if (!gun.is(ModularShootItems.GUN_ITEM.get())) {
-            return Optional.empty();
-        }
         return Optional.ofNullable(gun.get(ModularShootDataComponents.GUN_DATA.get()));
     }
 
     /**
-     * Checks whether the given stack is a framework {@code modularshoot:gun}
-     * item.
+     * Checks whether the given stack is a gun (设计规格 物品绑定系统 §4.1).
      *
-     * <p>Tests the item type only, not the presence of the {@code gun_data}
-     * component. Used by the shooting engine to decide whether to intercept
-     * vanilla left-click attacks.</p>
+     * <p>Dual-channel recognition with the <b>component channel first</b> and
+     * the <b>binding channel as fallback</b>: a stack is a gun when it
+     * carries the {@code gun_data} component, or when its item id is bound
+     * to a gun entry via the {@code modularshoot:gun_items} binding table
+     * (Java API channel, see {@link GunItemBindingRegistry}). This is the
+     * <b>degraded overload</b> for callers without a registry view (e.g. the
+     * main menu): it checks the component channel plus the Java-API binding
+     * channel only — the datapack binding channel is skipped because
+     * {@link RegistryAccess#EMPTY} never contains the datapack registries
+     * (semantically equivalent to "Java-API bindings only"). Runtime callers
+     * should prefer {@link #isGun(ItemStack, RegistryAccess)}.</p>
      *
      * @param stack the stack to inspect; must not be {@code null}
-     * @return {@code true} when the stack is a {@code modularshoot:gun} item
+     * @return {@code true} when the stack is a gun via either channel
      */
     public static boolean isGun(ItemStack stack) {
+        return isGun(stack, RegistryAccess.EMPTY, false);
+    }
+
+    /**
+     * Checks whether the given stack is a gun (设计规格 物品绑定系统 §4.1).
+     *
+     * <p>Dual-channel recognition with the <b>component channel first</b> and
+     * the <b>binding channel as fallback</b>: a stack is a gun when it
+     * carries the {@code gun_data} component, or when its item id is bound
+     * to a gun entry via the {@code modularshoot:gun_items} binding table
+     * (Java API plus datapack channels, see
+     * {@link GunItemBindingRegistry}). The datapack channel requires the
+     * runtime {@link RegistryAccess} of a loaded world; supply
+     * {@code player.level().registryAccess()} or equivalent.</p>
+     *
+     * @param stack  the stack to inspect; must not be {@code null}
+     * @param access the runtime registry view; must not be {@code null}
+     * @return {@code true} when the stack is a gun via either channel
+     */
+    public static boolean isGun(ItemStack stack, RegistryAccess access) {
+        return isGun(stack, access, true);
+    }
+
+    // ---- Item binding registration (Java API) ----------------------------
+
+    /**
+     * Registers an item→gun binding via the Java API (设计规格 物品绑定系统 §6).
+     *
+     * <p>Thin wrapper over
+     * {@link GunItemBindingRegistry#registerBinding(ResourceLocation, GunItemBinding)}:
+     * the item id ({@link BuiltInRegistries#ITEM} key of {@code item}) serves
+     * as both the binding's item id and its entry key, so no separate key has
+     * to be invented. Must be called during mod initialisation (before
+     * datapack loading begins). When a datapack JSON later declares a binding
+     * for the same item id, the Java-API binding takes priority (注册表服务
+     * 语义, 设计文档 §注册冲突与覆盖) and the shadowed datapack entry is
+     * reported with a {@code WARN} by the post-reload
+     * {@code ItemBindingValidator} (设计规格 物品绑定系统 §3.2).</p>
+     *
+     * @param item  the bound item; must not be {@code null}
+     * @param gunId the target gun entry's registry key, e.g.
+     *              {@code mypack:sword_rifle}; must not be {@code null}
+     */
+    public static void registerGunItem(ItemLike item, ResourceLocation gunId) {
+        Objects.requireNonNull(item, "item");
+        Objects.requireNonNull(gunId, "gunId");
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item.asItem());
+        GunItemBindingRegistry.registerBinding(
+                itemId, new GunItemBinding(itemId, gunId));
+    }
+
+    /**
+     * Registers an item→plugin binding via the Java API (设计规格 物品绑定系统
+     * §6).
+     *
+     * <p>Thin wrapper over
+     * {@link PluginItemBindingRegistry#registerBinding(ResourceLocation, PluginItemBinding)}:
+     * the item id ({@link BuiltInRegistries#ITEM} key of {@code item}) serves
+     * as both the binding's item id and its entry key. Must be called during
+     * mod initialisation (before datapack loading begins). When a datapack
+     * JSON later declares a binding for the same item id, the Java-API binding
+     * takes priority (注册表服务语义, 设计文档 §注册冲突与覆盖) and the
+     * shadowed datapack entry is reported with a {@code WARN} by the
+     * post-reload {@code ItemBindingValidator} (设计规格 物品绑定系统 §3.2).</p>
+     *
+     * @param item     the bound item; must not be {@code null}
+     * @param pluginId the target plugin entry's registry key, e.g.
+     *                 {@code mypack:light_plugin}; must not be {@code null}
+     */
+    public static void registerPluginItem(ItemLike item, ResourceLocation pluginId) {
+        Objects.requireNonNull(item, "item");
+        Objects.requireNonNull(pluginId, "pluginId");
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item.asItem());
+        PluginItemBindingRegistry.registerBinding(
+                itemId, new PluginItemBinding(itemId, pluginId));
+    }
+
+    /**
+     * Resolves the gun definition id of a gun stack (设计规格 物品绑定系统 §4.1).
+     *
+     * <p>Dual-channel resolution: the <b>component channel is checked
+     * first</b> — a {@code gun_data} component yields its
+     * {@link GunData#gunId()}; when no component is present, the binding
+     * channel resolves the gun id from the {@code modularshoot:gun_items}
+     * binding table (Java API plus datapack). Returns
+     * {@link Optional#empty()} when neither channel identifies a gun.</p>
+     *
+     * @param stack  the stack to inspect; must not be {@code null}
+     * @param access the runtime registry view; must not be {@code null}
+     * @return the gun definition id, or empty when the stack is not a gun
+     */
+    public static Optional<ResourceLocation> resolveGunId(
+            ItemStack stack, RegistryAccess access) {
         Objects.requireNonNull(stack, "stack");
-        return stack.is(ModularShootItems.GUN_ITEM.get());
+        Objects.requireNonNull(access, "access");
+        GunData gunData = stack.get(ModularShootDataComponents.GUN_DATA.get());
+        if (gunData != null) {
+            return Optional.of(gunData.gunId());
+        }
+        return findBoundGunId(stack, access, true);
     }
 
     /**
@@ -851,7 +1015,11 @@ public final class ModularShootAPI {
      * Returns a {@link GunState} view for the given gun item stack.
      *
      * <p>Delegates to {@link GunState#of}. Returns {@code null} when the stack
-     * is not a gun (checked via {@link #isGun}). The returned view is a
+     * is not a gun (checked via
+     * {@link #isGun(ItemStack, RegistryAccess)} with the player's runtime
+     * registry view, so binding-channel guns without an attached
+     * {@code gun_data} component are also recognized — their state storage
+     * only takes effect through the binding channel). The returned view is a
      * lightweight wrapper over the stack and the supplied
      * {@link RegistryAccess}; it is not cached and may be created freely on
      * every read/write site (设计文档 §读写 API).</p>
@@ -866,7 +1034,7 @@ public final class ModularShootAPI {
     public static GunState getState(ItemStack gun, Player player) {
         Objects.requireNonNull(gun, "gun");
         Objects.requireNonNull(player, "player");
-        if (!isGun(gun)) {
+        if (!isGun(gun, player.registryAccess())) {
             return null;
         }
         return GunState.of(gun, player);
@@ -1029,5 +1197,64 @@ public final class ModularShootAPI {
         Objects.requireNonNull(registryKey, "registryKey");
         Objects.requireNonNull(id, "id");
         RegistrationCoordinator.markJavaApiRegistered(registryKey, id);
+    }
+
+    // ---- Dual-channel recognition helpers (private) ----------------------
+
+    /**
+     * Shared gun-recognition core for the {@link #isGun(ItemStack)} /
+     * {@link #isGun(ItemStack, RegistryAccess)} overloads (设计规格 物品绑定系统
+     * §4.1): component channel first ({@code gun_data}), binding channel as
+     * fallback. {@code includeDatapack} selects the degraded query
+     * (Java-API bindings only, {@link RegistryAccess#EMPTY}) or the full
+     * query (Java API + datapack) against the caller's registry view.
+     */
+    private static boolean isGun(ItemStack stack, RegistryAccess access, boolean includeDatapack) {
+        Objects.requireNonNull(stack, "stack");
+        Objects.requireNonNull(access, "access");
+        return stack.has(ModularShootDataComponents.GUN_DATA.get())
+                || findBoundGunId(stack, access, includeDatapack).isPresent();
+    }
+
+    /**
+     * Shared plugin-recognition core for the {@link #isPlugin(ItemStack)} /
+     * {@link #isPlugin(ItemStack, RegistryAccess)} overloads (设计规格 物品绑定
+     * 系统 §4.1): component channel first ({@code plugin_data}), binding
+     * channel as fallback. See {@link #isGun(ItemStack, RegistryAccess, boolean)}
+     * for the {@code includeDatapack} semantics.
+     */
+    private static boolean isPlugin(ItemStack stack, RegistryAccess access, boolean includeDatapack) {
+        Objects.requireNonNull(stack, "stack");
+        Objects.requireNonNull(access, "access");
+        return stack.has(ModularShootDataComponents.PLUGIN_DATA.get())
+                || findBoundPluginId(stack, access, includeDatapack).isPresent();
+    }
+
+    /**
+     * Resolves the gun id bound to the stack's item id via the
+     * {@code modularshoot:gun_items} binding table. Returns
+     * {@link Optional#empty()} when the item id cannot be resolved or no
+     * binding matches.
+     */
+    private static Optional<ResourceLocation> findBoundGunId(
+            ItemStack stack, RegistryAccess access, boolean includeDatapack) {
+        return stack.getItemHolder().unwrapKey()
+                .map(ResourceKey::location)
+                .flatMap(itemId -> GunItemBindingRegistry.getBoundGunId(
+                        includeDatapack ? access : RegistryAccess.EMPTY, itemId));
+    }
+
+    /**
+     * Resolves the plugin id bound to the stack's item id via the
+     * {@code modularshoot:plugin_items} binding table. Returns
+     * {@link Optional#empty()} when the item id cannot be resolved or no
+     * binding matches.
+     */
+    private static Optional<ResourceLocation> findBoundPluginId(
+            ItemStack stack, RegistryAccess access, boolean includeDatapack) {
+        return stack.getItemHolder().unwrapKey()
+                .map(ResourceKey::location)
+                .flatMap(itemId -> PluginItemBindingRegistry.getBoundPluginId(
+                        includeDatapack ? access : RegistryAccess.EMPTY, itemId));
     }
 }

@@ -16,6 +16,7 @@ import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.ModularShootAPI;
+import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.degradation.GunDegradationHandler;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
 
@@ -59,13 +60,22 @@ public final class TooltipBuilder {
      *
      * <p>Guard clauses short-circuit in order of increasing cost:
      * <ol>
-     *   <li>Item type check — is the stack a gun?</li>
+     *   <li>Item type check — is the stack a gun? (binding-aware: uses the
+     *       viewing player's {@code RegistryAccess} when a player is
+     *       available; on the main menu, where the player is {@code null},
+     *       falls back to the legacy overload)</li>
      *   <li>Player check — is a viewing player available (non-null)?</li>
      *   <li>Degradation check — is the gun definition missing? If so, the
      *       tooltip is replaced with only the degraded name and gunId
      *       (设计文档 §枪械 gunId 失效降级).</li>
      * </ol>
      * </p>
+     *
+     * <p>After the guards, a binding-channel gun that has not been attached
+     * yet (no {@code gun_data} component) gets a grey identity line
+     * {@code 枪械: <path>} inserted at the very top of the tooltip, above the
+     * item name (设计规格 物品绑定系统 §7.4). Native guns and guns that already
+     * carry the component skip this line so the display stays non-redundant.</p>
      *
      * <p>After the guards, the four tooltip sections are injected in
      * design-document order (设计文档 lines 1473-1509):
@@ -92,13 +102,19 @@ public final class TooltipBuilder {
     @SubscribeEvent
     public static void onItemTooltip(ItemTooltipEvent event) {
         ItemStack stack = event.getItemStack();
-        if (!ModularShootAPI.isGun(stack)) {
+
+        @Nullable Player player = event.getEntity();
+        // 绑定感知 isGun 判定：有玩家上下文时携带其 registryAccess（绑定 + Java API）；
+        // 主菜单预览（player 为 null，如搜索树填充）时退化到旧签名（组件 + Java API 绑定）。
+        boolean isGun = player != null
+                ? ModularShootAPI.isGun(stack, player.registryAccess())
+                : ModularShootAPI.isGun(stack);
+        if (!isGun) {
             return;
         }
 
-        @Nullable Player player = event.getEntity();
         if (player == null) {
-            return;
+            return; // 主菜单预览场景：无玩家上下文，不注入 tooltip 段
         }
 
         RegistryAccess registryAccess = player.registryAccess();
@@ -109,6 +125,18 @@ public final class TooltipBuilder {
         if (GunDegradationHandler.isGunDefinitionMissing(stack, registryAccess)) {
             appendDegradedTooltip(event.getToolTip(), stack);
             return;
+        }
+
+        // 身份标识行（设计规格 物品绑定系统 §7.4）：绑定通道识别的枪械在尚未
+        // 附加 GUN_DATA 组件时，于 tooltip 最前面（物品名之上）插入灰色
+        // "枪械: <path>" 行，便于区分多把绑定枪。已附加组件的原生枪械/已转化
+        // 枪械不显示该行，避免冗余。
+        if (!stack.has(ModularShootDataComponents.GUN_DATA.get())) {
+            ModularShootAPI.resolveGunId(stack, registryAccess).ifPresent(gunId ->
+                    event.getToolTip().add(0,
+                            Component.translatable("modularshoot.tooltip.bound_gun")
+                                    .withStyle(ChatFormatting.GRAY)
+                                    .append(Component.literal(gunId.getPath()))));
         }
 
         // 1. Attribute bar (设计文档 §属性栏; Ctrl 展开全部属性).

@@ -106,7 +106,7 @@ public final class ClientShootSender {
      */
     private static void sendShootRequest(Player player) {
         ItemStack mainHand = player.getMainHandItem();
-        if (!ModularShootAPI.isGun(mainHand)) {
+        if (!ModularShootAPI.isGun(mainHand, player.registryAccess())) {
             return;
         }
         @Nullable GunData gunData = mainHand.get(ModularShootDataComponents.GUN_DATA.get());

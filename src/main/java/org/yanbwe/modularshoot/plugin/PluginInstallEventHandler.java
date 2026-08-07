@@ -3,6 +3,7 @@ package org.yanbwe.modularshoot.plugin;
 import java.util.Objects;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -14,9 +15,9 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.ItemStackedOnOtherEvent;
+import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
-import org.yanbwe.modularshoot.item.ModularShootItems;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 import org.yanbwe.modularshoot.registry.gun.GunSounds;
 
@@ -102,8 +103,12 @@ public final class PluginInstallEventHandler {
      * <p>Filter order:</p>
      * <ol>
      *   <li>right-click only ({@link ClickAction#SECONDARY});</li>
-     *   <li>carried item is a {@code modularshoot:plugin} with {@code plugin_data};</li>
-     *   <li>slot item is a {@code modularshoot:gun};</li>
+     *   <li>carried item is a binding-aware plugin (native
+     *       {@code modularshoot:plugin} with {@code plugin_data}, or an item
+     *       bound via the {@code modularshoot:plugin_items} binding table);</li>
+     *   <li>slot item is a binding-aware gun (native {@code modularshoot:gun}
+     *       or an item bound via the {@code modularshoot:gun_items} binding
+     *       table);</li>
      *   <li>slot allows modification ({@link Slot#allowModification}).</li>
      * </ol>
      * <p>On success the modified gun copy is placed into the slot via
@@ -134,6 +139,9 @@ public final class PluginInstallEventHandler {
         ItemStack carriedItem = event.getCarriedItem();
         ItemStack stackedOnItem = event.getStackedOnItem();
 
+        // 附加已由 PluginInstallService 在服务端副本上完成（installPlugin 内部的
+        // 服务端守卫 + 惰性附加，设计规格 §5.2），本 handler 不再预附加。
+
         // Attempt installation (operates on copies, never mutates originals).
         PluginInstallService.InstallResult result = PluginInstallService.installPlugin(
                 stackedOnItem, carriedItem, player, player.level().registryAccess());
@@ -150,8 +158,8 @@ public final class PluginInstallEventHandler {
      *
      * <p>Filter order (matching the Javadoc of
      * {@link #onItemStackedOnOther}): right-click only, carried item is a
-     * {@code modularshoot:plugin}, slot item is a {@code modularshoot:gun},
-     * slot allows modification.</p>
+     * binding-aware plugin, slot item is a binding-aware gun, slot allows
+     * modification.</p>
      *
      * @param player the player involved in the stacking event
      * @param event  the stacking event fired by the container menu
@@ -163,12 +171,12 @@ public final class PluginInstallEventHandler {
         if (event.getClickAction() != ClickAction.SECONDARY) {
             return false;
         }
-        // Carried item must be a modularshoot:plugin with plugin_data.
-        if (!isPluginStack(event.getCarriedItem())) {
+        // Carried item must be a binding-aware plugin.
+        if (!isPluginStack(event.getCarriedItem(), player.registryAccess())) {
             return false;
         }
-        // Slot item must be a modularshoot:gun.
-        if (!event.getStackedOnItem().is(ModularShootItems.GUN_ITEM.get())) {
+        // Slot item must be a binding-aware gun.
+        if (!ModularShootAPI.isGun(event.getStackedOnItem(), player.registryAccess())) {
             return false;
         }
         // Slot must allow modification (Apotheosis guard).
@@ -260,18 +268,18 @@ public final class PluginInstallEventHandler {
     }
 
     /**
-     * Checks whether a stack is a framework plugin item carrying
-     * {@link org.yanbwe.modularshoot.component.PluginData}.
+     * Checks whether a stack is a binding-aware plugin item (设计规格 物品绑定
+     * 系统 §4.1): a native {@code modularshoot:plugin} carrying
+     * {@link org.yanbwe.modularshoot.component.PluginData}, or an item whose
+     * id is bound to a plugin via the {@code modularshoot:plugin_items}
+     * binding table.
      *
-     * @param stack the stack to test
-     * @return {@code true} when the stack is a {@code modularshoot:plugin} item
-     *         with a {@code plugin_data} component
+     * @param stack  the stack to test
+     * @param access the runtime registry view used for the binding channel
+     * @return {@code true} when the stack is a plugin via either channel
      */
-    private static boolean isPluginStack(ItemStack stack) {
-        if (!stack.is(ModularShootItems.PLUGIN_ITEM.get())) {
-            return false;
-        }
-        return stack.has(ModularShootDataComponents.PLUGIN_DATA.get());
+    private static boolean isPluginStack(ItemStack stack, RegistryAccess access) {
+        return ModularShootAPI.resolvePluginId(stack, access).isPresent();
     }
 
     /**

@@ -19,6 +19,7 @@ import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.ModularShootAPI;
+import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.degradation.PluginTypeDegradationHandler;
 import org.yanbwe.modularshoot.plugin.PluginDefinition;
 import org.yanbwe.modularshoot.plugin.PluginRegistry;
@@ -72,12 +73,21 @@ public final class PluginTooltipBuilder {
      *
      * <p>Guard clauses short-circuit in order of increasing cost:
      * <ol>
-     *   <li>Item type check — is the stack a plugin item?</li>
+     *   <li>Item type check — is the stack a plugin item? (binding-aware:
+     *       uses the viewing player's {@code RegistryAccess} when a player
+     *       is available; on the main menu, where the player is
+     *       {@code null}, falls back to the legacy overload)</li>
      *   <li>Player check — is a viewing player available (non-null)?</li>
      *   <li>Plugin id check — does the stack carry a {@code plugin_data}
      *       component?</li>
      * </ol>
      * </p>
+     *
+     * <p>After the guards, a binding-channel plugin that has not been attached
+     * yet (no {@code plugin_data} component) gets a grey identity line
+     * {@code 插件: <path>} inserted at the very top of the tooltip, above the
+     * item name (设计规格 物品绑定系统 §7.4). Native plugin items that already
+     * carry the component skip this line so the display stays non-redundant.</p>
      *
      * <p>When the plugin definition is missing the tooltip degrades: a grey
      * {@code [失效插件] <path>} name line is added followed by the grey
@@ -93,13 +103,32 @@ public final class PluginTooltipBuilder {
     @SubscribeEvent
     public static void onItemTooltip(ItemTooltipEvent event) {
         ItemStack stack = event.getItemStack();
-        if (!ModularShootAPI.isPlugin(stack)) {
+
+        @Nullable Player player = event.getEntity();
+        // 绑定感知 isPlugin 判定：有玩家上下文时携带其 registryAccess（插件类型绑定）；
+        // 主菜单预览（player 为 null，如搜索树填充）时退化到旧签名（组件 + Java API 绑定）。
+        boolean isPlugin = player != null
+                ? ModularShootAPI.isPlugin(stack, player.registryAccess())
+                : ModularShootAPI.isPlugin(stack);
+        if (!isPlugin) {
             return;
         }
 
-        @Nullable Player player = event.getEntity();
         if (player == null) {
-            return;
+            return; // 主菜单预览场景：无玩家上下文，不注入 tooltip 段
+        }
+
+        // 身份标识行（设计规格 物品绑定系统 §7.4）：绑定通道识别的插件在尚未
+        // 附加 PLUGIN_DATA 组件时，于 tooltip 最前面（物品名之上）插入灰色
+        // "插件: <path>" 行，便于区分多把绑定插件。已附加组件的原生插件不显示
+        // 该行，避免冗余。注意该行必须在 getPluginId 守卫之前注入——绑定通道
+        // 插件尚无组件时 getPluginId 返回 empty 会提前 return。
+        if (!stack.has(ModularShootDataComponents.PLUGIN_DATA.get())) {
+            ModularShootAPI.resolvePluginId(stack, player.registryAccess()).ifPresent(pluginId ->
+                    event.getToolTip().add(0,
+                            Component.translatable("modularshoot.tooltip.bound_plugin")
+                                    .withStyle(ChatFormatting.GRAY)
+                                    .append(Component.literal(pluginId.getPath()))));
         }
 
         Optional<ResourceLocation> pluginIdOpt = ModularShootAPI.getPluginId(stack);

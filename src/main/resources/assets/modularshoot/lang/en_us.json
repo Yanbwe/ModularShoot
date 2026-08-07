@@ -27,6 +27,8 @@
   "modularshoot.install.error.exclusive_group": "Mutually exclusive with installed plugin %s",
   "modularshoot.tooltip.install_hint": "Right-click inside a container screen to install onto a gun",
   "modularshoot.tooltip.exclusive_group": "Exclusive: %s",
+  "modularshoot.tooltip.bound_gun": "Gun: ",
+  "modularshoot.tooltip.bound_plugin": "Plugin: ",
   "key.modularshoot.action": "Action Key",
   "modularshoot.category": "ModularShoot",
   "modularshoot.command.no_gun": "Main hand is not holding a gun.",

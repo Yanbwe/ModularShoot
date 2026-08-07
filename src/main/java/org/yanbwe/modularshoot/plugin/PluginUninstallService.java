@@ -11,12 +11,12 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.common.NeoForge;
 import org.jetbrains.annotations.Nullable;
+import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.attribute.AttributeModifierService;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginInstance;
 import org.yanbwe.modularshoot.degradation.PluginDegradationHandler;
-import org.yanbwe.modularshoot.item.ModularShootItems;
 import org.yanbwe.modularshoot.plugin.event.PostPluginUninstallEvent;
 import org.yanbwe.modularshoot.plugin.event.PrePluginUninstallEvent;
 
@@ -99,7 +99,9 @@ public final class PluginUninstallService {
      *
      * <p>Validation and short-circuit order:</p>
      * <ol>
-     *   <li>the stack must be a {@code modularshoot:gun} item with a
+     *   <li>the stack must be a binding-aware gun (native
+     *       {@code modularshoot:gun} item or an item bound via the
+     *       {@code modularshoot:gun_items} binding table) with a
      *       {@code gun_data} component, otherwise
      *       {@code (false, null, instanceUuid, NOT_GUN_OR_NO_DATA)};</li>
      *   <li>the plugin must be present in the installed list, otherwise
@@ -140,7 +142,7 @@ public final class PluginUninstallService {
             boolean returnItems,
             RegistryAccess registryAccess
     ) {
-        GunData gunData = readGunData(gun);
+        GunData gunData = readGunData(gun, registryAccess);
         if (gunData == null) {
             return new UninstallResult(false, null, instanceUuid, UninstallResult.Reason.NOT_GUN_OR_NO_DATA);
         }
@@ -200,7 +202,7 @@ public final class PluginUninstallService {
             boolean returnItems,
             RegistryAccess registryAccess
     ) {
-        GunData gunData = readGunData(gun);
+        GunData gunData = readGunData(gun, registryAccess);
         if (gunData == null) {
             return new UninstallResult(false, null, null, UninstallResult.Reason.NOT_GUN_OR_NO_DATA);
         }
@@ -248,7 +250,7 @@ public final class PluginUninstallService {
             boolean returnItems,
             RegistryAccess registryAccess
     ) {
-        GunData gunData = readGunData(gun);
+        GunData gunData = readGunData(gun, registryAccess);
         if (gunData == null) {
             return List.of();
         }
@@ -283,7 +285,7 @@ public final class PluginUninstallService {
             boolean returnItems,
             RegistryAccess registryAccess
     ) {
-        GunData gunData = readGunData(gun);
+        GunData gunData = readGunData(gun, registryAccess);
         if (gunData == null) {
             return List.of();
         }
@@ -297,16 +299,20 @@ public final class PluginUninstallService {
      * Returns the installed plugin list of a gun stack.
      *
      * <p>This is a read-only query; it does not modify the stack and does not
-     * require a {@link RegistryAccess}. The returned list is the immutable
-     * list stored in the {@code gun_data} component (or an empty list when
-     * the stack is invalid).</p>
+     * require a {@link RegistryAccess}. Gun recognition uses the degraded
+     * channel (component + Java-API binding only, 设计规格 物品绑定系统
+     * §4.1), so a bound gun whose {@code gun_data} has not been attached yet
+     * reports an empty list. The returned list is the immutable list stored
+     * in the {@code gun_data} component (or an empty list when the stack is
+     * invalid).</p>
      *
      * @param gun the gun item stack to inspect
      * @return the immutable installed plugin list, or an empty list when the
-     *         stack is not a gun or carries no {@code gun_data} component
+     *         stack is not a binding-aware gun or carries no
+     *         {@code gun_data} component
      */
     public static List<PluginInstance> getInstalledPlugins(ItemStack gun) {
-        GunData gunData = readGunData(gun);
+        GunData gunData = readGunData(gun, RegistryAccess.EMPTY);
         if (gunData == null) {
             return List.of();
         }
@@ -318,13 +324,15 @@ public final class PluginUninstallService {
     /**
      * Reads and validates the {@link GunData} component from a stack.
      *
-     * @param gun the stack to inspect
+     * @param gun            the stack to inspect
+     * @param registryAccess the runtime registry view used for binding-aware
+     *                       gun recognition (设计规格 物品绑定系统 §4.1)
      * @return the {@link GunData}, or {@code null} when the stack is not a
-     *         gun item or carries no {@code gun_data} component
+     *         binding-aware gun or carries no {@code gun_data} component
      */
     @Nullable
-    private static GunData readGunData(ItemStack gun) {
-        if (!gun.is(ModularShootItems.GUN_ITEM.get())) {
+    private static GunData readGunData(ItemStack gun, RegistryAccess registryAccess) {
+        if (!ModularShootAPI.isGun(gun, registryAccess)) {
             return null;
         }
         return gun.get(ModularShootDataComponents.GUN_DATA.get());

@@ -275,11 +275,11 @@ public final class PlayerShootStateManager {
      * Checks whether the player's main-hand item is a framework gun.
      *
      * @param player the player to inspect
-     * @return {@code true} when the main-hand stack is a {@code modularshoot:gun}
+     * @return {@code true} when the main-hand stack is 绑定感知的枪械
      */
     private static boolean isMainHandGun(Player player) {
         ItemStack mainHand = player.getMainHandItem();
-        return ModularShootAPI.isGun(mainHand);
+        return ModularShootAPI.isGun(mainHand, player.registryAccess());
     }
 
     /**
