@@ -20,10 +20,11 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.registries.DataPackRegistryEvent;
 
 /**
- * Central declaration of the framework's seven dynamic datapack registries.
+ * Central declaration of the framework's nine dynamic datapack registries.
  *
- * <p>Six framework registries ({@code guns}, {@code plugins},
- * {@code plugin_types}, {@code traits}, {@code states}, {@code variants}) and
+ * <p>Eight framework registries ({@code guns}, {@code plugins},
+ * {@code plugin_types}, {@code traits}, {@code states}, {@code variants},
+ * {@code gun_items}, {@code plugin_items}) and
  * one attribute metadata table ({@code attribute_meta}) are registered
  * through NeoForge's
  * {@link DataPackRegistryEvent.NewRegistry} mechanism rather than static
@@ -31,7 +32,7 @@ import net.neoforged.neoforge.registries.DataPackRegistryEvent;
  * and allows datapack JSON to populate the same registry instances used by the
  * Java API.</p>
  *
- * <p>All seven registries are registered with a non-null network codec so
+ * <p>All nine registries are registered with a non-null network codec so
  * their contents are synced to clients on connect (clients must have the mod
  * to join a server that uses these registries).</p>
  *
@@ -91,7 +92,7 @@ public final class ModularShootRegistries {
     }
 
     /**
-     * Registers all seven framework datapack registries.
+     * Registers all nine framework datapack registries.
      *
      * <p>Each registry is registered with its codec as both the load codec and
      * the network codec, so entries are synced to clients. This event fires on
@@ -108,6 +109,8 @@ public final class ModularShootRegistries {
         register(event, STATES_KEY, StateDefinition.CODEC);
         register(event, ATTRIBUTE_META_KEY, AttributeMeta.CODEC);
         register(event, VARIANTS_KEY, VariantDefinition.CODEC);
+        register(event, GUN_ITEMS_KEY, GunItemBinding.CODEC);
+        register(event, PLUGIN_ITEMS_KEY, PluginItemBinding.CODEC);
     }
 
     /**
