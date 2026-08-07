@@ -77,12 +77,10 @@ The visuals won't wow everyone; honestly, I only care whether it's fun. Haha.
 # 常见问题 / FAQ
 
 **Q1**：你为什么要做这个模组？  
-**A1**：本来只是Yanbwe给自己的模组包用的，但是考虑到设计很有意思，就做成人人都可以用的模组。  
-希望开发者都能在开发数值膨胀的射击内容时保持幸福。
+**A1**：本来只是Yanbwe给自己的模组包用的，但是考虑到设计很有意思，就做成人人都可以用的模组，希望开发者都能在开发数值膨胀的射击内容时保持幸福。
 
 **Q1**: Why did you make this mod?  
-**A1**: It started as a private mod for Yanbwe's own modpack, but the design turned out interesting enough to release as a framework anyone can use.  
-May every developer stay happy while crafting their number-bloated shooting content.
+**A1**: It started as a private mod for Yanbwe's own modpack, but the design turned out interesting enough to release as a framework anyone can use. May every developer stay happy while crafting their number-bloated shooting content.
 
 **Q2**：会支持更多Minecraft版本吗？例如1.20.1？  
 **A2**：无计划，我在等Minecraft的最新版本出现质变的那一天。
@@ -96,8 +94,14 @@ May every developer stay happy while crafting their number-bloated shooting cont
 **Q3**: What does the mod's cover art have to do with the mod?  
 **A3**: I dreamed it.
 
-**Q4**：等等，我只是个玩家，我以为这个模组有可以玩的东西。
-**A4**：请期待Yanbwe的拓展模组喵。
+**Q4**：等等，我只是个玩家，这个模组有可以玩的东西吗？
+**A4**：有三把看起来跟枪有关系的物品和十三个自称插件的物品——我的意思是，有一些示例内容。然后你可以期待一下Yanbwe后面开发的拓展模组。
 
-**Q4**: Wait, I'm just a player — I thought this mod had something to play with.  
-**A4**: Stay tuned for Yanbwe's expansion mods, meow。
+**Q4**: Wait, I'm just a player — does this mod have anything to play with?  
+**A4**: There are three items that look gun-related and thirteen items that call themselves plugins — I mean, some sample content. And stay tuned for Yanbwe's upcoming expansion mods.
+
+**Q5**：我以为这是打枪的，结果示例内容让我觉得这是个奇异古怪的模组。
+**A5**：发挥你的想象力，“射击”可不是枪械的特权。
+
+**Q5**: I thought this was about shooting guns, but the sample content makes me think this is a weird, quirky mod.  
+**A5**: Use your imagination — "shooting" isn't exclusively a gun thing.

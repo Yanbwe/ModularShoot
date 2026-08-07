@@ -17,6 +17,7 @@
   "modularshoot.offhand_restricted": "枪械不能放在副手栏。",
   "modularshoot.creative_tab": "ModularShoot",
   "item.modularshoot.plugin": "插件",
+  "item.modularshoot.mod_icon": "模组之魂",
   "modularshoot.install_failed": "插件安装失败：",
   "modularshoot.install.error.not_plugin": "该物品不是插件",
   "modularshoot.install.error.no_gun_data": "目标枪械没有 gun_data 组件",

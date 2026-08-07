@@ -66,13 +66,13 @@ public final class ModularShootCreativeTabs {
      * <p>The {@code displayItems} generator is intentionally empty; actual
      * entries are added via {@link BuildCreativeModeTabContentsEvent} so that
      * the runtime {@link RegistryAccess} (available from the event parameters)
-     * can be used to enumerate gun variants. The icon uses the framework gun
-     * item; M1 accepts the plain item as the icon (设计文档 §其他).</p>
+     * can be used to enumerate gun variants. The icon uses the framework mod
+     * icon item {@code modularshoot:mod_icon}, whose texture is the mod icon.</p>
      */
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> MODULARSHOOT_TAB =
             ModularShoot.CREATIVE_MODE_TABS.register("modularshoot", () -> CreativeModeTab.builder()
                     .title(Component.translatable("modularshoot.creative_tab"))
-                    .icon(() -> new ItemStack(ModularShootItems.GUN_ITEM.get()))
+                    .icon(() -> new ItemStack(ModularShootItems.MOD_ICON_ITEM.get()))
                     .displayItems((params, output) -> {
                     })
                     .build());
@@ -124,6 +124,10 @@ public final class ModularShootCreativeTabs {
         if (!(event.getParameters().holders() instanceof RegistryAccess registryAccess)) {
             return;
         }
+        // Showcase item: the mod icon itself (also the tab icon). It is
+        // "body-snatched" into a plugin via the plugin_items binding table,
+        // so picking it up demonstrates the body-snatching feature.
+        event.accept(new ItemStack(ModularShootItems.MOD_ICON_ITEM.get()));
         Set<ResourceLocation> gunIds = GunRegistry.getAllGunIds(registryAccess);
         for (ResourceLocation gunId : gunIds) {
             ItemStack gunStack = GunRegistry.createGunStack(gunId);

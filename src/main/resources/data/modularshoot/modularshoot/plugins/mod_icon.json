@@ -1,0 +1,16 @@
+{
+  "tags": ["c:melee", "c:support"],
+  "item_icon": "modularshoot:textures/item/mod_icon.png",
+  "texture_scale": "fixed",
+  "modifiers": [
+    { "attribute": "modularshoot:fire_rate", "operation": "multiply", "value": 0.1 }
+  ],
+  "bullet_style": {
+    "modifiers": [
+      { "type": "tint", "color": [1.0, 0.9, 0.35, 1.0] }
+    ]
+  },
+  "name": "§e模组之魂",
+  "brief": "夺舍演示",
+  "description": "这是 ModularShoot 的模组图标。经夺舍绑定成为插件：射速 +10%，子弹染上金魂之光。"
+}

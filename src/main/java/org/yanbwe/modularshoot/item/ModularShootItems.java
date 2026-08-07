@@ -45,6 +45,17 @@ public final class ModularShootItems {
                     .stacksTo(1)
                     .fireResistant()));
 
+    /**
+     * The framework mod icon item. A plain showcase item whose texture is the
+     * mod icon; it is also the creative tab icon. Through the
+     * {@code modularshoot:plugin_items} binding table it is "body-snatched"
+     * into the {@code modularshoot:mod_icon} plugin (设计规格 物品绑定系统),
+     * demonstrating the body-snatching feature while keeping its own item id
+     * and model untouched.
+     */
+    public static final DeferredItem<Item> MOD_ICON_ITEM =
+            ModularShoot.ITEMS.register("mod_icon", () -> new Item(new Item.Properties()));
+
     private ModularShootItems() {
     }
 
