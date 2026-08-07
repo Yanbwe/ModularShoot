@@ -20,9 +20,15 @@ Just apply a vanilla attribute modifier to a player and their gun gets stronger 
 
 ## 数据驱动 / Data-Driven
 
-所有枪械和插件分别共用一个物品 ID，数据都存在物品组件里。
+大部分注册工作由数据包完成，随时reload，随时体验。
 
-All guns share a single item ID, and so do all plugins — the actual data lives in item components.
+Most registrations are done through data packs — reload anytime and feel it immediately.
+
+## 夺舍 / Body Snatching
+
+可以将现有的物品（原版的、或是其它模组的）加冕为本模组的插件或枪械，只是附加了枪械/插件的功能，不会动原有的id，以及其原有的功能（如合成表、饰品栏槽位等）。
+
+You can crown an existing item (vanilla, or from another mod) as one of our plugins or guns. It only tacks on gun/plugin functionality — the original id and its features (crafting recipes, trinket slots, etc.) stay untouched.
 
 ## 模块化插件系统 / Modular Plugin System
 
