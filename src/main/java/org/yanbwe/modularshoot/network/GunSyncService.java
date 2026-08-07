@@ -243,7 +243,7 @@ public final class GunSyncService {
     public static void syncToPlayer(ServerPlayer player) {
         Objects.requireNonNull(player, "player");
         ItemStack mainHand = player.getMainHandItem();
-        if (!ModularShootAPI.isGun(mainHand)) {
+        if (!ModularShootAPI.isGun(mainHand, player.registryAccess())) {
             return;
         }
         @Nullable GunData gunData = mainHand.get(ModularShootDataComponents.GUN_DATA.get());
@@ -271,12 +271,12 @@ public final class GunSyncService {
     private static void refreshInventoryGunModifiers(ServerPlayer player) {
         RegistryAccess registryAccess = player.registryAccess();
         for (ItemStack stack : player.getInventory().items) {
-            if (ModularShootAPI.isGun(stack)) {
+            if (ModularShootAPI.isGun(stack, registryAccess)) {
                 AttributeModifierService.refreshModifiers(stack, registryAccess);
             }
         }
         ItemStack offhand = player.getOffhandItem();
-        if (ModularShootAPI.isGun(offhand)) {
+        if (ModularShootAPI.isGun(offhand, registryAccess)) {
             AttributeModifierService.refreshModifiers(offhand, registryAccess);
         }
     }
@@ -351,7 +351,7 @@ public final class GunSyncService {
      */
     private static @Nullable UUID readMainHandGunUuid(ServerPlayer player) {
         ItemStack mainHand = player.getMainHandItem();
-        if (!ModularShootAPI.isGun(mainHand)) {
+        if (!ModularShootAPI.isGun(mainHand, player.registryAccess())) {
             return null;
         }
         @Nullable GunData gunData = mainHand.get(ModularShootDataComponents.GUN_DATA.get());

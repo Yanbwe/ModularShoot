@@ -73,7 +73,7 @@ public final class GunDegradationHandler {
     public static boolean isGunDefinitionMissing(ItemStack stack, RegistryAccess registryAccess) {
         Objects.requireNonNull(stack, "stack");
         Objects.requireNonNull(registryAccess, "registryAccess");
-        if (!ModularShootAPI.isGun(stack)) {
+        if (!ModularShootAPI.isGun(stack, registryAccess)) {
             return false;
         }
         ResourceLocation gunId = ModularShootAPI.getGunId(stack);

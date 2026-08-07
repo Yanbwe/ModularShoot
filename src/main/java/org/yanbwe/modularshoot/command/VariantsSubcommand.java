@@ -50,7 +50,7 @@ public final class VariantsSubcommand {
         CommandSourceStack source = context.getSource();
         ServerPlayer player = source.getPlayerOrException();
         ItemStack gun = player.getMainHandItem();
-        if (!ModularShootAPI.isGun(gun)) {
+        if (!ModularShootAPI.isGun(gun, player.registryAccess())) {
             source.sendFailure(Component.translatable("modularshoot.command.no_gun")
                     .withStyle(ChatFormatting.YELLOW));
             return 0;

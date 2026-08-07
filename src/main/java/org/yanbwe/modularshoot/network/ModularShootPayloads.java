@@ -147,7 +147,7 @@ public final class ModularShootPayloads {
         return (payload, context) -> {
             ServerPlayer player = (ServerPlayer) context.player();
             ItemStack mainHand = player.getMainHandItem();
-            if (!ModularShootAPI.isGun(mainHand)) {
+            if (!ModularShootAPI.isGun(mainHand, player.registryAccess())) {
                 return;
             }
             NeoForge.EVENT_BUS.post(new ActionEvent(player, mainHand));
