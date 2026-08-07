@@ -1,6 +1,7 @@
 package org.yanbwe.modularshoot.util;
 
 import java.util.UUID;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -46,7 +47,11 @@ public final class GunResolver {
      *   <li>Scan the player's main inventory and offhand for a
      *       {@code modularshoot:gun} stack whose
      *       {@link GunData#gunInstanceUuid()} equals the snapshot's uuid;
-     *       return the first match, or {@code null} when not found.</li>
+     *       return the first match, or {@code null} when not found. The scan
+     *       uses binding-aware recognition via the level's
+     *       {@link RegistryAccess} (falling back to
+     *       {@link RegistryAccess#EMPTY} when the level is null), so
+     *       datapack-bound guns are matched as well.</li>
      * </ol>
      *
      * <p>Known limitation: if the player has dropped, stored or cross-dimension
@@ -81,7 +86,8 @@ public final class GunResolver {
         }
 
         // Step 4: scan the player's inventory for the matching gun stack
-        return findGunInInventory(player, gunInstanceUuid);
+        return findGunInInventory(player, gunInstanceUuid,
+                level != null ? level.registryAccess() : RegistryAccess.EMPTY);
     }
 
     /**
@@ -123,17 +129,19 @@ public final class GunResolver {
      *
      * @param player          the player whose inventory to scan
      * @param gunInstanceUuid the target gun instance uuid
+     * @param access          the runtime registry view used for binding-aware
+     *                        gun recognition
      * @return the matching gun stack, or {@code null} when not found
      */
     @Nullable
-    private static ItemStack findGunInInventory(Player player, UUID gunInstanceUuid) {
+    private static ItemStack findGunInInventory(Player player, UUID gunInstanceUuid, RegistryAccess access) {
         for (ItemStack stack : player.getInventory().items) {
-            if (matchesGun(stack, gunInstanceUuid)) {
+            if (matchesGun(stack, gunInstanceUuid, access)) {
                 return stack;
             }
         }
         ItemStack offhand = player.getOffhandItem();
-        return matchesGun(offhand, gunInstanceUuid) ? offhand : null;
+        return matchesGun(offhand, gunInstanceUuid, access) ? offhand : null;
     }
 
     /**
@@ -142,11 +150,13 @@ public final class GunResolver {
      *
      * @param stack           the stack to test
      * @param gunInstanceUuid the target gun instance uuid
+     * @param access          the runtime registry view used for binding-aware
+     *                        gun recognition
      * @return {@code true} when the stack is a gun whose
      *         {@link GunData#gunInstanceUuid()} equals the target
      */
-    private static boolean matchesGun(ItemStack stack, UUID gunInstanceUuid) {
-        if (!ModularShootAPI.isGun(stack)) {
+    private static boolean matchesGun(ItemStack stack, UUID gunInstanceUuid, RegistryAccess access) {
+        if (!ModularShootAPI.isGun(stack, access)) {
             return false;
         }
         GunData gunData = stack.get(ModularShootDataComponents.GUN_DATA.get());

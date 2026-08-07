@@ -1,6 +1,7 @@
 package org.yanbwe.modularshoot.shooting;
 
 import java.util.Objects;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
@@ -71,7 +72,7 @@ public final class ShootPacketHandler {
         // (设计文档 §isFiring 标记维护: 收到 ShootC2SPacket 即置 true).
         ShootAnimSyncService.getInstance().onShootPacketReceived(player);
         ItemStack mainHand = player.getMainHandItem();
-        if (!isMainHandGun(mainHand)) {
+        if (!isMainHandGun(mainHand, player)) {
             ModularShoot.LOGGER.warn("Shoot rejected: main hand is not a gun (player={})", player.getName().getString());
             return;
         }
@@ -110,11 +111,16 @@ public final class ShootPacketHandler {
     /**
      * Checks whether the main-hand item is a framework gun.
      *
+     * <p>Delegates to {@link ModularShootAPI#isGun(ItemStack, RegistryAccess)}
+     * with the player's runtime {@link RegistryAccess} so datapack-bound guns
+     * are recognized (绑定感知识别).</p>
+     *
      * @param mainHand the main-hand item stack
+     * @param player   the shooting player whose registry access to use
      * @return {@code true} when the stack is a {@code modularshoot:gun} item
      */
-    private static boolean isMainHandGun(ItemStack mainHand) {
-        return ModularShootAPI.isGun(mainHand);
+    private static boolean isMainHandGun(ItemStack mainHand, ServerPlayer player) {
+        return ModularShootAPI.isGun(mainHand, player.registryAccess());
     }
 
     /**
