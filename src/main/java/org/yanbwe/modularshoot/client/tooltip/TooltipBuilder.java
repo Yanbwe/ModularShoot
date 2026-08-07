@@ -18,7 +18,10 @@ import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.degradation.GunDegradationHandler;
+import org.yanbwe.modularshoot.plugin.PluginTypeDefinition;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
+import org.yanbwe.modularshoot.registry.gun.GunDefinition;
+import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 
 /**
  * Entry point for injecting ModularShoot tooltip sections into gun item
@@ -129,20 +132,22 @@ public final class TooltipBuilder {
             return;
         }
 
-        // 身份标识行（设计规格 物品绑定系统 §7.4）：绑定通道识别的枪械在尚未
-        // 附加 GUN_DATA 组件时，在物品名之下插入灰色 "枪械: <path>" 行，便于
-        // 区分多把绑定枪。已附加组件的原生枪械/已转化枪械不显示该行，避免冗余。
+        // 身份标识行 + 定义预览（设计规格 物品绑定系统 §7.4）：绑定通道识别的
+        // 枪械在尚未附加 GUN_DATA 组件时，在物品名之下插入灰色 "枪械: <path>"
+        // 标识行，并展示枪械定义中注册的基础属性与插槽（"说明书"）——栈上尚无
+        // GUN_DATA/ATTRIBUTE_MODIFIERS，运行时数值读出来全是 0，故不注入
+        // 属性/特性/状态/插件四栏。拿起至主手 1 tick 内由服务端附加组件并写入
+        // 基础修饰符（BoundGunAttachHandler，设计规格 §5.3），此后显示完整内容。
+        // 已附加组件的原生枪械/已转化枪械不显示该行，避免冗余。
         if (!stack.has(ModularShootDataComponents.GUN_DATA.get())) {
-            ModularShootAPI.resolveGunId(stack, registryAccess).ifPresent(gunId ->
-                    event.getToolTip().add(1,
-                            Component.translatable("modularshoot.tooltip.bound_gun")
-                                    .withStyle(ChatFormatting.GRAY)
-                                    .append(Component.literal(gunId.getPath()))));
-
-            // 未附加组件（绑定枪械尚未转化）：只显示身份标识行，不注入属性/
-            // 特性/状态/插件四栏——栈上无 GUN_DATA/ATTRIBUTE_MODIFIERS，
-            // 四栏读出来全是 0 值/空栏，徒增噪音。拿起至主手 1 tick 内由服务端
-            // 附加组件（BoundGunAttachHandler，设计规格 §5.3），此后显示完整内容。
+            ModularShootAPI.resolveGunId(stack, registryAccess).ifPresent(gunId -> {
+                event.getToolTip().add(1,
+                        Component.translatable("modularshoot.tooltip.bound_gun")
+                                .withStyle(ChatFormatting.GRAY)
+                                .append(Component.literal(gunId.getPath())));
+                GunRegistry.getGun(registryAccess, gunId).ifPresent(def ->
+                        appendDefinitionPreview(event.getToolTip(), def, registryAccess));
+            });
             return;
         }
 
@@ -271,5 +276,39 @@ public final class TooltipBuilder {
             toolTip.add(Component.literal("gunId: " + gunId)
                     .withStyle(ChatFormatting.DARK_GRAY));
         }
+    }
+
+    /**
+     * Appends the "definition preview" lines for a binding-channel gun that
+     * has not been converted yet (no {@code gun_data} component): the base
+     * stats and plugin slots registered on the gun definition, rendered in
+     * the same two-space-indent style as the attribute bar (设计规格 物品绑定
+     * 系统 §7.4). This is a static preview of the declared values — the
+     * runtime bars are skipped because the stack carries no
+     * {@code ATTRIBUTE_MODIFIERS} yet.
+     *
+     * @param toolTip        the tooltip line list to append to
+     * @param def            the resolved gun definition
+     * @param registryAccess the runtime registry view (plugin-type lookup)
+     */
+    private static void appendDefinitionPreview(
+            List<Component> toolTip, GunDefinition def, RegistryAccess registryAccess) {
+        def.stats().forEach((attrId, value) -> toolTip.add(Component.empty()
+                .append(Component.literal("  "))
+                .append(AttributeTooltipBuilder.resolveAttributeName(attrId))
+                .append(Component.literal(": "))
+                .append(Component.literal(TooltipUtils.formatValue(value))
+                        .withStyle(ChatFormatting.GRAY))));
+        def.slots().forEach((typeId, count) -> {
+            String typeName = registryAccess.registry(ModularShootRegistries.PLUGIN_TYPES_KEY)
+                    .flatMap(reg -> reg.getOptional(typeId))
+                    .flatMap(PluginTypeDefinition::name)
+                    .filter(name -> !name.isEmpty())
+                    .orElse(typeId.getPath());
+            toolTip.add(Component.empty()
+                    .append(Component.literal("  "))
+                    .append(Component.literal(typeName))
+                    .append(Component.literal(" ×" + count).withStyle(ChatFormatting.GRAY)));
+        });
     }
 }

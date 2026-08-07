@@ -290,7 +290,7 @@ public final class AttributeTooltipBuilder {
      * @param bindsId the vanilla attribute id
      * @return a {@link MutableComponent} for the attribute name
      */
-    private static MutableComponent resolveAttributeName(ResourceLocation bindsId) {
+    static MutableComponent resolveAttributeName(ResourceLocation bindsId) {
         Optional<Holder.Reference<Attribute>> holderOpt =
                 BuiltInRegistries.ATTRIBUTE.getHolder(bindsId);
         if (holderOpt.isPresent()) {

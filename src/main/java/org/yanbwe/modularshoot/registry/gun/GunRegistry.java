@@ -344,7 +344,13 @@ public final class GunRegistry {
      * <p>The attached component is a fresh {@link GunData#create} instance:
      * empty plugin list, {@code modifierVersion} 0 and a new random instance
      * uuid &mdash; structurally identical to a freshly created native gun.
-     * Being part of the item's synced data, the component reaches clients
+     * The gun definition's base attribute modifiers are written onto the
+     * stack right after attachment (same as {@link #createGunStack}): without
+     * the {@code ATTRIBUTE_MODIFIERS} component every stat reads as 0 and the
+     * fire-rate gate rejects every shot, so the bound gun would be inert until
+     * a plugin install happened to trigger a modifier refresh.</p>
+     *
+     * <p>Being part of the item's synced data, the component reaches clients
      * through the regular item sync (≤ 1 tick) with no extra packet.</p>
      *
      * <p><strong>Server-only.</strong> The primary call path is the server-side
@@ -372,5 +378,9 @@ public final class GunRegistry {
         }
         stack.set(ModularShootDataComponents.GUN_DATA.get(),
                 GunData.create(gunId.get(), UUID.randomUUID()));
+        // 附加后立即写入枪械定义的基础属性修饰符（与 createGunStack 一致），
+        // 否则 fire_rate=0 无法射击、属性栏全 0（设计规格 §5.2 附加后同构）。
+        getGun(access, gunId.get()).ifPresent(def ->
+                AttributeModifierService.applyModifiers(stack, def, access));
     }
 }
