@@ -46,23 +46,23 @@ public final class ModularShootClientConfig {
 
         ENABLE_NEAR_TRANSLUCENCY = builder
                 .comment(
-                        "子弹靠近摄像机时半透明渲染（近相机距离透明度）。",
-                        "关闭后子弹始终完全不透明。")
+                        "Draw bullets semi-transparent when they fly close to the camera.",
+                        "When disabled, bullets are always fully opaque.")
                 .translation("modularshoot.configuration.nearTranslucency.enabled")
                 .define("nearTranslucency.enabled", true);
 
         FADE_DISTANCE = builder
                 .comment(
-                        "淡出距离（格）：子弹距离摄像机达到该值后完全不透明。",
-                        "距离 0 处为最小不透明度，中间按 smoothstep 曲线平滑过渡。",
-                        "范围 0.5–16.0，默认 4.0。")
+                        "Fade distance (blocks): bullets become fully opaque at this distance from the camera.",
+                        "At distance 0 the minimum opacity applies, ramping smoothly via a smoothstep curve in between.",
+                        "Range 0.5-16.0, default 4.0.")
                 .translation("modularshoot.configuration.nearTranslucency.fadeDistance")
                 .defineInRange("nearTranslucency.fadeDistance", 4.0, 0.5, 16.0);
 
         MIN_OPACITY = builder
                 .comment(
-                        "最小不透明度（0.05–1.0）：子弹紧贴摄像机（距离 0）时的不透明度。",
-                        "设为 1.0 等效关闭淡出效果。默认 0.2（即 20%）。")
+                        "Minimum opacity (0.05-1.0): the opacity of a bullet at distance 0 (right against the camera).",
+                        "Set to 1.0 to effectively disable the fade. Default 0.2 (20%).")
                 .translation("modularshoot.configuration.nearTranslucency.minOpacity")
                 .defineInRange("nearTranslucency.minOpacity", 0.2, 0.05, 1.0);
 
