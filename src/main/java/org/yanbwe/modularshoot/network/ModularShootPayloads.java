@@ -2,7 +2,7 @@ package org.yanbwe.modularshoot.network;
 
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.ModularShootAPI;
-import org.yanbwe.modularshoot.api.event.ReloadEvent;
+import org.yanbwe.modularshoot.api.event.ActionEvent;
 import org.yanbwe.modularshoot.bullet.BulletManager;
 import org.yanbwe.modularshoot.client.ClientGunDataStore;
 import org.yanbwe.modularshoot.client.ClientGunSyncHandler;
@@ -55,6 +55,11 @@ public final class ModularShootPayloads {
      * wire format changed from a single flat bullet list + fullSync flag to
      * a three-bucket structure (newBullets / updatedBullets / removedBulletIds
      * + forceFullSync flag) for incremental delta sync.</p>
+     *
+     * <p>Not bumped for the action-key rename (commit history): the payload id
+     * {@code reload_c2s} → {@code action_c2s} is a wire-breaking change, but
+     * the mod is unreleased, so no compatibility is preserved (see 设计文档
+     * §动作键中立化).</p>
      */
     public static final String PROTOCOL_VERSION = "2";
 
@@ -76,7 +81,7 @@ public final class ModularShootPayloads {
         PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION);
         // C → S (client-to-server)
         registerShootC2S(registrar);
-        registerReloadC2S(registrar);
+        registerActionC2S(registrar);
         // S → C (server-to-client)
         registerBulletS2C(registrar);
         registerBulletHitS2C(registrar);
@@ -114,38 +119,38 @@ public final class ModularShootPayloads {
     }
 
     /**
-     * Registers {@link ReloadC2SPacket} as a play-phase, server-bound payload
+     * Registers {@link ActionC2SPacket} as a play-phase, server-bound payload
      * (C→S direction) and binds its handler.
      *
      * @param registrar the payload registrar to register through
      */
-    private static void registerReloadC2S(PayloadRegistrar registrar) {
-        registrar.playToServer(ReloadC2SPacket.TYPE, ReloadC2SPacket.STREAM_CODEC, handleReloadC2S());
+    private static void registerActionC2S(PayloadRegistrar registrar) {
+        registrar.playToServer(ActionC2SPacket.TYPE, ActionC2SPacket.STREAM_CODEC, handleActionC2S());
     }
 
     /**
-     * Builds the handler for {@link ReloadC2SPacket}.
+     * Builds the handler for {@link ActionC2SPacket}.
      *
      * <p>The packet carries no data — the server derives everything from the
      * sender's state. The handler obtains the {@link ServerPlayer} from the
      * packet context, re-validates that the main-hand item is a gun (defending
      * against a hacked client that sends the packet without a gun), and posts
-     * a {@link ReloadEvent} on the {@code NeoForge.EVENT_BUS} (game bus).</p>
+     * an {@link ActionEvent} on the {@code NeoForge.EVENT_BUS} (game bus).</p>
      *
-     * <p>The framework performs <em>no</em> reload logic itself — it only
-     * fires the event. Other mods subscribe to {@link ReloadEvent} to
-     * implement concrete reload behavior (设计文档 §ReloadEvent).</p>
+     * <p>The framework performs <em>no</em> action logic itself — it only
+     * fires the event. Other mods subscribe to {@link ActionEvent} to
+     * implement concrete action behavior (设计文档 §ActionEvent).</p>
      *
      * @return the payload handler
      */
-    private static IPayloadHandler<ReloadC2SPacket> handleReloadC2S() {
+    private static IPayloadHandler<ActionC2SPacket> handleActionC2S() {
         return (payload, context) -> {
             ServerPlayer player = (ServerPlayer) context.player();
             ItemStack mainHand = player.getMainHandItem();
             if (!ModularShootAPI.isGun(mainHand)) {
                 return;
             }
-            NeoForge.EVENT_BUS.post(new ReloadEvent(player, mainHand));
+            NeoForge.EVENT_BUS.post(new ActionEvent(player, mainHand));
         };
     }
 
