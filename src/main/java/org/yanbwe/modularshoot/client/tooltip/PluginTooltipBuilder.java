@@ -72,7 +72,10 @@ public final class PluginTooltipBuilder {
      *
      * <p>Guard clauses short-circuit in order of increasing cost:
      * <ol>
-     *   <li>Item type check — is the stack a plugin item?</li>
+     *   <li>Item type check — is the stack a plugin item? (binding-aware:
+     *       uses the viewing player's {@code RegistryAccess} when a player
+     *       is available; on the main menu, where the player is
+     *       {@code null}, falls back to the legacy overload)</li>
      *   <li>Player check — is a viewing player available (non-null)?</li>
      *   <li>Plugin id check — does the stack carry a {@code plugin_data}
      *       component?</li>
@@ -93,13 +96,19 @@ public final class PluginTooltipBuilder {
     @SubscribeEvent
     public static void onItemTooltip(ItemTooltipEvent event) {
         ItemStack stack = event.getItemStack();
-        if (!ModularShootAPI.isPlugin(stack)) {
+
+        @Nullable Player player = event.getEntity();
+        // 绑定感知 isPlugin 判定：有玩家上下文时携带其 registryAccess（插件类型绑定）；
+        // 主菜单预览（player 为 null，如搜索树填充）时退化到旧签名（组件 + Java API 绑定）。
+        boolean isPlugin = player != null
+                ? ModularShootAPI.isPlugin(stack, player.registryAccess())
+                : ModularShootAPI.isPlugin(stack);
+        if (!isPlugin) {
             return;
         }
 
-        @Nullable Player player = event.getEntity();
         if (player == null) {
-            return;
+            return; // 主菜单预览场景：无玩家上下文，不注入 tooltip 段
         }
 
         Optional<ResourceLocation> pluginIdOpt = ModularShootAPI.getPluginId(stack);

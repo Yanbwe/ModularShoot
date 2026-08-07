@@ -59,7 +59,10 @@ public final class TooltipBuilder {
      *
      * <p>Guard clauses short-circuit in order of increasing cost:
      * <ol>
-     *   <li>Item type check — is the stack a gun?</li>
+     *   <li>Item type check — is the stack a gun? (binding-aware: uses the
+     *       viewing player's {@code RegistryAccess} when a player is
+     *       available; on the main menu, where the player is {@code null},
+     *       falls back to the legacy overload)</li>
      *   <li>Player check — is a viewing player available (non-null)?</li>
      *   <li>Degradation check — is the gun definition missing? If so, the
      *       tooltip is replaced with only the degraded name and gunId
@@ -92,13 +95,19 @@ public final class TooltipBuilder {
     @SubscribeEvent
     public static void onItemTooltip(ItemTooltipEvent event) {
         ItemStack stack = event.getItemStack();
-        if (!ModularShootAPI.isGun(stack)) {
+
+        @Nullable Player player = event.getEntity();
+        // 绑定感知 isGun 判定：有玩家上下文时携带其 registryAccess（绑定 + Java API）；
+        // 主菜单预览（player 为 null，如搜索树填充）时退化到旧签名（组件 + Java API 绑定）。
+        boolean isGun = player != null
+                ? ModularShootAPI.isGun(stack, player.registryAccess())
+                : ModularShootAPI.isGun(stack);
+        if (!isGun) {
             return;
         }
 
-        @Nullable Player player = event.getEntity();
         if (player == null) {
-            return;
+            return; // 主菜单预览场景：无玩家上下文，不注入 tooltip 段
         }
 
         RegistryAccess registryAccess = player.registryAccess();

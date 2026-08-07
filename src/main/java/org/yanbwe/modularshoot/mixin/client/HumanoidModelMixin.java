@@ -115,7 +115,7 @@ public abstract class HumanoidModelMixin {
         if (timer <= 0.0f) {
             return; // timer == 0: do not interfere, keep vanilla animation
         }
-        if (!ModularShootAPI.isGun(player.getMainHandItem())) {
+        if (!ModularShootAPI.isGun(player.getMainHandItem(), player.registryAccess())) {
             return; // main hand is not a gun: do not apply shoot recoil pose
         }
         applyShootRecoilPose(player, timer);

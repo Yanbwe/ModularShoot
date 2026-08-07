@@ -58,7 +58,7 @@ public abstract class PlayerAttackStrengthMixin {
     @Inject(method = "getAttackStrengthScale(F)F", at = @At("HEAD"), cancellable = true)
     private void modularshoot$clampAttackStrengthForGun(float partialTick, CallbackInfoReturnable<Float> cir) {
         Player self = (Player) (Object) this;
-        if (self.level().isClientSide() && ModularShootAPI.isGun(self.getMainHandItem())) {
+        if (self.level().isClientSide() && ModularShootAPI.isGun(self.getMainHandItem(), self.registryAccess())) {
             cir.setReturnValue(1.0f);
         }
     }

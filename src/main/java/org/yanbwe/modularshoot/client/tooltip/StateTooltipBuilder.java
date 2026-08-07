@@ -216,7 +216,7 @@ public final class StateTooltipBuilder {
         if (viewingPlayer == null) {
             return null;
         }
-        if (!ModularShootAPI.isGun(viewingPlayer.getMainHandItem())) {
+        if (!ModularShootAPI.isGun(viewingPlayer.getMainHandItem(), viewingPlayer.registryAccess())) {
             return null;
         }
         return PlayerState.of(viewingPlayer);
