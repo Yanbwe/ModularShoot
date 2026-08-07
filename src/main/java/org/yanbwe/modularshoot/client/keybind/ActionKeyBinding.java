@@ -11,6 +11,7 @@ import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.settings.KeyConflictContext;
 
 import org.yanbwe.modularshoot.ModularShoot;
+import org.yanbwe.modularshoot.client.ActionKeyHandler;
 
 /**
  * Registers and tracks the {@code key.modularshoot.action} key binding
@@ -30,8 +31,8 @@ import org.yanbwe.modularshoot.ModularShoot;
  * client tick. {@link KeyMapping#consumeClick()} drains a single queued
  * press and returns {@code true} for exactly that tick, which is the
  * "single press" semantics the design doc requires. The result is latched
- * into {@link #actionPressed} so the downstream {@code ActionEvent} server
- * event can query it once via {@link #isActionPressed()} without itself
+ * into {@link #actionPressed} so the client-side {@link ActionKeyHandler}
+ * forwarder can query it once via {@link #isActionPressed()} without itself
  * touching the {@link KeyMapping} state.</p>
  *
  * <p><b>Conflict context:</b> {@link KeyConflictContext#IN_GAME} scopes the
@@ -112,8 +113,8 @@ public final class ActionKeyBinding {
     /**
      * Returns whether the action key was single-pressed this tick.
      *
-     * <p>Intended for the {@code ActionEvent} server event handler to query
-     * once per tick. The flag is {@code true} only for the tick in which the
+     * <p>Intended for the {@link ActionKeyHandler} (client-side forwarder) to
+     * query once per tick. The flag is {@code true} only for the tick in which the
      * press was consumed and only while in-game; it is {@code false} on every
      * subsequent tick without a new press.</p>
      *

@@ -55,6 +55,11 @@ public final class ModularShootPayloads {
      * wire format changed from a single flat bullet list + fullSync flag to
      * a three-bucket structure (newBullets / updatedBullets / removedBulletIds
      * + forceFullSync flag) for incremental delta sync.</p>
+     *
+     * <p>Not bumped for the action-key rename (commit history): the payload id
+     * {@code reload_c2s} → {@code action_c2s} is a wire-breaking change, but
+     * the mod is unreleased, so no compatibility is preserved (see 设计文档
+     * §动作键中立化).</p>
      */
     public static final String PROTOCOL_VERSION = "2";
 
