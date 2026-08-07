@@ -63,7 +63,7 @@ public final class ClientGunSyncHandler {
             return;
         }
         ItemStack mainHand = player.getMainHandItem();
-        if (!ModularShootAPI.isGun(mainHand)) {
+        if (!ModularShootAPI.isGun(mainHand, player.registryAccess())) {
             return;
         }
         @Nullable GunData existing = mainHand.get(ModularShootDataComponents.GUN_DATA.get());

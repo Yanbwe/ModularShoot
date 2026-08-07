@@ -177,7 +177,7 @@ public final class ClientGunDataStore {
             return;
         }
         ItemStack mainHand = player.getMainHandItem();
-        if (!ModularShootAPI.isGun(mainHand)) {
+        if (!ModularShootAPI.isGun(mainHand, player.registryAccess())) {
             store.clear();
         }
     }

@@ -120,7 +120,7 @@ public final class ClientFireRatePredictor {
      */
     private static @Nullable ResourceLocation readGunId(Player player) {
         ItemStack mainHand = player.getMainHandItem();
-        if (!ModularShootAPI.isGun(mainHand)) {
+        if (!ModularShootAPI.isGun(mainHand, player.registryAccess())) {
             return null;
         }
         GunData gunData = mainHand.get(ModularShootDataComponents.GUN_DATA.get());
