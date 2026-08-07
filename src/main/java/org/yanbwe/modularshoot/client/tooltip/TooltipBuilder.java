@@ -73,9 +73,11 @@ public final class TooltipBuilder {
      *
      * <p>After the guards, a binding-channel gun that has not been attached
      * yet (no {@code gun_data} component) gets a grey identity line
-     * {@code 枪械: <path>} inserted at the very top of the tooltip, above the
-     * item name (设计规格 物品绑定系统 §7.4). Native guns and guns that already
-     * carry the component skip this line so the display stays non-redundant.</p>
+     * {@code 枪械: <path>} inserted right below the item name (设计规格 物品
+     * 绑定系统 §7.4), and the tooltip ends there — the four bars are skipped
+     * because the stack carries no {@code gun_data}/{@code ATTRIBUTE_MODIFIERS}
+     * yet. Native guns and guns that already carry the component skip this
+     * line so the display stays non-redundant.</p>
      *
      * <p>After the guards, the four tooltip sections are injected in
      * design-document order (设计文档 lines 1473-1509):
@@ -128,15 +130,20 @@ public final class TooltipBuilder {
         }
 
         // 身份标识行（设计规格 物品绑定系统 §7.4）：绑定通道识别的枪械在尚未
-        // 附加 GUN_DATA 组件时，于 tooltip 最前面（物品名之上）插入灰色
-        // "枪械: <path>" 行，便于区分多把绑定枪。已附加组件的原生枪械/已转化
-        // 枪械不显示该行，避免冗余。
+        // 附加 GUN_DATA 组件时，在物品名之下插入灰色 "枪械: <path>" 行，便于
+        // 区分多把绑定枪。已附加组件的原生枪械/已转化枪械不显示该行，避免冗余。
         if (!stack.has(ModularShootDataComponents.GUN_DATA.get())) {
             ModularShootAPI.resolveGunId(stack, registryAccess).ifPresent(gunId ->
-                    event.getToolTip().add(0,
+                    event.getToolTip().add(1,
                             Component.translatable("modularshoot.tooltip.bound_gun")
                                     .withStyle(ChatFormatting.GRAY)
                                     .append(Component.literal(gunId.getPath()))));
+
+            // 未附加组件（绑定枪械尚未转化）：只显示身份标识行，不注入属性/
+            // 特性/状态/插件四栏——栈上无 GUN_DATA/ATTRIBUTE_MODIFIERS，
+            // 四栏读出来全是 0 值/空栏，徒增噪音。拿起至主手 1 tick 内由服务端
+            // 附加组件（BoundGunAttachHandler，设计规格 §5.3），此后显示完整内容。
+            return;
         }
 
         // 1. Attribute bar (设计文档 §属性栏; Ctrl 展开全部属性).
