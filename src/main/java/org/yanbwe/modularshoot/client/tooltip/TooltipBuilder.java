@@ -145,8 +145,15 @@ public final class TooltipBuilder {
                         Component.translatable("modularshoot.tooltip.bound_gun")
                                 .withStyle(ChatFormatting.GRAY)
                                 .append(Component.literal(gunId.getPath())));
-                GunRegistry.getGun(registryAccess, gunId).ifPresent(def ->
-                        appendDefinitionPreview(event.getToolTip(), def, registryAccess));
+                GunRegistry.getGun(registryAccess, gunId).ifPresent(def -> {
+                    List<Component> preview = buildDefinitionPreview(def, registryAccess);
+                    if (!preview.isEmpty()) {
+                        // 定义预览紧跟标识行插入（索引 2 起）——MC 原版属性行在
+                        // 事件触发时已位于列表末尾之后追加的内容之后，用 addAll
+                        // 会落到原版属性下方，必须定点插入。
+                        event.getToolTip().addAll(2, preview);
+                    }
+                });
             });
             return;
         }
@@ -279,21 +286,24 @@ public final class TooltipBuilder {
     }
 
     /**
-     * Appends the "definition preview" lines for a binding-channel gun that
+     * Builds the "definition preview" lines for a binding-channel gun that
      * has not been converted yet (no {@code gun_data} component): the base
      * stats and plugin slots registered on the gun definition, rendered in
      * the same two-space-indent style as the attribute bar (设计规格 物品绑定
      * 系统 §7.4). This is a static preview of the declared values — the
      * runtime bars are skipped because the stack carries no
-     * {@code ATTRIBUTE_MODIFIERS} yet.
+     * {@code ATTRIBUTE_MODIFIERS} yet. The caller inserts the returned list
+     * right below the identity line.
      *
-     * @param toolTip        the tooltip line list to append to
      * @param def            the resolved gun definition
      * @param registryAccess the runtime registry view (plugin-type lookup)
+     * @return the preview lines; empty when the definition declares neither
+     *         stats nor slots
      */
-    private static void appendDefinitionPreview(
-            List<Component> toolTip, GunDefinition def, RegistryAccess registryAccess) {
-        def.stats().forEach((attrId, value) -> toolTip.add(Component.empty()
+    private static List<Component> buildDefinitionPreview(
+            GunDefinition def, RegistryAccess registryAccess) {
+        List<Component> lines = new ArrayList<>();
+        def.stats().forEach((attrId, value) -> lines.add(Component.empty()
                 .append(Component.literal("  "))
                 .append(AttributeTooltipBuilder.resolveAttributeName(attrId))
                 .append(Component.literal(": "))
@@ -305,10 +315,11 @@ public final class TooltipBuilder {
                     .flatMap(PluginTypeDefinition::name)
                     .filter(name -> !name.isEmpty())
                     .orElse(typeId.getPath());
-            toolTip.add(Component.empty()
+            lines.add(Component.empty()
                     .append(Component.literal("  "))
                     .append(Component.literal(typeName))
                     .append(Component.literal(" ×" + count).withStyle(ChatFormatting.GRAY)));
         });
+        return lines;
     }
 }
