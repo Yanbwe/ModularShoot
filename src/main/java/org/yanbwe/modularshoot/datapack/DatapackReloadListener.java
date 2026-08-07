@@ -181,6 +181,13 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
      * {@link #summarizeAttributeMeta} on every reload), so the same bad bind
      * is logged exactly once instead of twice.</p>
      *
+     * <p>The two binding tables ({@code gun_items}, {@code plugin_items}) are
+     * validated by {@link ItemBindingValidator}: bound item ids must exist in
+     * the vanilla item registry, binding targets must exist in the
+     * {@code guns}/{@code plugins} tables, and a bound item id may appear in
+     * at most one entry (字典序最小 key 胜出, 其余 WARN) (设计规格 物品绑定系统
+     * §3.2).</p>
+     *
      * <p>Each validator returns immediately on an empty entries map, so a
      * missing framework registry does not cascade into warnings. Variants
      * are validated inside {@link #summarizeVariants} so the summary and its
@@ -193,6 +200,10 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
                 collectEntries(access, ModularShootRegistries.GUNS_KEY));
         CrossReferenceValidator.validatePlugins(access,
                 collectEntries(access, ModularShootRegistries.PLUGINS_KEY));
+        ItemBindingValidator.validateGunBindings(access,
+                collectEntries(access, ModularShootRegistries.GUN_ITEMS_KEY));
+        ItemBindingValidator.validatePluginBindings(access,
+                collectEntries(access, ModularShootRegistries.PLUGIN_ITEMS_KEY));
     }
 
     /**
