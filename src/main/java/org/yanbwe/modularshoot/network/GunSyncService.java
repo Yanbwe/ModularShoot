@@ -87,12 +87,20 @@ import org.yanbwe.modularshoot.shooting.ModifierVersionAntiCheat;
 public final class GunSyncService {
 
     /**
-     * Tracks the {@code gunInstanceUuid} of each player's previous-tick
-     * main-hand gun, keyed by player uuid. When a player is not holding a
-     * (valid) gun, the entry is removed from this map (absent means non-gun,
-     * matching {@code ConcurrentHashMap}'s no-null-value contract).
+     * Tracks each player's previous-tick main-hand selection: the hotbar slot
+     * and the {@code gunInstanceUuid} of the gun in it, keyed by player uuid.
+     * Absent means non-gun (matching {@code ConcurrentHashMap}'s
+     * no-null-value contract).
+     *
+     * <p>The slot is tracked in addition to the uuid because copied gun
+     * stacks share the same {@code gunInstanceUuid} — switching between two
+     * copies would otherwise be invisible to the uuid comparison and no sync
+     * would fire (描边污染修复).</p>
      */
-    private static final Map<UUID, UUID> previousMainHandGun = new ConcurrentHashMap<>();
+    private record MainHandTrack(int hotbarSlot, UUID gunUuid) {
+    }
+
+    private static final Map<UUID, MainHandTrack> previousMainHand = new ConcurrentHashMap<>();
 
     private GunSyncService() {
     }
@@ -113,8 +121,8 @@ public final class GunSyncService {
      * re-issue. Both the main inventory and the offhand slot are scanned;
      * armor slots are skipped since a gun cannot be equipped there.</p>
      *
-     * <p>After the sync, {@link #previousMainHandGun} is seeded with the
-     * player's current main-hand gun uuid so that the first
+     * <p>After the sync, {@link #previousMainHand} is seeded with the
+     * player's current main-hand slot and gun uuid so that the first
      * {@link #detectMainHandChange} poll on the next tick does not treat the
      * login-synced gun as a "new switch" and re-sync it redundantly.</p>
      *
@@ -134,7 +142,8 @@ public final class GunSyncService {
         // does not re-sync the same gun the login handler just synced.
         UUID currentGunUuid = readMainHandGunUuid(player);
         if (currentGunUuid != null) {
-            previousMainHandGun.put(player.getUUID(), currentGunUuid);
+            previousMainHand.put(player.getUUID(),
+                    new MainHandTrack(player.getInventory().selected, currentGunUuid));
         }
     }
 
@@ -144,13 +153,15 @@ public final class GunSyncService {
 
     /**
      * Polled every tick after each player updates; detects main-hand gun
-     * switches by comparing the current gun instance uuid against the previous
-     * tick's value.
+     * switches by comparing the current hotbar slot and gun instance uuid
+     * against the previous tick's values.
      *
-     * <p>Only a genuine gun-instance change (different uuid, or gun &harr;
-     * non-gun transition) triggers a sync. Same-gun state mutations are
-     * ignored here to avoid a packet flood while shooting; those are handled
-     * by the throttled flush path in
+     * <p>Either change fires a sync: a slot change covers ordinary hotbar
+     * scrolling (including switches between copied guns that share the same
+     * {@code gunInstanceUuid}, which a uuid-only comparison would miss), and
+     * a uuid change covers replacing the item in the same slot. Same-gun
+     * state mutations are ignored here to avoid a packet flood while
+     * shooting; those are handled by the throttled flush path in
      * {@link org.yanbwe.modularshoot.state.GunSyncTickHandler}, driven by
      * {@link org.yanbwe.modularshoot.state.GunSyncThrottleManager}.</p>
      *
@@ -219,7 +230,7 @@ public final class GunSyncService {
     @SubscribeEvent
     public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
         UUID playerUuid = event.getEntity().getUUID();
-        previousMainHandGun.remove(playerUuid);
+        previousMainHand.remove(playerUuid);
         FireRateController.clearPlayer(playerUuid);
         ModifierVersionAntiCheat.clearPlayer(playerUuid);
     }
@@ -250,7 +261,7 @@ public final class GunSyncService {
         if (gunData == null) {
             return;
         }
-        GunSyncS2CPacket packet = buildPacket(gunData);
+        GunSyncS2CPacket packet = buildPacket(gunData, player.getInventory().selected);
         PacketDistributor.sendToPlayer(player, packet);
     }
 
@@ -288,11 +299,12 @@ public final class GunSyncService {
      * @param gunData the source gun data
      * @return a new {@link GunSyncS2CPacket} ready to send
      */
-    private static GunSyncS2CPacket buildPacket(GunData gunData) {
+    private static GunSyncS2CPacket buildPacket(GunData gunData, int hotbarSlot) {
         List<GunSyncS2CPacket.PluginSyncEntry> entries = gunData.installedPlugins().stream()
                 .map(GunSyncService::toSyncEntry)
                 .toList();
-        return new GunSyncS2CPacket(entries, gunData.modifierVersion(), gunData.state());
+        return new GunSyncS2CPacket(gunData.gunInstanceUuid(), hotbarSlot, entries,
+                gunData.modifierVersion(), gunData.state());
     }
 
     /**
@@ -316,27 +328,31 @@ public final class GunSyncService {
     // ------------------------------------------------------------------
 
     /**
-     * Compares the current main-hand gun instance uuid against the previous
-     * tick's value and triggers a sync when a genuine switch is detected.
+     * Compares the current main-hand hotbar slot and gun instance uuid
+     * against the previous tick's values and triggers a sync when a genuine
+     * switch is detected.
      *
-     * <p>Updates {@link #previousMainHandGun} regardless of whether a sync
+     * <p>Updates {@link #previousMainHand} regardless of whether a sync
      * fires, so the map always reflects the latest main-hand state.</p>
      *
      * @param player the ticking server player
      */
     private static void detectMainHandChange(ServerPlayer player) {
         UUID playerUuid = player.getUUID();
+        int selected = player.getInventory().selected;
         UUID currentGunUuid = readMainHandGunUuid(player);
-        UUID previousGunUuid = previousMainHandGun.get(playerUuid);
-        if (!Objects.equals(currentGunUuid, previousGunUuid)) {
+        MainHandTrack previous = previousMainHand.get(playerUuid);
+        if (previous == null
+                || previous.hotbarSlot() != selected
+                || !Objects.equals(previous.gunUuid(), currentGunUuid)) {
             if (currentGunUuid != null) {
-                previousMainHandGun.put(playerUuid, currentGunUuid);
+                previousMainHand.put(playerUuid, new MainHandTrack(selected, currentGunUuid));
                 syncToPlayer(player);
             } else {
                 // Switching away from a gun (or to a non-gun item).
                 // ConcurrentHashMap does not allow null values, so remove
                 // the entry rather than putting null.
-                previousMainHandGun.remove(playerUuid);
+                previousMainHand.remove(playerUuid);
             }
         }
     }

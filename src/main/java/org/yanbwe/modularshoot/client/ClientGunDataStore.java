@@ -1,6 +1,8 @@
 package org.yanbwe.modularshoot.client;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.ItemStack;
@@ -9,9 +11,11 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
+import org.jetbrains.annotations.Nullable;
 
 import org.yanbwe.modularshoot.ModularShoot;
-import org.yanbwe.modularshoot.ModularShootAPI;
+import org.yanbwe.modularshoot.component.GunData;
+import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.network.GunSyncS2CPacket;
 import org.yanbwe.modularshoot.network.GunSyncS2CPacket.PluginSyncEntry;
 
@@ -52,6 +56,8 @@ public final class ClientGunDataStore {
     private List<PluginSyncEntry> installedPlugins = List.of();
     private int modifierVersion = 0;
     private CompoundTag state = new CompoundTag();
+    private UUID gunInstanceUuid;
+    private int hotbarSlot = -1;
     private boolean hasSyncData = false;
 
     private ClientGunDataStore() {
@@ -74,7 +80,10 @@ public final class ClientGunDataStore {
      *
      * <p>Overwrites any previously stored data. Called on the main client
      * thread via {@code enqueueWork} from
-     * {@link org.yanbwe.modularshoot.network.ModularShootPayloads#handleGunSyncS2C}.</p>
+     * {@link org.yanbwe.modularshoot.network.ModularShootPayloads#handleGunSyncS2C},
+     * which only forwards snapshots whose {@code gunInstanceUuid} matches the
+     * local main-hand gun (see
+     * {@link org.yanbwe.modularshoot.client.ClientGunSyncHandler#isForMainHand}).</p>
      *
      * @param packet the {@link GunSyncS2CPacket} received on the client
      */
@@ -82,6 +91,8 @@ public final class ClientGunDataStore {
         this.installedPlugins = packet.plugins();
         this.modifierVersion = packet.modifierVersion();
         this.state = packet.state();
+        this.gunInstanceUuid = packet.gunInstanceUuid();
+        this.hotbarSlot = packet.hotbarSlot();
         this.hasSyncData = true;
     }
 
@@ -121,6 +132,37 @@ public final class ClientGunDataStore {
     }
 
     /**
+     * Returns the {@code gunInstanceUuid} of the gun the current snapshot
+     * belongs to.
+     *
+     * <p>Consumers use this to reject snapshots that no longer match the
+     * item being rendered — after a main-hand switch the store may still
+     * hold the previous gun's snapshot for a few ticks until the server's
+     * new sync arrives (描边污染修复).</p>
+     *
+     * @return the synced gun's instance uuid, or {@code null} when no sync
+     *         has been received
+     */
+    public @Nullable UUID getGunInstanceUuid() {
+        return gunInstanceUuid;
+    }
+
+    /**
+     * Returns the hotbar slot (0..8) the current snapshot was read from.
+     *
+     * <p>The slot is the reliable half of the ownership marker: copied gun
+     * stacks share their {@code gunInstanceUuid}, so only the slot can tell
+     * two copies apart. Consumers accept the snapshot only when this equals
+     * the player's current {@code selected} slot (描边污染修复).</p>
+     *
+     * @return the synced gun's hotbar slot, or {@code -1} when no sync has
+     *         been received
+     */
+    public int getHotbarSlot() {
+        return hotbarSlot;
+    }
+
+    /**
      * Indicates whether the store has received at least one sync snapshot
      * since the last clear.
      *
@@ -141,6 +183,8 @@ public final class ClientGunDataStore {
         this.installedPlugins = List.of();
         this.modifierVersion = 0;
         this.state = new CompoundTag();
+        this.gunInstanceUuid = null;
+        this.hotbarSlot = -1;
         this.hasSyncData = false;
     }
 
@@ -156,13 +200,17 @@ public final class ClientGunDataStore {
     }
 
     /**
-     * Clears the store when the local player is no longer holding a gun in
-     * the main hand, so the compositor and tooltip do not render stale
-     * overlays for a non-gun item.
+     * Clears the store when the local player is no longer holding the
+     * snapshot's gun in the main hand, so the compositor and tooltip do not
+     * render stale overlays for a different gun.
      *
-     * <p>Only the local player's main hand is checked; remote players are
-     * ignored via an {@code instanceof LocalPlayer} guard. The check is
-     * skipped entirely when the store is already empty
+     * <p>Identity is checked via the hotbar slot <em>and</em>
+     * {@code gunInstanceUuid}: the slot catches hotbar switches between
+     * copied guns that share the same uuid (the uuid comparison alone would
+     * miss those), the uuid catches replacing the item in the same slot
+     * (描边污染修复). Only the local player's main hand is checked; remote
+     * players are ignored via an {@code instanceof LocalPlayer} guard. The
+     * check is skipped entirely when the store is already empty
      * ({@link #hasSyncData()} is {@code false}) to avoid per-tick work.</p>
      *
      * @param event the pre-tick event carrying the ticking player
@@ -177,7 +225,11 @@ public final class ClientGunDataStore {
             return;
         }
         ItemStack mainHand = player.getMainHandItem();
-        if (!ModularShootAPI.isGun(mainHand, player.registryAccess())) {
+        GunData gunData = mainHand.get(ModularShootDataComponents.GUN_DATA.get());
+        boolean slotMatch = store.getHotbarSlot() == player.getInventory().selected;
+        if (gunData == null
+                || !slotMatch
+                || !Objects.equals(gunData.gunInstanceUuid(), store.getGunInstanceUuid())) {
             store.clear();
         }
     }

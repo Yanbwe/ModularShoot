@@ -279,13 +279,22 @@ public final class ModularShootPayloads {
      *       (设计文档 §GunSyncS2CPacket 客户端用途, lines 2054-2056).</li>
      * </ol>
      *
+     * <p>Both consumers are gated behind
+     * {@link ClientGunSyncHandler#isForMainHand}: a snapshot whose
+     * {@code gunInstanceUuid} no longer matches the current main-hand gun
+     * (stale sync arriving after a weapon switch) is dropped wholesale so
+     * neither the stack component nor the store is contaminated with the
+     * previous gun's data (描边污染修复).</p>
+     *
      * @return the payload handler
      */
     private static IPayloadHandler<GunSyncS2CPacket> handleGunSyncS2C() {
         return (payload, context) -> {
             context.enqueueWork(() -> {
-                ClientGunSyncHandler.handlePacket(payload);
-                ClientGunDataStore.getInstance().handleSync(payload);
+                if (ClientGunSyncHandler.isForMainHand(payload)) {
+                    ClientGunSyncHandler.handlePacket(payload);
+                    ClientGunDataStore.getInstance().handleSync(payload);
+                }
             });
         };
     }

@@ -30,10 +30,24 @@ import org.yanbwe.modularshoot.ModularShoot;
  *
  * <p><b>Wire format:</b> the payload id is <em>not</em> written by the codec
  * &mdash; NeoForge writes it automatically around the codec output (see
- * {@link CustomPacketPayload} class docs). The codec writes, in order: plugin
- * count ({@code int}), each {@link PluginSyncEntry}, {@code modifierVersion}
- * ({@code int}), and {@code state} ({@code NBT}).</p>
+ * {@link CustomPacketPayload} class docs). The codec writes, in order: the
+ * {@code gunInstanceUuid} ownership marker ({@code UUID}), the {@code hotbarSlot}
+ * the snapshot was read from ({@code int}), plugin count ({@code int}), each
+ * {@link PluginSyncEntry}, {@code modifierVersion} ({@code int}), and
+ * {@code state} ({@code NBT}).</p>
  *
+ * @param gunInstanceUuid the {@code gunInstanceUuid} of the synced gun — one
+ *                        half of the ownership marker the client uses to
+ *                        reject stale snapshots (描边污染修复). Note that
+ *                        copied gun stacks share the same uuid, so the uuid
+ *                        alone cannot tell two stacks apart; the slot can
+ * @param hotbarSlot      the hotbar slot (0..8) the snapshot was read from
+ *                        on the server — the other half of the ownership
+ *                        marker. The client accepts the snapshot only when
+ *                        this equals the current {@code selected} hotbar
+ *                        slot, so a snapshot for a slot the player has
+ *                        switched away from is dropped even when the uuid
+ *                        matches a copied twin
  * @param plugins         the installed plugin list of the synced gun; each entry
  *                        mirrors a {@link org.yanbwe.modularshoot.component.PluginInstance}
  * @param modifierVersion the anti-cheat modifier version counter of the gun
@@ -44,6 +58,8 @@ import org.yanbwe.modularshoot.ModularShoot;
  *                        on the local main-hand stack
  */
 public record GunSyncS2CPacket(
+        UUID gunInstanceUuid,
+        int hotbarSlot,
         List<PluginSyncEntry> plugins,
         int modifierVersion,
         CompoundTag state
@@ -57,9 +73,10 @@ public record GunSyncS2CPacket(
     /**
      * Stream codec that serializes all fields of this packet.
      *
-     * <p>Encoding order: plugin count &rarr; each {@link PluginSyncEntry}
-     * &rarr; {@code modifierVersion} &rarr; {@code state} NBT. The payload id
-     * is written by NeoForge, not here.</p>
+     * <p>Encoding order: {@code gunInstanceUuid} &rarr; {@code hotbarSlot}
+     * &rarr; plugin count &rarr; each {@link PluginSyncEntry} &rarr;
+     * {@code modifierVersion} &rarr; {@code state} NBT. The payload id is
+     * written by NeoForge, not here.</p>
      */
     public static final StreamCodec<RegistryFriendlyByteBuf, GunSyncS2CPacket> STREAM_CODEC =
             StreamCodec.of(GunSyncS2CPacket::encode, GunSyncS2CPacket::decode);
@@ -117,6 +134,8 @@ public record GunSyncS2CPacket(
      * @param packet the packet to serialize
      */
     private static void encode(RegistryFriendlyByteBuf buf, GunSyncS2CPacket packet) {
+        buf.writeUUID(packet.gunInstanceUuid);
+        buf.writeInt(packet.hotbarSlot);
         buf.writeInt(packet.plugins.size());
         for (PluginSyncEntry entry : packet.plugins) {
             PluginSyncEntry.encode(buf, entry);
@@ -132,6 +151,8 @@ public record GunSyncS2CPacket(
      * @return a new {@link GunSyncS2CPacket} read from the buffer
      */
     private static GunSyncS2CPacket decode(RegistryFriendlyByteBuf buf) {
+        UUID gunInstanceUuid = buf.readUUID();
+        int hotbarSlot = buf.readInt();
         int pluginCount = buf.readInt();
         List<PluginSyncEntry> plugins = new ArrayList<>(pluginCount);
         for (int i = 0; i < pluginCount; i++) {
@@ -144,7 +165,7 @@ public record GunSyncS2CPacket(
         if (state == null) {
             state = new CompoundTag();
         }
-        return new GunSyncS2CPacket(plugins, modifierVersion, state);
+        return new GunSyncS2CPacket(gunInstanceUuid, hotbarSlot, plugins, modifierVersion, state);
     }
 
     /**

@@ -1,6 +1,7 @@
 package org.yanbwe.modularshoot.client;
 
 import java.util.List;
+import java.util.Objects;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.item.ItemStack;
@@ -49,29 +50,61 @@ public final class ClientGunSyncHandler {
      * Applies an incoming {@link GunSyncS2CPacket} to the local player's
      * main-hand gun.
      *
-     * <p>Silently does nothing when the client player is absent, the main-hand
-     * item is not a framework gun, or the stack carries no {@code gun_data}
-     * component &mdash; matching the defensive null-guard pattern in
+     * <p>Silently does nothing when {@link #isForMainHand} rejects the
+     * packet (client player absent, main-hand item not a framework gun, no
+     * {@code gun_data} component, or the snapshot's {@code gunInstanceUuid}
+     * no longer matches the current main-hand gun) — matching the defensive
+     * null-guard pattern in
      * {@link org.yanbwe.modularshoot.network.GunSyncService#syncToPlayer}.</p>
      *
      * @param packet the authoritative gun-data snapshot from the server
      */
     public static void handlePacket(GunSyncS2CPacket packet) {
+        if (!isForMainHand(packet)) {
+            return;
+        }
+        Minecraft minecraft = Minecraft.getInstance();
+        LocalPlayer player = minecraft.player;
+        ItemStack mainHand = player.getMainHandItem();
+        @Nullable GunData existing = mainHand.get(ModularShootDataComponents.GUN_DATA.get());
+        GunData synced = rebuildGunData(existing, packet);
+        mainHand.set(ModularShootDataComponents.GUN_DATA.get(), synced);
+    }
+
+    /**
+     * Whether the incoming snapshot is authoritative for the local player's
+     * current main-hand gun.
+     *
+     * <p>The ownership check has two halves: the packet's {@code hotbarSlot}
+     * must equal the player's current {@code selected} slot (copied gun
+     * stacks share their {@code gunInstanceUuid}, so the slot is the only
+     * reliable discriminator between them), and — when the slot matches —
+     * the packet's {@code gunInstanceUuid} must equal the main-hand stack's
+     * own (catches replacing the item in the same slot). A snapshot that
+     * fails either check describes a gun the player has switched away from
+     * (network ordering / stale sync) and must be dropped wholesale,
+     * otherwise the new gun's component data, the overlay compositor and the
+     * {@link ClientGunDataStore} would all be contaminated with another
+     * gun's plugins and outlines (描边污染修复).</p>
+     *
+     * @param packet the incoming {@link GunSyncS2CPacket}
+     * @return {@code true} when the packet matches the current main-hand gun
+     */
+    public static boolean isForMainHand(GunSyncS2CPacket packet) {
         Minecraft minecraft = Minecraft.getInstance();
         LocalPlayer player = minecraft.player;
         if (player == null) {
-            return;
+            return false;
+        }
+        if (packet.hotbarSlot() != player.getInventory().selected) {
+            return false;
         }
         ItemStack mainHand = player.getMainHandItem();
         if (!ModularShootAPI.isGun(mainHand, player.registryAccess())) {
-            return;
+            return false;
         }
         @Nullable GunData existing = mainHand.get(ModularShootDataComponents.GUN_DATA.get());
-        if (existing == null) {
-            return;
-        }
-        GunData synced = rebuildGunData(existing, packet);
-        mainHand.set(ModularShootDataComponents.GUN_DATA.get(), synced);
+        return existing != null && Objects.equals(existing.gunInstanceUuid(), packet.gunInstanceUuid());
     }
 
     /**
