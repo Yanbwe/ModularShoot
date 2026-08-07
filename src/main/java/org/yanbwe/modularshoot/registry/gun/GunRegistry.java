@@ -325,7 +325,7 @@ public final class GunRegistry {
      *
      * <p>Bound guns (items whose id is mapped to a gun via the
      * {@code modularshoot:gun_items} binding table) enter the world without a
-     * {@code gun_data} component; this method is the service-side lazy
+     * {@code gun_data} component; this method is the server-side lazy
      * attachment entry point that attaches one on demand so the stack becomes
      * fully isomorphic with a native {@code modularshoot:gun} stack.</p>
      *

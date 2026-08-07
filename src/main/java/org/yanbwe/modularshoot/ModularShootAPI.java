@@ -7,10 +7,12 @@ import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ItemLike;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.bullet.BulletSnapshot;
@@ -19,7 +21,6 @@ import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginData;
 import org.yanbwe.modularshoot.component.PluginInstance;
 import org.yanbwe.modularshoot.datapack.RegistrationCoordinator;
-import org.yanbwe.modularshoot.item.ModularShootItems;
 import org.yanbwe.modularshoot.plugin.PluginDefinition;
 import org.yanbwe.modularshoot.plugin.PluginExtraValueService;
 import org.yanbwe.modularshoot.plugin.PluginInstallService;
@@ -31,7 +32,9 @@ import org.yanbwe.modularshoot.plugin.PluginUninstallService;
 import org.yanbwe.modularshoot.plugin.PluginValidationService;
 import org.yanbwe.modularshoot.plugin.PluginValidator;
 import org.yanbwe.modularshoot.plugin.UninstallResult;
+import org.yanbwe.modularshoot.registry.binding.GunItemBinding;
 import org.yanbwe.modularshoot.registry.binding.GunItemBindingRegistry;
+import org.yanbwe.modularshoot.registry.binding.PluginItemBinding;
 import org.yanbwe.modularshoot.registry.binding.PluginItemBindingRegistry;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
@@ -163,19 +166,20 @@ public final class ModularShootAPI {
     /**
      * Reads the plugin definition id bound to a plugin stack.
      *
-     * <p>Delegates to the {@code plugin_data} component carried by the stack.
-     * Returns {@link Optional#empty()} when the stack is not a plugin item or
-     * carries no {@code plugin_data} component.</p>
+     * <p>Delegates to the {@code plugin_data} component carried by the stack;
+     * the component is read directly from any stack without an item-id
+     * precheck (设计规格 物品绑定系统 §4.2). Returns
+     * {@link Optional#empty()} when the stack carries no {@code plugin_data}
+     * component — binding-table plugins get the component lazily attached on
+     * first use (设计规格 物品绑定系统 §5), so an empty result before
+     * attachment is expected.</p>
      *
      * @param stack the stack to inspect; must not be {@code null}
-     * @return the plugin definition id, or empty when the stack is not a plugin
-     *         or has no binding
+     * @return the plugin definition id, or empty when the stack has no
+     *         component
      */
     public static Optional<ResourceLocation> getPluginId(ItemStack stack) {
         Objects.requireNonNull(stack, "stack");
-        if (!stack.is(ModularShootItems.PLUGIN_ITEM.get())) {
-            return Optional.empty();
-        }
         PluginData data = stack.get(ModularShootDataComponents.PLUGIN_DATA.get());
         return data == null ? Optional.empty() : Optional.of(data.pluginId());
     }
@@ -801,20 +805,20 @@ public final class ModularShootAPI {
     /**
      * Reads the gun definition id bound to a gun stack.
      *
-     * <p>Reads the {@code gun_data} component carried by the stack and returns
-     * its {@code gunId}. Returns {@code null} when the stack is not a
-     * {@code modularshoot:gun} item or carries no {@code gun_data} component.</p>
+     * <p>Delegates to the {@code gun_data} component carried by the stack;
+     * the component is read directly from any stack without an item-id
+     * precheck (设计规格 物品绑定系统 §4.2). Returns {@code null} when the
+     * stack carries no {@code gun_data} component — binding-table guns get
+     * the component lazily attached on first use (设计规格 物品绑定系统 §5),
+     * so a {@code null} result before attachment is expected.</p>
      *
-     * @param gun the gun item stack to inspect; must not be {@code null}
-     * @return the gun definition id, or {@code null} when the stack is not a gun
-     *         or has no gun data
+     * @param gun the stack to inspect; must not be {@code null}
+     * @return the gun definition id, or {@code null} when the stack has no
+     *         component
      */
     @Nullable
     public static ResourceLocation getGunId(ItemStack gun) {
         Objects.requireNonNull(gun, "gun");
-        if (!gun.is(ModularShootItems.GUN_ITEM.get())) {
-            return null;
-        }
         GunData gunData = gun.get(ModularShootDataComponents.GUN_DATA.get());
         return gunData == null ? null : gunData.gunId();
     }
@@ -880,6 +884,60 @@ public final class ModularShootAPI {
      */
     public static boolean isGun(ItemStack stack, RegistryAccess access) {
         return isGun(stack, access, true);
+    }
+
+    // ---- Item binding registration (Java API) ----------------------------
+
+    /**
+     * Registers an item→gun binding via the Java API (设计规格 物品绑定系统 §6).
+     *
+     * <p>Thin wrapper over
+     * {@link GunItemBindingRegistry#registerBinding(ResourceLocation, GunItemBinding)}:
+     * the item id ({@link BuiltInRegistries#ITEM} key of {@code item}) serves
+     * as both the binding's item id and its entry key, so no separate key has
+     * to be invented. Must be called during mod initialisation (before
+     * datapack loading begins). When a datapack JSON later declares a binding
+     * for the same item id, the Java-API binding takes priority (注册表服务
+     * 语义, 设计文档 §注册冲突与覆盖) and the shadowed datapack entry is
+     * reported with a {@code WARN} by the post-reload
+     * {@code ItemBindingValidator} (设计规格 物品绑定系统 §3.2).</p>
+     *
+     * @param item  the bound item; must not be {@code null}
+     * @param gunId the target gun entry's registry key, e.g.
+     *              {@code mypack:sword_rifle}; must not be {@code null}
+     */
+    public static void registerGunItem(ItemLike item, ResourceLocation gunId) {
+        Objects.requireNonNull(item, "item");
+        Objects.requireNonNull(gunId, "gunId");
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item.asItem());
+        GunItemBindingRegistry.registerBinding(
+                itemId, new GunItemBinding(itemId, gunId));
+    }
+
+    /**
+     * Registers an item→plugin binding via the Java API (设计规格 物品绑定系统
+     * §6).
+     *
+     * <p>Thin wrapper over
+     * {@link PluginItemBindingRegistry#registerBinding(ResourceLocation, PluginItemBinding)}:
+     * the item id ({@link BuiltInRegistries#ITEM} key of {@code item}) serves
+     * as both the binding's item id and its entry key. Must be called during
+     * mod initialisation (before datapack loading begins). When a datapack
+     * JSON later declares a binding for the same item id, the Java-API binding
+     * takes priority (注册表服务语义, 设计文档 §注册冲突与覆盖) and the
+     * shadowed datapack entry is reported with a {@code WARN} by the
+     * post-reload {@code ItemBindingValidator} (设计规格 物品绑定系统 §3.2).</p>
+     *
+     * @param item     the bound item; must not be {@code null}
+     * @param pluginId the target plugin entry's registry key, e.g.
+     *                 {@code mypack:light_plugin}; must not be {@code null}
+     */
+    public static void registerPluginItem(ItemLike item, ResourceLocation pluginId) {
+        Objects.requireNonNull(item, "item");
+        Objects.requireNonNull(pluginId, "pluginId");
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item.asItem());
+        PluginItemBindingRegistry.registerBinding(
+                itemId, new PluginItemBinding(itemId, pluginId));
     }
 
     /**

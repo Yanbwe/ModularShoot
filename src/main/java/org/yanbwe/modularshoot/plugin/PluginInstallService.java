@@ -161,15 +161,21 @@ public final class PluginInstallService {
         ItemStack resultGun = gun.copy();
         ItemStack resultPlugin = pluginStack.copy();
 
-        // a2. Guard: the target gun must carry a gun_data component. Bound
-        //     guns enter the world without one (设计规格 物品绑定系统 §5.2), so
-        //     the component is lazily attached on the working copy first —
-        //     idempotent, native guns are untouched. Without the component the
-        //     downstream matching service returns an empty candidate list,
-        //     which would surface as the misleading "No matching slot
-        //     available" message. Fail fast with an explicit reason instead
-        //     (S29 fix).
-        GunRegistry.ensureGunData(resultGun, registryAccess);
+        // a2. Server-only lazy attachment: the target gun must carry a
+        //     gun_data component. Bound guns enter the world without one
+        //     (设计规格 物品绑定系统 §5.2), so the component is lazily attached
+        //     on the working copy first — idempotent, native guns are
+        //     untouched. Attachment happens on the server side only: on the
+        //     client (e.g. the creative-menu path, where the event fires
+        //     client-side only) the stack is left as-is and the guard below
+        //     degrades naturally into the existing no_gun_data error (S2 fix).
+        //     Without the component the downstream matching service returns an
+        //     empty candidate list, which would surface as the misleading
+        //     "No matching slot available" message. Fail fast with an explicit
+        //     reason instead (S29 fix).
+        if (!player.level().isClientSide()) {
+            GunRegistry.ensureGunData(resultGun, registryAccess);
+        }
         if (!resultGun.has(ModularShootDataComponents.GUN_DATA.get())) {
             return InstallResult.failure(
                     Component.translatable("modularshoot.install.error.no_gun_data"));

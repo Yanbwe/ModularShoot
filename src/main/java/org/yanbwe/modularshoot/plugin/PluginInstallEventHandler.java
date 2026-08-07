@@ -139,11 +139,8 @@ public final class PluginInstallEventHandler {
         ItemStack carriedItem = event.getCarriedItem();
         ItemStack stackedOnItem = event.getStackedOnItem();
 
-        // 竞态兜底：绑定枪械的 gun_data 由服务端 tick 通道惰性附加（拿起 1 tick
-        // 内，设计规格 §5.3），但容器槽位中的枪可能从未被拿起；安装手势前先确保
-        // 组件存在，保证 PluginInstallService 的 no_gun_data 守卫通过。本类的
-        // 识别判定已是绑定感知（shouldHandle 用 ModularShootAPI.isGun）。
-        GunRegistry.ensureGunData(stackedOnItem, player.registryAccess());
+        // 附加已由 PluginInstallService 在服务端副本上完成（installPlugin 内部的
+        // 服务端守卫 + 惰性附加，设计规格 §5.2），本 handler 不再预附加。
 
         // Attempt installation (operates on copies, never mutates originals).
         PluginInstallService.InstallResult result = PluginInstallService.installPlugin(

@@ -300,8 +300,15 @@ class ModularShootAPIItemBindingTest {
 
     // ---- Degraded overloads (no RegistryAccess) --------------------------
 
+    /**
+     * The degraded overloads ({@link ModularShootAPI#isGun(ItemStack)} /
+     * {@link ModularShootAPI#isPlugin(ItemStack)}) see Java-API bindings
+     * while staying blind to datapack bindings: they query with
+     * {@link RegistryAccess#EMPTY}, which never contains the datapack
+     * registries (设计规格 物品绑定系统 §4.1).
+     */
     @Test
-    void degradedOverloadIgnoresDatapack() {
+    void degradedOverloadSeesJavaApiBindings() {
         // Java-API binding is visible to the degraded overload...
         ItemStack bound = newGunBoundStack(
                 "degraded", ResourceLocation.parse("mypack:sword_rifle"));

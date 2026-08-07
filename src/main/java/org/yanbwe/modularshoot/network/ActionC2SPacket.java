@@ -21,7 +21,7 @@ import net.minecraft.resources.ResourceLocation;
  * <p><b>Design rationale (see design doc §ActionEvent):</b></p>
  * <ul>
  *   <li>The server is the sole authority — it re-checks
- *       {@link org.yanbwe.modularshoot.ModularShootAPI#isGun(ItemStack)}
+ *       {@link org.yanbwe.modularshoot.ModularShootAPI#isGun(ItemStack, RegistryAccess)}
  *       on the main-hand item before firing
  *       {@link org.yanbwe.modularshoot.api.event.ActionEvent}, so a hacked
  *       client cannot trigger an action event for a non-gun item.</li>
