@@ -136,7 +136,7 @@ public final class TooltipBuilder {
         // 枪械在尚未附加 GUN_DATA 组件时，在物品名之下插入灰色 "枪械: <path>"
         // 标识行，并展示枪械定义中注册的基础属性与插槽（"说明书"）——栈上尚无
         // GUN_DATA/ATTRIBUTE_MODIFIERS，运行时数值读出来全是 0，故不注入
-        // 属性/特性/状态/插件四栏。拿起至主手 1 tick 内由服务端附加组件并写入
+        // 属性/特性/状态/插件四栏。进入背包 1 tick 内由服务端附加组件并写入
         // 基础修饰符（BoundGunAttachHandler，设计规格 §5.3），此后显示完整内容。
         // 已附加组件的原生枪械/已转化枪械不显示该行，避免冗余。
         if (!stack.has(ModularShootDataComponents.GUN_DATA.get())) {
