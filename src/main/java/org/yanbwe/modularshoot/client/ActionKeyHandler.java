@@ -12,19 +12,19 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.ModularShootAPI;
-import org.yanbwe.modularshoot.client.keybind.ReloadKeyBinding;
-import org.yanbwe.modularshoot.network.ReloadC2SPacket;
+import org.yanbwe.modularshoot.client.keybind.ActionKeyBinding;
+import org.yanbwe.modularshoot.network.ActionC2SPacket;
 
 /**
- * Client-side reload-key forwarder — sends a {@link ReloadC2SPacket} to the
- * server when the player single-presses the reload key (default: R) with a
+ * Client-side action-key forwarder — sends a {@link ActionC2SPacket} to the
+ * server when the player single-presses the action key (default: R) with a
  * gun in the main hand.
  *
  * <p>This class bridges the key-binding layer
- * ({@link ReloadKeyBinding}) and the network layer
- * ({@link ReloadC2SPacket}). It performs <em>no</em> reload logic on the
- * client — it only forwards the reload <em>intent</em> to the server, which
- * is the sole authority for firing {@link org.yanbwe.modularshoot.api.event.ReloadEvent}.</p>
+ * ({@link ActionKeyBinding}) and the network layer
+ * ({@link ActionC2SPacket}). It performs <em>no</em> action logic on the
+ * client — it only forwards the action <em>intent</em> to the server, which
+ * is the sole authority for firing {@link org.yanbwe.modularshoot.api.event.ActionEvent}.</p>
  *
  * <p><b>Registration:</b> registered on the NeoForge game event bus
  * ({@code NeoForge.EVENT_BUS}) with {@code value = Dist.CLIENT} so the class
@@ -33,8 +33,8 @@ import org.yanbwe.modularshoot.network.ReloadC2SPacket;
  * server.</p>
  *
  * <p><b>Tick ordering:</b> {@link ClientTickEvent.Pre} is also listened to by
- * {@link ReloadKeyBinding}, which latches the press flag
- * {@link ReloadKeyBinding#isReloadPressed()} each tick. This subscriber uses
+ * {@link ActionKeyBinding}, which latches the press flag
+ * {@link ActionKeyBinding#isActionPressed()} each tick. This subscriber uses
  * {@link EventPriority#LOW} so it runs <em>after</em> the key-binding handler
  * (default priority {@code NORMAL}), guaranteeing the flag is fresh for the
  * current tick when read here. Without the priority, the handler might read
@@ -45,37 +45,37 @@ import org.yanbwe.modularshoot.network.ReloadC2SPacket;
  * sending, avoiding a wasted round-trip for non-gun items. The server
  * re-checks this anyway (defense in depth against a hacked client).</p>
  *
- * @see ReloadKeyBinding for the key binding and press-detection logic
- * @see ReloadC2SPacket for the packet wire format
+ * @see ActionKeyBinding for the key binding and press-detection logic
+ * @see ActionC2SPacket for the packet wire format
  * @see ClientShootSender for the analogous C→S forwarder for shooting
  */
 @EventBusSubscriber(modid = ModularShoot.MODID, value = Dist.CLIENT)
-public final class ReloadKeyHandler {
+public final class ActionKeyHandler {
 
-    private ReloadKeyHandler() {
+    private ActionKeyHandler() {
     }
 
     /**
-     * Polled every client tick; sends a reload request when the reload key
+     * Polled every client tick; sends an action request when the action key
      * was single-pressed this tick with a gun in the main hand.
      *
      * <p>Uses {@link EventPriority#LOW} to ensure
-     * {@link ReloadKeyBinding#onClientTick} has already latched the
-     * {@link ReloadKeyBinding#isReloadPressed()} flag for this tick before
+     * {@link ActionKeyBinding#onClientTick} has already latched the
+     * {@link ActionKeyBinding#isActionPressed()} flag for this tick before
      * we read it.</p>
      *
      * @param event the pre client-tick event (unused beyond its presence)
      */
     @SubscribeEvent(priority = EventPriority.LOW)
     public static void onClientTick(ClientTickEvent.Pre event) {
-        if (!ReloadKeyBinding.isReloadPressed()) {
+        if (!ActionKeyBinding.isActionPressed()) {
             return;
         }
         Minecraft minecraft = Minecraft.getInstance();
         if (!isInGame(minecraft)) {
             return;
         }
-        sendReloadRequest(minecraft.player);
+        sendActionRequest(minecraft.player);
     }
 
     /**
@@ -89,7 +89,7 @@ public final class ReloadKeyHandler {
     }
 
     /**
-     * Checks the main-hand item is a gun and sends a reload request to the
+     * Checks the main-hand item is a gun and sends an action request to the
      * server.
      *
      * <p>Skips silently when the main-hand item is not a gun — the server
@@ -97,11 +97,11 @@ public final class ReloadKeyHandler {
      *
      * @param player the local player; guaranteed non-null by {@link #isInGame}
      */
-    private static void sendReloadRequest(Player player) {
+    private static void sendActionRequest(Player player) {
         ItemStack mainHand = player.getMainHandItem();
         if (!ModularShootAPI.isGun(mainHand)) {
             return;
         }
-        PacketDistributor.sendToServer(new ReloadC2SPacket());
+        PacketDistributor.sendToServer(new ActionC2SPacket());
     }
 }
