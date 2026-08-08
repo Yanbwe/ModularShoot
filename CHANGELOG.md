@@ -1,5 +1,15 @@
 # 更新记录 / Changelog
 
+## [0.1.2] - 2026-08-08
+
+### 变更 / Changed
+
+- **移除框架默认命中粒子**：`ClientHitEffectHandler` 不再生成任何默认粒子（伤害指示 `DAMAGE_INDICATOR` / 暴击 `CRIT` / 方块破坏），命中视觉特效完全交由 `ClientBulletHitEvent` 监听方自行实现；数据驱动命中音效（枪械 `sounds` 槽位）保留，取消事件仍可跳过默认音效。相关 javadoc（`ClientBulletHitEvent`、`ModularShootPayloads`）同步更新。
+
+### 改进 / Improved
+
+- 重绘子弹默认纹理（`textures/bullet/default.png`），观感大幅提升。
+
 ## [0.1.1] - 2026-08-08
 
 ### 新增 / Added

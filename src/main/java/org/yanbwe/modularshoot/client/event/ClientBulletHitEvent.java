@@ -11,13 +11,13 @@ import org.yanbwe.modularshoot.network.BulletHitS2CPacket.HitType;
 /**
  * 客户端子弹命中事件（设计文档 §音效系统 — 命中特效钩子）。
  *
- * <p>客户端收到 {@code BulletHitS2CPacket} 时、在播放默认命中特效
- * （粒子 + 数据驱动音效）之前 post 到 {@code NeoForge.EVENT_BUS}。扩展模组
- * 监听本事件可：</p>
+ * <p>客户端收到 {@code BulletHitS2CPacket} 时、在播放默认命中音效之前 post
+ * 到 {@code NeoForge.EVENT_BUS}。框架默认不生成任何命中粒子——视觉特效完全
+ * 交给监听方。扩展模组监听本事件可：</p>
  * <ul>
- *   <li><b>取消</b>（{@link ICancellableEvent}）— 跳过默认粒子与音效，
- *       完全接管本次命中特效；</li>
- *   <li><b>不取消</b> — 默认特效照常播放，监听方可在自身逻辑中追加
+ *   <li><b>取消</b>（{@link ICancellableEvent}）— 跳过默认音效，
+ *       完全接管本次命中反馈；</li>
+ *   <li><b>不取消</b> — 默认音效照常播放，监听方可在自身逻辑中追加
  *       自定义音效/粒子。</li>
  * </ul>
  *
