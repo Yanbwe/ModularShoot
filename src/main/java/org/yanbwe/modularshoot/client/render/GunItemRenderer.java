@@ -1,6 +1,7 @@
 package org.yanbwe.modularshoot.client.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -84,9 +85,13 @@ import org.yanbwe.modularshoot.registry.gun.TextureScaleMode;
  * <h2>First-person vs third-person</h2>
  * <p>The vanilla pipeline calls {@code renderByItem} for both first-person
  * (held in hand) and third-person (on the player model) contexts. Both paths
- * use the same texture-resolution logic, satisfying the design doc
- * requirement that texture switching is the sole visual feedback in first
- * person and also applies in third person (设计文档 line 1343-1344).</p>
+ * use the same texture-resolution logic. In first person the held gun
+ * additionally plays a short per-shot <em>recoil kick</em> (设计文档 §第一人称
+ * 射击后坐): at the moment a shot fires, the pose is displaced by
+ * {@link FirstPersonRecoilKick} — pushed back into the screen with the
+ * muzzle rising — driven by the same per-shot animation timer as the
+ * third-person arm pose and the {@code per_shot} shoot-texture mode, so all
+ * feedback channels pulse with the same cadence.</p>
  *
  * <h2>Player context</h2>
  * <p>{@code renderByItem} does not receive the holding {@code LivingEntity}
@@ -264,6 +269,25 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer imple
         float partialTick = Minecraft.getInstance().getTimer().getGameTimeDeltaPartialTick(false);
         Optional<Vector4f> tint = DynamicOutlineTintRegistry.resolve(
                 renderData.gunOutlinePluginIds(), stack, partialTick);
+
+        // First-person recoil kick: at the shot tick the held gun visibly
+        // kicks — pushed back into the screen with the muzzle rising — then
+        // settles within a few ticks (设计文档 §第一人称射击后坐). Driven by the
+        // same per-shot shootAnimTimer as the third-person arm pose and the
+        // per_shot texture mode, so the kick pulses per accepted shot. Only
+        // the local player's main-hand stack in a first-person context is
+        // affected; the pose frame at this point is item-centred with +X
+        // pointing into the screen and +Z along the screen's left-right axis
+        // (see FirstPersonRecoilKick).
+        if (context.firstPerson() && isLocalMainHandStack(stack)) {
+            FirstPersonRecoilKick.Kick kick = FirstPersonRecoilKick.compute(
+                    PlayerShootStateManager.getInstance().getAnimTimer(minecraft.player.getUUID()));
+            if (kick.isActive()) {
+                poseStack.translate(kick.pushBlocks(), 0.0F, 0.0F);
+                poseStack.mulPose(Axis.ZP.rotationDegrees(kick.riseDegrees()));
+            }
+        }
+
         DynamicItemModelRenderer.render(
                 handle.location(),
                 tint.isPresent() ? handle.maskLocation() : null,
