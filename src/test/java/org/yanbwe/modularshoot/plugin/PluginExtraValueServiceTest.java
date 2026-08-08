@@ -94,4 +94,39 @@ class PluginExtraValueServiceTest {
                 RegistryAccess.EMPTY);
         assertTrue(sums.isEmpty(), "degraded instances contribute no sums");
     }
+
+    @Test
+    void baseAndPluginsSumSameKey() {
+        Map<ResourceLocation, Double> sums = PluginExtraValueService.aggregateWithBase(
+                Map.of(RARITY, 10.0),
+                List.of(def(Map.of(RARITY, 5.0)), def(Map.of(RARITY, 3.0, DEMO, -2.5))));
+        assertEquals(18.0, sums.get(RARITY), 1.0E-9, "base and plugin values sum per key");
+        assertEquals(-2.5, sums.get(DEMO), 1.0E-9, "plugin-only key accumulates independently");
+    }
+
+    @Test
+    void baseOnlyKeySurvives() {
+        Map<ResourceLocation, Double> sums = PluginExtraValueService.aggregateWithBase(
+                Map.of(RARITY, 10.0),
+                List.of(def(Map.of(DEMO, 1.0))));
+        assertEquals(10.0, sums.get(RARITY), 1.0E-9, "base-only key keeps its value");
+        assertEquals(1.0, sums.get(DEMO), 1.0E-9, "plugin-only key joins the result");
+    }
+
+    @Test
+    void emptyBaseFallsBackToPluginSums() {
+        Map<ResourceLocation, Double> sums = PluginExtraValueService.aggregateWithBase(
+                Map.of(),
+                List.of(def(Map.of(RARITY, 5.0))));
+        assertEquals(5.0, sums.get(RARITY), 1.0E-9, "empty base keeps plugin sums intact");
+    }
+
+    @Test
+    void emptyPluginsKeepBaseOnly() {
+        Map<ResourceLocation, Double> sums = PluginExtraValueService.aggregateWithBase(
+                Map.of(RARITY, 10.0),
+                List.of());
+        assertEquals(1, sums.size());
+        assertEquals(10.0, sums.get(RARITY), 1.0E-9, "base survives without plugins");
+    }
 }
