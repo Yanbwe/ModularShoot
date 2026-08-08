@@ -23,5 +23,6 @@
     "hit_block": "minecraft:block.stone.hit",
     "hit_pierce": "minecraft:block.anvil.land",
     "plugin_install": "minecraft:block.note_block.pling"
-  }
+  },
+  "extra_values": { "modularshoot:demo_rarity": 10 }
 }
