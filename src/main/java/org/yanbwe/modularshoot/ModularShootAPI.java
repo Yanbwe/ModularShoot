@@ -223,16 +223,20 @@ public final class ModularShootAPI {
     }
 
     /**
-     * Returns the accumulated {@code extra_values} of every valid plugin
-     * installed on the given gun, summed per namespaced key.
+     * Returns the total {@code extra_values} of a gun stack: the gun
+     * definition's base values plus the accumulated extra values of every
+     * valid plugin installed on it, summed per namespaced key.
      *
      * <p>Delegates to {@link PluginExtraValueService#aggregate}. The
      * framework never interprets these values (e.g. a rarity core may sum
      * {@code "raritycore:rarity"}) — it only carries and aggregates them.
-     * Degraded plugins (definition missing from the datapack registry) are
-     * filtered with the same contract as the attribute pipeline. Keys never
-     * declared by any installed plugin stay absent from the result; use
-     * {@link #getExtraValue} for a defaulted single-key lookup.</p>
+     * The gun definition is resolved via {@link GunRegistry} from the
+     * supplied registry view; when the gun definition is missing (degraded)
+     * its base values are omitted — the same degradation contract as the
+     * plugin pipeline. Degraded plugins (definition missing from the
+     * datapack registry) are filtered likewise. Keys never declared by the
+     * gun definition or any installed plugin stay absent from the result;
+     * use {@link #getExtraValue} for a defaulted single-key lookup.</p>
      *
      * <p>Requires a loaded world's {@link RegistryAccess} because the
      * {@code modularshoot:plugins} registry is datapack-driven (empty on the
@@ -243,8 +247,9 @@ public final class ModularShootAPI {
      *                       {@code null}
      * @param registryAccess the runtime registry view; must not be
      *                       {@code null}
-     * @return an immutable map of key &rarr; accumulated sum; empty when the
-     *         stack is not a gun or no valid plugin declares any extra value
+     * @return an immutable map of key &rarr; total sum; empty when the
+     *         stack is not a gun or neither the gun definition nor any
+     *         valid plugin declares any extra value
      */
     public static Map<ResourceLocation, Double> getExtraValueSums(
             ItemStack gun, RegistryAccess registryAccess) {
@@ -254,9 +259,9 @@ public final class ModularShootAPI {
     }
 
     /**
-     * Convenience single-key lookup over a gun's accumulated
-     * {@code extra_values}: the sum of {@code key} across every valid
-     * installed plugin, or {@code 0.0} when the key is undeclared.
+     * Convenience single-key lookup over a gun's total {@code extra_values}
+     * (gun definition base plus accumulated installed-plugin sums): the
+     * value of {@code key}, or {@code 0.0} when the key is undeclared.
      *
      * @param gun            the gun item stack to inspect; must not be
      *                       {@code null}
