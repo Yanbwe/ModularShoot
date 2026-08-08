@@ -74,6 +74,7 @@ class VariantPoolServiceTest {
                 Map.of(),
                 Optional.empty(),
                 variants,
+                Map.of(),
                 Optional.empty());
     }
 

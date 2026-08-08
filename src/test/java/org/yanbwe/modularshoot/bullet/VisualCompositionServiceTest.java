@@ -119,6 +119,7 @@ class VisualCompositionServiceTest {
                 Map.of(),
                 Optional.of(style),
                 Map.of(),
+                Map.of(),
                 Optional.empty());
     }
 
