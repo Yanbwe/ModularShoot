@@ -11,8 +11,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Codec tests for the {@link GunDefinition} {@code extra_values} field: an
- * optional namespaced numeric extension field (keys must be fully
- * namespaced, same contract as plugin {@code extra_values}), defaulting to
+ * optional namespaced numeric extension field (keys should be fully
+ * namespaced; bare keys silently fall back to the {@code minecraft}
+ * namespace, same contract as plugin {@code extra_values}), defaulting to
  * an empty map when omitted.
  *
  * <p>Inline-JSON style mirroring {@code GunDefinitionVariantsCodecTest} — no
@@ -49,5 +50,20 @@ class GunDefinitionExtraValuesCodecTest {
                 """);
         assertTrue(gun.extraValues().isEmpty(),
                 "extra_values should default to an empty map when omitted");
+    }
+
+    @Test
+    void extraValuesRoundTripsThroughCodec() {
+        GunDefinition gun = decode("""
+                {
+                  "texture": "m:textures/gun/test.png",
+                  "extra_values": { "raritycore:rarity": 5.0 }
+                }
+                """);
+        JsonElement encoded = GunDefinition.CODEC.encodeStart(JsonOps.INSTANCE, gun)
+                .getOrThrow(m -> new AssertionError("Encode failed: " + m));
+        GunDefinition decoded = GunDefinition.CODEC.parse(JsonOps.INSTANCE, encoded)
+                .getOrThrow(m -> new AssertionError("Round-trip decode failed: " + m));
+        assertEquals(gun.extraValues(), decoded.extraValues(), "extra_values survives codec round-trip");
     }
 }

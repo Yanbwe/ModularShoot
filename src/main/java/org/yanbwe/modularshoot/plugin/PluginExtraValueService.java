@@ -58,13 +58,7 @@ public final class PluginExtraValueService {
      *         definition declares any extra value
      */
     public static Map<ResourceLocation, Double> aggregateDefinitions(List<PluginDefinition> definitions) {
-        Map<ResourceLocation, Double> sums = new HashMap<>();
-        for (PluginDefinition definition : definitions) {
-            for (Map.Entry<ResourceLocation, Double> entry : definition.extraValues().entrySet()) {
-                sums.merge(entry.getKey(), entry.getValue(), Double::sum);
-            }
-        }
-        return Map.copyOf(sums);
+        return aggregateWithBase(Map.of(), definitions);
     }
 
     /**
@@ -115,11 +109,7 @@ public final class PluginExtraValueService {
      */
     public static Map<ResourceLocation, Double> aggregate(
             List<PluginInstance> instances, RegistryAccess registryAccess) {
-        List<PluginDefinition> definitions = new ArrayList<>();
-        for (PluginInstance instance : PluginDegradationHandler.filterValidPlugins(instances, registryAccess)) {
-            PluginRegistry.getPlugin(registryAccess, instance.pluginId()).ifPresent(definitions::add);
-        }
-        return aggregateDefinitions(definitions);
+        return aggregateDefinitions(collectValidDefinitions(instances, registryAccess));
     }
 
     /**
@@ -147,10 +137,7 @@ public final class PluginExtraValueService {
         if (gunData == null) {
             return Map.of();
         }
-        List<PluginDefinition> definitions = new ArrayList<>();
-        for (PluginInstance instance : PluginDegradationHandler.filterValidPlugins(gunData.installedPlugins(), registryAccess)) {
-            PluginRegistry.getPlugin(registryAccess, instance.pluginId()).ifPresent(definitions::add);
-        }
+        List<PluginDefinition> definitions = collectValidDefinitions(gunData.installedPlugins(), registryAccess);
         // 枪械定义基础值并入总和；定义缺失（降级）时基础值不参与，
         // 与插件降级过滤同一口径。
         Map<ResourceLocation, Double> baseValues = GunRegistry.getGun(registryAccess, gunData.gunId())
@@ -160,8 +147,9 @@ public final class PluginExtraValueService {
     }
 
     /**
-     * Convenience single-key lookup: the accumulated sum of {@code key} over
-     * every valid plugin installed on the given gun, or {@code 0.0} when no
+     * Convenience single-key lookup: the gun definition's base value of
+     * {@code key} plus the accumulated sums over every valid plugin installed
+     * on the given gun, or {@code 0.0} when neither the gun definition nor any
      * plugin declares that key (or the gun data is absent).
      *
      * @param gunStack       the gun item stack to aggregate; must not be
@@ -175,5 +163,24 @@ public final class PluginExtraValueService {
      */
     public static double get(ItemStack gunStack, ResourceLocation key, RegistryAccess registryAccess) {
         return aggregate(gunStack, registryAccess).getOrDefault(key, 0.0);
+    }
+
+    /**
+     * Collects the {@link PluginDefinition}s of the given installed plugin
+     * instances that survive degradation filtering.
+     *
+     * <p>Filters degraded instances via
+     * {@link PluginDegradationHandler#filterValidPlugins} first, then resolves
+     * each surviving instance's definition from the
+     * {@code modularshoot:plugins} registry; instances whose definition is
+     * still missing are skipped.</p>
+     */
+    private static List<PluginDefinition> collectValidDefinitions(
+            List<PluginInstance> instances, RegistryAccess registryAccess) {
+        List<PluginDefinition> definitions = new ArrayList<>();
+        for (PluginInstance instance : PluginDegradationHandler.filterValidPlugins(instances, registryAccess)) {
+            PluginRegistry.getPlugin(registryAccess, instance.pluginId()).ifPresent(definitions::add);
+        }
+        return definitions;
     }
 }

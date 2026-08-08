@@ -48,7 +48,8 @@ import org.yanbwe.modularshoot.ModularShoot;
  *       {@code modularshoot} namespace.</li>
  *   <li>{@code extra_values} — optional namespaced numeric extension fields;
  *       the framework carries and aggregates them without interpreting their
- *       meaning. Keys must be fully namespaced (same contract as plugin
+ *       meaning. Keys should be fully namespaced; bare keys silently fall
+ *       back to the {@code minecraft} namespace (same contract as plugin
  *       {@code extra_values}).</li>
  * </ul>
  *

@@ -239,9 +239,9 @@ public final class ModularShootAPI {
      * use {@link #getExtraValue} for a defaulted single-key lookup.</p>
      *
      * <p>Requires a loaded world's {@link RegistryAccess} because the
-     * {@code modularshoot:plugins} registry is datapack-driven (empty on the
-     * main menu); supply {@code player.level().registryAccess()} or
-     * equivalent.</p>
+     * {@code modularshoot:plugins} and {@code modularshoot:guns} registries
+     * are datapack-driven (empty on the main menu); supply
+     * {@code player.level().registryAccess()} or equivalent.</p>
      *
      * @param gun            the gun item stack to inspect; must not be
      *                       {@code null}

@@ -1,5 +1,7 @@
 package org.yanbwe.modularshoot.plugin;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -128,5 +130,17 @@ class PluginExtraValueServiceTest {
                 List.of());
         assertEquals(1, sums.size());
         assertEquals(10.0, sums.get(RARITY), 1.0E-9, "base survives without plugins");
+    }
+
+    @Test
+    void aggregateWithBaseReturnsImmutableMapAndKeepsInputsUntouched() {
+        Map<ResourceLocation, Double> base = new HashMap<>(Map.of(RARITY, 10.0));
+        List<PluginDefinition> defs = new ArrayList<>(List.of(def(Map.of(RARITY, 5.0))));
+        Map<ResourceLocation, Double> sums = PluginExtraValueService.aggregateWithBase(base, defs);
+        assertThrows(UnsupportedOperationException.class, () -> sums.put(DEMO, 1.0),
+                "result map must be immutable");
+        assertEquals(1, base.size(), "input base map must not be modified");
+        assertEquals(10.0, base.get(RARITY), 1.0E-9);
+        assertEquals(1, defs.size(), "input definition list must not be modified");
     }
 }
