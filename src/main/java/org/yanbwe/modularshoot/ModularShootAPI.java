@@ -1275,7 +1275,7 @@ public final class ModularShootAPI {
      * <p>Example:</p>
      * <pre>{@code
      * BulletSnapshot snapshot = ModularShootAPI.createBulletSnapshot()
-     *         .stat(modularshoot:damage, 10.0)
+     *         .stat(modularshoot:hit_damage, 10.0)
      *         .trait(modularshoot:ignite, true)
      *         .style(new BulletStyle(Optional.of(base), List.of()))
      *         .build(level.registryAccess());

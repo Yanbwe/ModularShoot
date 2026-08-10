@@ -12,14 +12,16 @@ import java.util.Optional;
 import net.minecraft.resources.ResourceLocation;
 import org.junit.jupiter.api.Test;
 import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
+import org.yanbwe.modularshoot.registry.shooter.ShooterDefinition;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Validates every shipped datapack JSON against the real Codec classes used
- * at runtime. Currently covers the {@code attribute_meta} registry; the
- * gun/plugin/trait/state codec round-trips are covered by the inline-JSON
- * codec tests (GunDefinitionKeyCodecTest, PluginDefinitionCodecTest, etc.).
+ * at runtime. Currently covers the {@code attribute_meta} registry and the
+ * {@code shooters} registry; the gun/plugin/trait/state codec round-trips are
+ * covered by the inline-JSON codec tests (GunDefinitionKeyCodecTest,
+ * PluginDefinitionCodecTest, etc.).
  *
  * <p>Since {@link AttributeMeta#CODEC} resolves {@code entity_types} through
  * {@code BuiltInRegistries.ENTITY_TYPE}, whose static initializer requires a
@@ -76,5 +78,18 @@ class DatapackJsonCodecTest {
         AttributeMeta meta = parse("attribute_meta/pellet_count.json", AttributeMeta.CODEC);
         assertEquals(Optional.empty(), meta.unit(),
                 "pellet_count declares no unit -> tooltip shows the bare value");
+    }
+
+    // --- shooters ---
+
+    @Test
+    void exampleBoneShooterParses() {
+        ShooterDefinition shooter =
+                parse("shooters/example_bone_shooter.json", ShooterDefinition.CODEC);
+        assertEquals(6.0,
+                shooter.stats().get(ResourceLocation.parse("modularshoot:hit_damage")), 1e-9,
+                "example bone shooter declares hit_damage 6.0 in its stats template");
+        assertTrue(shooter.bulletStyle().isPresent(),
+                "example bone shooter carries an independent-firing bullet_style");
     }
 }

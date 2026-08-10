@@ -26,6 +26,7 @@ import org.yanbwe.modularshoot.registry.ModularShootRegistries;
 import org.yanbwe.modularshoot.registry.Trait;
 import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
+import org.yanbwe.modularshoot.registry.shooter.ShooterRegistry;
 import org.yanbwe.modularshoot.registry.variant.VariantDefinition;
 
 /**
@@ -33,9 +34,10 @@ import org.yanbwe.modularshoot.registry.variant.VariantDefinition;
  * (设计文档 §/reload 重载行为, line 2305).
  *
  * <p>NeoForge's {@code DataPackRegistryEvent} already handles automatic
- * reloading of the seven dynamic registries ({@code guns}, {@code plugins},
+ * reloading of the eight dynamic registries ({@code guns}, {@code plugins},
  * {@code plugin_types}, {@code traits}, {@code states},
- * {@code attribute_meta}, {@code variants}). This listener complements that
+ * {@code attribute_meta}, {@code variants}, {@code shooters}). This listener
+ * complements that
  * with framework-specific post-reload logic that runs in the reload phase
  * (on the game thread), after the vanilla registry pipeline has finished:</p>
  * <ol>
@@ -346,7 +348,7 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
     // ──────────────── Registration conflict checks (A-01) ────────────────
 
     /**
-     * Checks all seven framework registries for conflicts between datapack
+     * Checks all eight framework registries for conflicts between datapack
      * entries and ids claimed by the Java API via
      * {@link RegistrationCoordinator#markJavaApiRegistered}.
      *
@@ -359,7 +361,10 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
      *
      * <p>The {@code variants} registry has no Java API write path, so its
      * conflict set is always empty; it is included only for consistency
-     * (变体仅由数据包 JSON 注册).</p>
+     * (变体仅由数据包 JSON 注册). The {@code shooters} registry has a Java
+     * API write path ({@link ShooterRegistry#registerShooter}), so it is
+     * checked like the others: a datapack JSON overriding a Java-API shooter
+     * id is shadowed at the query layer and reported with a {@code WARN}.</p>
      *
      * @param access the reloaded registry access
      */
@@ -371,6 +376,7 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
         checkConflictsForRegistry(access, ModularShootRegistries.STATES_KEY);
         checkConflictsForRegistry(access, ModularShootRegistries.ATTRIBUTE_META_KEY);
         checkConflictsForRegistry(access, ModularShootRegistries.VARIANTS_KEY);
+        checkConflictsForRegistry(access, ModularShootRegistries.SHOOTERS_KEY);
     }
 
     /**

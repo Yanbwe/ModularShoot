@@ -16,6 +16,7 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.damagesource.DamageType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
@@ -224,10 +225,19 @@ public record ShooterDefinition(
 
     /**
      * Reads the live value of a bound logical attribute from the source
-     * entity, with full degradation: a {@code null} source, a missing
-     * {@code attribute_meta} entry (with a {@code WARN}) or an entity type
-     * outside the entry's whitelist all yield {@link Optional#empty()}, so
-     * the template value is kept.
+     * entity, with full degradation: every missing link in the resolution
+     * chain yields {@link Optional#empty()} so the template value is kept.
+     * The five degradation cases are: a {@code null} source; a missing
+     * {@code attribute_meta} entry (with a {@code WARN}); an entity type
+     * outside the entry's whitelist; a bound vanilla attribute that is not
+     * registered ({@code resolveBoundHolder} returns {@code null}, e.g. a
+     * third-party mod was uninstalled); and an attribute that is not mounted
+     * on the entity ({@code getAttribute} returns {@code null}). Only when
+     * every link is present is the entity's final value returned &mdash;
+     * {@link AttributeResolver#readFinalValue} itself would silently degrade
+     * to {@code 0.0} on those last two cases, so this method guards them
+     * explicitly to honour the "read failure keeps the template value"
+     * contract (设计规格 §独立发射配置 attribute_binds).</p>
      *
      * @param id     the bound logical attribute id
      * @param source the entity to read from, or {@code null}
@@ -246,6 +256,15 @@ public record ShooterDefinition(
             return Optional.empty();
         }
         if (!meta.allowsEntity(source.getType())) {
+            return Optional.empty();
+        }
+        Holder<Attribute> holder = AttributeResolver.resolveBoundHolder(meta);
+        if (holder == null) {
+            // 绑定属性未注册（如第三方模组卸载）→ 保留模板值
+            return Optional.empty();
+        }
+        if (source.getAttribute(holder) == null) {
+            // 实体未挂载该属性 → 保留模板值
             return Optional.empty();
         }
         return Optional.of(AttributeResolver.readFinalValue(source, id, access));

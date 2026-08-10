@@ -42,6 +42,10 @@ public final class ModularShootAttributeEvents {
 
     @SubscribeEvent
     public static void onEntityAttributeModification(EntityAttributeModificationEvent event) {
+        // 新增框架属性时必须同步维护两处清单：
+        // 1) 下方玩家的显式挂载（10 行）；
+        // 2) FRAMEWORK_ATTRIBUTES 列表（其余全部实体类型的预挂载源）。
+        // 两者必须保持一致，否则会出现玩家与其余实体挂载不一致的属性集。
         event.add(EntityType.PLAYER, ModularShootAttributes.HIT_DAMAGE);
         event.add(EntityType.PLAYER, ModularShootAttributes.FIRE_RATE);
         event.add(EntityType.PLAYER, ModularShootAttributes.RANGE);
@@ -71,7 +75,12 @@ public final class ModularShootAttributeEvents {
         }
     }
 
-    /** The ten framework attributes mounted onto every entity type. */
+    /**
+     * The ten framework attributes mounted onto every entity type.
+     *
+     * <p>必须与 {@link #onEntityAttributeModification} 中玩家的显式挂载清单
+     * 保持同步：新增框架属性时两处必须同时更新。</p>
+     */
     private static final List<Holder<Attribute>> FRAMEWORK_ATTRIBUTES = List.of(
             ModularShootAttributes.HIT_DAMAGE,
             ModularShootAttributes.FIRE_RATE,
