@@ -103,6 +103,7 @@ public final class CrossReferenceValidator {
      *       {@code AttributeModifierService.resolveAttributeHolder})</li>
      *   <li>{@code traits} keys exist in the {@code traits} table</li>
      *   <li>{@code adds_variants} keys exist in the {@code variants} table</li>
+     *   <li>{@code adds_slots} keys exist in the {@code plugin_types} table</li>
      *   <li>{@code tags} intersect at least one {@code plugin_types} tags set
      *       (无交集 → 该插件永远装不上任何枪，兑现文档承诺的 WARN)</li>
      * </ul>
@@ -117,6 +118,7 @@ public final class CrossReferenceValidator {
         }
         Set<ResourceLocation> traitKeys = registryKeys(access, ModularShootRegistries.TRAITS_KEY);
         Set<ResourceLocation> variantKeys = registryKeys(access, ModularShootRegistries.VARIANTS_KEY);
+        Set<ResourceLocation> typeKeys = registryKeys(access, ModularShootRegistries.PLUGIN_TYPES_KEY);
         Map<ResourceLocation, Set<String>> typeTagSets = collectTypeTagSets(access);
         for (Map.Entry<ResourceLocation, PluginDefinition> entry : plugins.entrySet()) {
             ResourceLocation pluginId = entry.getKey();
@@ -125,6 +127,8 @@ public final class CrossReferenceValidator {
             checkTableKeys(pluginId, "traits", "traits", plugin.traits().keySet(), traitKeys);
             checkTableKeys(pluginId, "adds_variants", "variants",
                     plugin.addsVariants().keySet(), variantKeys);
+            checkTableKeys(pluginId, "adds_slots", "plugin_types",
+                    plugin.addsSlots().keySet(), typeKeys);
             checkPluginTags(pluginId, plugin, typeTagSets);
         }
     }
