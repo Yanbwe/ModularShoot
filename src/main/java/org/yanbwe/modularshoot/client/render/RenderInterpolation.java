@@ -13,15 +13,63 @@ import net.minecraft.world.phys.Vec3;
  * {@code partialTick} (0 &rarr; 1 within a tick), the bullet appears to move
  * smoothly instead of snapping forward once per tick.</p>
  *
+ * <p><strong>回弹修复（time-based interpolation）。</strong> The original
+ * scheme advanced the interpolation pair (prevPosition → position) on packet
+ * arrival — the server-tick clock — while the render factor came from the
+ * client's {@code partialTick}, which resets at every <em>client</em> tick.
+ * The two clocks drift, so a client tick that processed zero packets replayed
+ * the stale pair from {@code partialTick = 0}: the bullet visually bounced
+ * backward one server step. {@link #interpolationFactor} drives the factor
+ * from the wall-clock time since the pair was last advanced, so the factor
+ * only ever grows toward 1 and never resets while the pair is stale — the
+ * bullet holds at its current position instead of bouncing back.</p>
+ *
  * <p>All methods are pure: same inputs always produce the same output, with
  * no side effects. The class is not instantiable.</p>
  *
  * @see BulletRenderObject#getPrevPosition()
  * @see BulletRenderObject#getPosition()
+ * @see BulletRenderObject#getInterpolationFactor(long)
  */
 public final class RenderInterpolation {
 
     private RenderInterpolation() {
+    }
+
+    /**
+     * Computes the time-based interpolation factor for a position segment
+     * (回弹修复).
+     *
+     * <p>The segment spans {@code lastUpdateMillis} (when the interpolation
+     * pair was last advanced by a sync packet) to
+     * {@code lastUpdateMillis + expectedSpanMillis}. The factor grows linearly
+     * from 0 at the update moment to 1 at the end of the expected span, then
+     * <em>saturates at 1</em> — it never resets while the pair is stale, which
+     * is the anti-bounce property (a stale pair holding at {@code current}
+     * beats bouncing back to {@code prev}).</p>
+     *
+     * <p>Guards: a non-positive expected span (instant double packet) is
+     * treated as a completed segment; {@code nowMillis} before
+     * {@code lastUpdateMillis} (wall-clock adjustment) degrades to the segment
+     * start so the lerp never runs backward.</p>
+     *
+     * @param nowMillis          the current wall-clock time in millis
+     * @param lastUpdateMillis   when the interpolation pair was last advanced
+     * @param expectedSpanMillis how long this segment is expected to last
+     *                           (the previously measured elapsed between
+     *                           updates; 50ms at a healthy 20 TPS)
+     * @return the interpolation factor in {@code [0, 1]}
+     */
+    public static float interpolationFactor(
+            long nowMillis, long lastUpdateMillis, long expectedSpanMillis) {
+        if (expectedSpanMillis <= 0L) {
+            return 1.0F;
+        }
+        if (nowMillis <= lastUpdateMillis) {
+            return 0.0F;
+        }
+        long elapsed = nowMillis - lastUpdateMillis;
+        return Math.min(1.0F, (float) elapsed / (float) expectedSpanMillis);
     }
 
     /**

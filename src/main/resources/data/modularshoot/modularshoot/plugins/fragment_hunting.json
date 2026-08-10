@@ -1,11 +1,25 @@
 {
-  "tags": ["c:gun", "c:melee"],
+  "tags": [
+    "c:gun",
+    "c:melee"
+  ],
   "item_icon": "modularshoot:textures/plugins/fragment_hunting.png",
   "modifiers": [
-    { "attribute": "modularshoot:accuracy_yaw", "operation": "add", "value": -4.0 },
-    { "attribute": "modularshoot:accuracy_pitch", "operation": "add", "value": -4.0 }
+    {
+      "attribute": "modularshoot:accuracy_yaw",
+      "operation": "add",
+      "value": -4.0
+    },
+    {
+      "attribute": "modularshoot:accuracy_pitch",
+      "operation": "add",
+      "value": -4.0
+    }
   ],
   "name": "lang:modularshoot.example.plugin.fragment_hunting",
   "brief": "lang:modularshoot.example.plugin.fragment_hunting.brief",
-  "description": "lang:modularshoot.example.plugin.fragment_hunting.desc"
+  "description": "lang:modularshoot.example.plugin.fragment_hunting.desc",
+  "extra_values": {
+    "modularrarity:rarity": 2
+  }
 }

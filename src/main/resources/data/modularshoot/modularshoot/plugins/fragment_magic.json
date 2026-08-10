@@ -1,11 +1,24 @@
 {
-  "tags": ["c:magic"],
+  "tags": [
+    "c:magic"
+  ],
   "item_icon": "modularshoot:textures/plugins/fragment_magic.png",
   "modifiers": [
-    { "attribute": "modularshoot:hit_damage", "operation": "multiply", "value": 0.5 },
-    { "attribute": "modularshoot:fire_rate", "operation": "multiply", "value": 0.3 }
+    {
+      "attribute": "modularshoot:hit_damage",
+      "operation": "multiply",
+      "value": 0.5
+    },
+    {
+      "attribute": "modularshoot:fire_rate",
+      "operation": "multiply",
+      "value": 0.3
+    }
   ],
   "name": "lang:modularshoot.example.plugin.fragment_magic",
   "brief": "lang:modularshoot.example.plugin.fragment_magic.brief",
-  "description": "lang:modularshoot.example.plugin.fragment_magic.desc"
+  "description": "lang:modularshoot.example.plugin.fragment_magic.desc",
+  "extra_values": {
+    "modularrarity:rarity": 2
+  }
 }

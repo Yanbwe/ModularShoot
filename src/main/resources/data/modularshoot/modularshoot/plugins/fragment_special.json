@@ -1,11 +1,24 @@
 {
-  "tags": ["c:support"],
+  "tags": [
+    "c:support"
+  ],
   "priority": 200,
   "item_icon": "modularshoot:textures/plugins/fragment_special.png",
-  "extra_values": { "modularshoot:demo_rarity": 5 },
+  "extra_values": {
+    "modularshoot:demo_rarity": 5,
+    "modularrarity:rarity": 4
+  },
   "modifiers": [
-    { "attribute": "modularshoot:fire_rate", "operation": "multiply", "value": 0.2 },
-    { "attribute": "modularshoot:hit_damage", "operation": "multiply", "value": 0.2 }
+    {
+      "attribute": "modularshoot:fire_rate",
+      "operation": "multiply",
+      "value": 0.2
+    },
+    {
+      "attribute": "modularshoot:hit_damage",
+      "operation": "multiply",
+      "value": 0.2
+    }
   ],
   "name": "lang:modularshoot.example.plugin.fragment_special",
   "brief": "lang:modularshoot.example.plugin.fragment_special.brief",

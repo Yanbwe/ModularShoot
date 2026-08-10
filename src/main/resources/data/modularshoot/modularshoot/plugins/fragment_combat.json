@@ -1,16 +1,29 @@
 {
-  "tags": ["c:melee", "c:gun"],
+  "tags": [
+    "c:melee",
+    "c:gun"
+  ],
   "item_icon": "modularshoot:textures/plugins/fragment_combat.png",
   "exclusive_group": "group:blade",
   "modifiers": [
-    { "attribute": "modularshoot:hit_damage", "operation": "multiply", "value": 0.5 }
+    {
+      "attribute": "modularshoot:hit_damage",
+      "operation": "multiply",
+      "value": 0.5
+    }
   ],
   "bullet_style": {
     "modifiers": [
-      { "type": "scale", "value": 1.2 }
+      {
+        "type": "scale",
+        "value": 1.2
+      }
     ]
   },
   "name": "lang:modularshoot.example.plugin.fragment_combat",
   "brief": "lang:modularshoot.example.plugin.fragment_combat.brief",
-  "description": "lang:modularshoot.example.plugin.fragment_combat.desc"
+  "description": "lang:modularshoot.example.plugin.fragment_combat.desc",
+  "extra_values": {
+    "modularrarity:rarity": 2
+  }
 }

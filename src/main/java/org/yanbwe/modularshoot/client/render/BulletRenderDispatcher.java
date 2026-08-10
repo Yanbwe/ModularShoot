@@ -37,7 +37,12 @@ import org.yanbwe.modularshoot.network.ClientBulletSnapshot;
  *       (设计文档 §特性视觉钩子)</li>
  *   <li>Interpolates the bullet position between
  *       {@link BulletRenderObject#getPrevPosition()} and
- *       {@link BulletRenderObject#getPosition()} using {@code partialTick}
+ *       {@link BulletRenderObject#getPosition()} using a <em>time-based</em>
+ *       factor — {@link BulletRenderObject#getInterpolationFactor(long)} —
+ *       which grows from the last sync-packet arrival and saturates at 1
+ *       (回弹修复; the pair is advanced by the server-tick clock, so the
+ *       client-tick {@code partialTick} must not drive the lerp, see
+ *       {@link RenderInterpolation#interpolationFactor})
  *       (设计文档 §位置插值, line 1242)</li>
  *   <li>Dispatches to the appropriate renderer based on
  *       {@link BulletRenderObject#getRenderMode()}:
@@ -118,6 +123,9 @@ public final class BulletRenderDispatcher {
         Camera camera = event.getCamera();
         Vec3 cameraPos = camera.getPosition();
         float partialTick = event.getPartialTick().getGameTimeDeltaPartialTick(false);
+        // One wall-clock read per frame: every bullet's interpolation factor
+        // uses the same "now" so the frame is internally consistent (回弹修复).
+        long nowMillis = System.currentTimeMillis();
         PoseStack poseStack = event.getPoseStack();
         MultiBufferSource bufferSource = Minecraft.getInstance().renderBuffers().bufferSource();
 
@@ -136,7 +144,7 @@ public final class BulletRenderDispatcher {
             ClientBulletSnapshot snapshot = renderManager.getSnapshot(renderObject.getBulletId());
             VisualTickHookDispatcher.dispatchVisualTick(snapshot, renderObject);
 
-            Vec3 interpolatedPos = interpolatePosition(renderObject, partialTick);
+            Vec3 interpolatedPos = interpolatePosition(renderObject, nowMillis);
             // Distance fade is computed from the interpolated position (more
             // accurate than the raw tick position at high bullet speeds).
             float distanceAlpha = 1.0F;
@@ -151,20 +159,27 @@ public final class BulletRenderDispatcher {
 
     /**
      * Linearly interpolates between the bullet's previous and current position
-     * using {@code partialTick} to smooth high-speed movement across frames
-     * (设计文档 §位置插值, line 1242).
+     * using the <em>time-based</em> interpolation factor (回弹修复, 设计文档
+     * §位置插值, line 1242).
+     *
+     * <p>The factor comes from {@link BulletRenderObject#getInterpolationFactor(long)}
+     * — wall-clock time since the pair was last advanced by a sync packet,
+     * saturating at 1 — rather than the client-tick {@code partialTick}. The
+     * pair is advanced on the server-tick clock; a client tick that processes
+     * zero packets would reset {@code partialTick} and replay the stale pair
+     * from 0, visibly bouncing the bullet backward one server step. The
+     * time-based factor only grows, so a stale pair holds the bullet at its
+     * current position instead.</p>
      *
      * @param renderObject the bullet to interpolate
-     * @param partialTick  the frame partial tick in [0,1)
+     * @param nowMillis    the frame's wall-clock time (shared by every bullet
+     *                     of the frame, read once in {@link #renderAllBullets})
      * @return the interpolated world position
      */
-    private static Vec3 interpolatePosition(BulletRenderObject renderObject, float partialTick) {
-        Vec3 prev = renderObject.getPrevPosition();
-        Vec3 cur = renderObject.getPosition();
-        return new Vec3(
-                prev.x + (cur.x - prev.x) * partialTick,
-                prev.y + (cur.y - prev.y) * partialTick,
-                prev.z + (cur.z - prev.z) * partialTick);
+    private static Vec3 interpolatePosition(BulletRenderObject renderObject, long nowMillis) {
+        float factor = renderObject.getInterpolationFactor(nowMillis);
+        return RenderInterpolation.lerpPosition(
+                renderObject.getPrevPosition(), renderObject.getPosition(), factor);
     }
 
     /**

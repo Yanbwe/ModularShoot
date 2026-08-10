@@ -22,5 +22,8 @@
     "hit_entity": "minecraft:entity.arrow.hit_player",
     "hit_block": "minecraft:block.stone.hit",
     "plugin_install": "minecraft:block.note_block.pling"
+  },
+  "extra_values": {
+    "modularrarity:rarity": 2
   }
 }

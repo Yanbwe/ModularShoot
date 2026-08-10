@@ -31,13 +31,20 @@ import org.yanbwe.modularshoot.registry.gun.BulletStyle;
  * proximity, or switching between billboard and 3d modes (设计文档
  * §客户端视觉同步与渲染).</p>
  *
- * <p>Position interpolation: {@link #prevPosition} lags one tick behind
- * {@link #position} and is used by the renderer to smooth high-speed bullets
- * across frames via {@code partialTick}. Use {@link #updatePosition(Vec3)}
- * for the common case of advancing the bullet each sync tick; it atomically
- * archives the old position before applying the new one. Direct
- * {@link #setPosition(Vec3)} is available for callers that manage
- * {@code prevPosition} themselves (设计文档 §位置插值).</p>
+ * <p>Position interpolation (回弹修复): {@link #prevPosition} lags one sync
+ * segment behind {@link #position} and is used by the renderer to smooth
+ * high-speed bullets across frames. The interpolation factor is
+ * <em>time-based</em> — {@link #getInterpolationFactor(long)} derives it from
+ * the wall-clock time since the pair was last advanced — because the pair is
+ * advanced by network packets (server-tick clock) while the client's
+ * {@code partialTick} resets on the client-tick clock; mixing the two clocks
+ * made stale pairs bounce backward (see
+ * {@link RenderInterpolation#interpolationFactor}). Use
+ * {@link #updatePosition(Vec3)} for the common case of advancing the bullet
+ * each sync tick; it atomically archives the old position before applying the
+ * new one and records the segment timing. Direct {@link #setPosition(Vec3)}
+ * is available for callers that manage {@code prevPosition} and segment
+ * timing themselves (设计文档 §位置插值).</p>
  *
  * @see BulletStyle.RenderMode
  */
@@ -48,6 +55,13 @@ public final class BulletRenderObject {
 
     /** Render-mode tag for the 3d model pipeline. */
     public static final String RENDER_MODE_3D = BulletStyle.RenderMode.THREE_D.getSerializedName();
+
+    /**
+     * Default expected segment duration in millis — one server tick at a
+     * healthy 20 TPS (回弹修复). Used for the first segment after creation,
+     * before any real inter-update elapsed time has been measured.
+     */
+    private static final long DEFAULT_SPAN_MILLIS = 50L;
 
     private final int bulletId;
     private Vec3 position;
@@ -66,6 +80,20 @@ public final class BulletRenderObject {
     @Nullable private Vector4f composedTint;
     /** Additive attach_layer data in source order; empty when none. */
     private List<LayerData> layers = List.of();
+    /**
+     * Wall-clock time (millis) when the interpolation pair was last advanced
+     * (回弹修复). {@code 0} is the sentinel "no segment started yet" — the
+     * factor stays 0 (hold at the initial position) until the first
+     * {@link #updatePosition(Vec3, long)} call.
+     */
+    private long lastUpdateMillis;
+    /**
+     * Expected duration of the current interpolation segment in millis
+     * (回弹修复). Adapted to the previously measured inter-update elapsed time
+     * so a slower server produces a slower crawl instead of a snap; defaults
+     * to {@link #DEFAULT_SPAN_MILLIS} before any measurement exists.
+     */
+    private long expectedSpanMillis = DEFAULT_SPAN_MILLIS;
 
     /**
      * @param bulletId      unique-per-dimension bullet id, matching the server BulletRecord
@@ -130,15 +158,73 @@ public final class BulletRenderObject {
 
     /**
      * Advances the bullet in one atomic step: archives the current position
-     * as {@code prevPosition}, then stores the new position.
+     * as {@code prevPosition}, stores the new position, and records the
+     * segment timing with the current wall-clock time.
      *
      * <p>This is the canonical way to move a render object each sync tick —
      * it guarantees the interpolation pair stays consistent without requiring
-     * the caller to remember the two-step dance (设计文档 §位置插值).</p>
+     * the caller to remember the two-step dance (设计文档 §位置插值). See
+     * {@link #updatePosition(Vec3, long)} for the timing semantics.</p>
      */
     public void updatePosition(Vec3 newPosition) {
+        updatePosition(newPosition, System.currentTimeMillis());
+    }
+
+    /**
+     * Advances the bullet in one atomic step with an explicit segment time
+     * (回弹修复).
+     *
+     * <p>Archives the current position as {@code prevPosition}, stores the new
+     * position, and advances the time-based interpolation bookkeeping: the
+     * measured elapsed time since the previous update becomes the expected
+     * duration of the <em>next</em> segment (adaptive — a slow server produces
+     * a slow crawl instead of a snap). An elapsed time of zero or less (two
+     * packets processed in the same network drain) keeps the previous span so
+     * the segment does not collapse to a teleport. The first update after
+     * creation has no previous segment and keeps {@link #DEFAULT_SPAN_MILLIS}.</p>
+     *
+     * <p>Rendering uses {@link #getInterpolationFactor(long)} with this
+     * bookkeeping: the factor only ever grows toward 1 and saturates there, so
+     * a client tick that processes no packet holds the bullet at its current
+     * position instead of bouncing it back toward {@code prevPosition}.</p>
+     *
+     * @param newPosition the new position
+     * @param nowMillis   the wall-clock time of this update (same clock as the
+     *                    renderer's {@link #getInterpolationFactor(long)} calls)
+     */
+    public void updatePosition(Vec3 newPosition, long nowMillis) {
         this.prevPosition = this.position;
         this.position = newPosition;
+        if (this.lastUpdateMillis != 0L) {
+            long elapsed = nowMillis - this.lastUpdateMillis;
+            if (elapsed > 0L) {
+                this.expectedSpanMillis = elapsed;
+            }
+            // elapsed <= 0 (instant double update): keep the previous span.
+        }
+        this.lastUpdateMillis = nowMillis;
+    }
+
+    /**
+     * Returns the time-based interpolation factor for the current segment
+     * (回弹修复).
+     *
+     * <p>Grows from 0 at the last {@link #updatePosition(Vec3, long)} call to
+     * 1 over the expected span, then saturates at 1 — the renderer holds the
+     * bullet at {@link #getPosition() position} while the pair is stale
+     * instead of resetting to {@link #getPrevPosition() prevPosition}. Before
+     * the first update the sentinel {@code lastUpdateMillis = 0} keeps the
+     * factor at 0, holding the bullet at its initial position.</p>
+     *
+     * @param nowMillis the renderer's current wall-clock time
+     * @return the interpolation factor in {@code [0, 1]}
+     */
+    public float getInterpolationFactor(long nowMillis) {
+        if (this.lastUpdateMillis == 0L) {
+            return 0.0F; // no segment started yet — hold at the initial position
+        }
+        return RenderInterpolation.interpolationFactor(
+                nowMillis, this.lastUpdateMillis, this.expectedSpanMillis);
     }
 
     /** Returns the current flight direction. */

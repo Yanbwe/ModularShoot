@@ -1,17 +1,54 @@
 {
-  "tags": ["c:support"],
+  "tags": [
+    "c:support"
+  ],
   "item_icon": "modularshoot:textures/plugins/fragment_healing.png",
-  "traits": { "modularshoot:example_bloodlust": true },
+  "traits": {
+    "modularshoot:example_bloodlust": true
+  },
   "modifiers": [
-    { "attribute": "modularshoot:hit_damage", "operation": "multiply", "value": 0.15 }
+    {
+      "attribute": "modularshoot:hit_damage",
+      "operation": "multiply",
+      "value": 0.15
+    }
   ],
   "bullet_style": {
     "modifiers": [
-      { "type": "tint", "color": [0.3, 0.9, 0.5, 1.0] },
-      { "type": "attach_layer", "render_mode": "billboard", "texture": "modularshoot:textures/bullet/default.png", "follow_rotation": true, "follow_scale": true, "offset": [0.0, 0.0, 0.0], "scale": 0.9, "tint": [0.3, 0.9, 0.5, 0.7] }
+      {
+        "type": "tint",
+        "color": [
+          0.3,
+          0.9,
+          0.5,
+          1.0
+        ]
+      },
+      {
+        "type": "attach_layer",
+        "render_mode": "billboard",
+        "texture": "modularshoot:textures/bullet/default.png",
+        "follow_rotation": true,
+        "follow_scale": true,
+        "offset": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": 0.9,
+        "tint": [
+          0.3,
+          0.9,
+          0.5,
+          0.7
+        ]
+      }
     ]
   },
   "name": "lang:modularshoot.example.plugin.fragment_healing",
   "brief": "lang:modularshoot.example.plugin.fragment_healing.brief",
-  "description": "lang:modularshoot.example.plugin.fragment_healing.desc"
+  "description": "lang:modularshoot.example.plugin.fragment_healing.desc",
+  "extra_values": {
+    "modularrarity:rarity": 1
+  }
 }

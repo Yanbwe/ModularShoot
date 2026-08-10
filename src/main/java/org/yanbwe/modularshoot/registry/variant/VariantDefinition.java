@@ -52,10 +52,11 @@ import org.yanbwe.modularshoot.registry.gun.BulletStyle;
  *       priority base source; never serialised to clients (spec V6).</li>
  * </ul>
  *
- * <p><strong>整发语义</strong>: a variant is rolled <em>once per shot</em>
- * and shared by every pellet of that shot (spec §6.4); per-pellet
- * differentiation is the shoot-effect contributors' job (机制三), not the
- * variant's.</p>
+ * <p><strong>逐弹丸语义</strong>: the variant pool is rolled <em>once per
+ * pellet</em>, so pellets of one shot may end up with different variants
+ * (spec §6.4); per-pellet differentiation is handled by the roll itself,
+ * while shoot-effect contributors (机制三) further rewrite individual
+ * pellets after the roll.</p>
  *
  * @param baseWeight          authoritative base weight (not a hint) used when
  *                            nothing else declares this

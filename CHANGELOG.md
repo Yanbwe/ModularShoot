@@ -6,6 +6,10 @@
 
 - **枪械定义支持 `extra_values` 字段**：`GunDefinition` 新增命名空间数值扩展字段（键须带完整命名空间，与插件侧一致）；`ModularShootAPI.getExtraValueSums` / `getExtraValue` 语义升级为"枪械定义基础值 + 已安装插件累计值"的一站式总和（枪械定义失效时基础值不参与，与插件降级口径一致）。示例：`blood_sword` 声明 `modularshoot:demo_rarity` 基础值 10。
 
+### 修复 / Fixed
+
+- **修复子弹飞行视觉回弹**：`BulletRenderDispatcher` 每帧统一读取一次时钟供全帧子弹共用（`TimeBasedInterpolationTest`）。
+
 ## [0.1.2] - 2026-08-08
 
 ### 变更 / Changed

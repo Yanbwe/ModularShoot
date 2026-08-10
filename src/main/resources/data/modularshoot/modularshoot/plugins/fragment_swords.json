@@ -1,17 +1,36 @@
 {
-  "tags": ["c:melee"],
+  "tags": [
+    "c:melee"
+  ],
   "item_icon": "modularshoot:textures/plugins/fragment_swords.png",
-  "adds_variants": { "modularshoot:example_heavy_blade": 0.4 },
+  "adds_variants": {
+    "modularshoot:example_heavy_blade": 0.4
+  },
   "exclusive_group": "group:blade",
   "modifiers": [
-    { "attribute": "modularshoot:hit_damage", "operation": "add", "value": 4.0 }
+    {
+      "attribute": "modularshoot:hit_damage",
+      "operation": "add",
+      "value": 4.0
+    }
   ],
   "bullet_style": {
     "modifiers": [
-      { "type": "tint", "color": [0.8, 0.1, 0.1, 1.0] }
+      {
+        "type": "tint",
+        "color": [
+          0.8,
+          0.1,
+          0.1,
+          1.0
+        ]
+      }
     ]
   },
   "name": "lang:modularshoot.example.plugin.fragment_swords",
   "brief": "lang:modularshoot.example.plugin.fragment_swords.brief",
-  "description": "lang:modularshoot.example.plugin.fragment_swords.desc"
+  "description": "lang:modularshoot.example.plugin.fragment_swords.desc",
+  "extra_values": {
+    "modularrarity:rarity": 2
+  }
 }

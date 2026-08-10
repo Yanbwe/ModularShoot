@@ -1,15 +1,42 @@
 {
-  "tags": ["c:melee"],
+  "tags": [
+    "c:melee"
+  ],
   "item_icon": "modularshoot:textures/plugins/fragment_metal.png",
   "modifiers": [
-    { "attribute": "modularshoot:entity_penetration", "operation": "add", "value": 1.0 }
+    {
+      "attribute": "modularshoot:entity_penetration",
+      "operation": "add",
+      "value": 1.0
+    }
   ],
   "bullet_style": {
     "modifiers": [
-      { "type": "attach_layer", "render_mode": "billboard", "texture": "modularshoot:textures/bullet/default.png", "follow_rotation": true, "follow_scale": true, "offset": [0.0, 0.0, 0.0], "scale": 1.1, "tint": [0.8, 0.8, 0.85, 1.0] }
+      {
+        "type": "attach_layer",
+        "render_mode": "billboard",
+        "texture": "modularshoot:textures/bullet/default.png",
+        "follow_rotation": true,
+        "follow_scale": true,
+        "offset": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": 1.1,
+        "tint": [
+          0.8,
+          0.8,
+          0.85,
+          1.0
+        ]
+      }
     ]
   },
   "name": "lang:modularshoot.example.plugin.fragment_metal",
   "brief": "lang:modularshoot.example.plugin.fragment_metal.brief",
-  "description": "lang:modularshoot.example.plugin.fragment_metal.desc"
+  "description": "lang:modularshoot.example.plugin.fragment_metal.desc",
+  "extra_values": {
+    "modularrarity:rarity": 1
+  }
 }

@@ -1,16 +1,44 @@
 {
-  "tags": ["c:magic", "c:support"],
+  "tags": [
+    "c:magic",
+    "c:support"
+  ],
   "priority": -10,
   "item_icon": "modularshoot:textures/plugins/fragment_implements.png",
   "modifiers": [
-    { "attribute": "modularshoot:range", "operation": "add", "value": 10.0 }
+    {
+      "attribute": "modularshoot:range",
+      "operation": "add",
+      "value": 10.0
+    }
   ],
   "bullet_style": {
     "modifiers": [
-      { "type": "attach_layer", "render_mode": "billboard", "texture": "modularshoot:textures/bullet/default.png", "follow_rotation": true, "follow_scale": true, "offset": [0.0, 0.0, 0.0], "scale": 1.25, "tint": [1.0, 0.85, 0.5, 0.8] }
+      {
+        "type": "attach_layer",
+        "render_mode": "billboard",
+        "texture": "modularshoot:textures/bullet/default.png",
+        "follow_rotation": true,
+        "follow_scale": true,
+        "offset": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": 1.25,
+        "tint": [
+          1.0,
+          0.85,
+          0.5,
+          0.8
+        ]
+      }
     ]
   },
   "name": "lang:modularshoot.example.plugin.fragment_implements",
   "brief": "lang:modularshoot.example.plugin.fragment_implements.brief",
-  "description": "lang:modularshoot.example.plugin.fragment_implements.desc"
+  "description": "lang:modularshoot.example.plugin.fragment_implements.desc",
+  "extra_values": {
+    "modularrarity:rarity": 1
+  }
 }

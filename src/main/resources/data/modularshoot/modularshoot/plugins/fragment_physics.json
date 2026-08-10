@@ -1,11 +1,25 @@
 {
-  "tags": ["c:support", "c:gun"],
+  "tags": [
+    "c:support",
+    "c:gun"
+  ],
   "item_icon": "modularshoot:textures/plugins/fragment_physics.png",
   "modifiers": [
-    { "attribute": "modularshoot:bullet_speed", "operation": "multiply", "value": 0.3 },
-    { "attribute": "modularshoot:pellet_count", "operation": "multiply_total", "value": 0.2 }
+    {
+      "attribute": "modularshoot:bullet_speed",
+      "operation": "multiply",
+      "value": 0.3
+    },
+    {
+      "attribute": "modularshoot:pellet_count",
+      "operation": "multiply_total",
+      "value": 0.2
+    }
   ],
   "name": "lang:modularshoot.example.plugin.fragment_physics",
   "brief": "lang:modularshoot.example.plugin.fragment_physics.brief",
-  "description": "lang:modularshoot.example.plugin.fragment_physics.desc"
+  "description": "lang:modularshoot.example.plugin.fragment_physics.desc",
+  "extra_values": {
+    "modularrarity:rarity": 2
+  }
 }

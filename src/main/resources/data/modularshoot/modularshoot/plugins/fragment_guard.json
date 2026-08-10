@@ -1,17 +1,34 @@
 {
-  "tags": ["c:support"],
+  "tags": [
+    "c:support"
+  ],
   "item_icon": "modularshoot:textures/plugins/fragment_guard.png",
   "exclusive_group": "group:defense",
   "modifiers": [
-    { "attribute": "modularshoot:accuracy_yaw", "operation": "multiply", "value": 0.5 },
-    { "attribute": "modularshoot:accuracy_pitch", "operation": "multiply", "value": 0.5 }
+    {
+      "attribute": "modularshoot:accuracy_yaw",
+      "operation": "multiply",
+      "value": 0.5
+    },
+    {
+      "attribute": "modularshoot:accuracy_pitch",
+      "operation": "multiply",
+      "value": 0.5
+    }
   ],
   "gun_outline": {
-    "color": [0.3, 0.6, 1.0],
+    "color": [
+      0.3,
+      0.6,
+      1.0
+    ],
     "alpha": 0.8,
     "width": 1
   },
   "name": "lang:modularshoot.example.plugin.fragment_guard",
   "brief": "lang:modularshoot.example.plugin.fragment_guard.brief",
-  "description": "lang:modularshoot.example.plugin.fragment_guard.desc"
+  "description": "lang:modularshoot.example.plugin.fragment_guard.desc",
+  "extra_values": {
+    "modularrarity:rarity": 1
+  }
 }

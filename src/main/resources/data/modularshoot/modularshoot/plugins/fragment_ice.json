@@ -1,18 +1,39 @@
 {
-  "tags": ["c:magic"],
+  "tags": [
+    "c:magic"
+  ],
   "item_icon": "modularshoot:textures/plugins/fragment_ice.png",
-  "adds_variants": { "modularshoot:example_ice_shard": 0.5 },
+  "adds_variants": {
+    "modularshoot:example_ice_shard": 0.5
+  },
   "exclusive_group": "group:element",
-  "traits": { "modularshoot:example_frost": true },
+  "traits": {
+    "modularshoot:example_frost": true
+  },
   "modifiers": [
-    { "attribute": "modularshoot:bullet_speed", "operation": "multiply", "value": 0.3 }
+    {
+      "attribute": "modularshoot:bullet_speed",
+      "operation": "multiply",
+      "value": 0.3
+    }
   ],
   "bullet_style": {
     "modifiers": [
-      { "type": "tint", "color": [0.6, 0.85, 1.0, 1.0] }
+      {
+        "type": "tint",
+        "color": [
+          0.6,
+          0.85,
+          1.0,
+          1.0
+        ]
+      }
     ]
   },
   "name": "lang:modularshoot.example.plugin.fragment_ice",
   "brief": "lang:modularshoot.example.plugin.fragment_ice.brief",
-  "description": "lang:modularshoot.example.plugin.fragment_ice.desc"
+  "description": "lang:modularshoot.example.plugin.fragment_ice.desc",
+  "extra_values": {
+    "modularrarity:rarity": 3
+  }
 }

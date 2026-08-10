@@ -95,10 +95,10 @@ The visuals won't wow everyone; honestly, I only care whether it's fun. Haha.
 **A3**: I dreamed it.
 
 **Q4**：等等，我只是个玩家，这个模组有可以玩的东西吗？
-**A4**：有三把看起来跟枪有关系的物品和十三个自称插件的物品——我的意思是，有一些示例内容。然后你可以期待一下Yanbwe后面开发的拓展模组。
+**A4**：有三把看起来跟枪有关系的物品和十七个自称插件的物品——我的意思是，有一些示例内容。然后你可以期待一下Yanbwe后面开发的拓展模组。
 
 **Q4**: Wait, I'm just a player — does this mod have anything to play with?  
-**A4**: There are three items that look gun-related and thirteen items that call themselves plugins — I mean, some sample content. And stay tuned for Yanbwe's upcoming expansion mods.
+**A4**: There are three items that look gun-related and seventeen items that call themselves plugins — I mean, some sample content. And stay tuned for Yanbwe's upcoming expansion mods.
 
 **Q5**：我以为这是打枪的，结果示例内容让我觉得这是个奇异古怪的模组。
 **A5**：发挥你的想象力，“射击”可不是枪械的特权。

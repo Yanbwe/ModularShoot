@@ -1,12 +1,26 @@
 {
-  "tags": ["c:magic"],
+  "tags": [
+    "c:magic"
+  ],
   "item_icon": "modularshoot:textures/plugins/fragment_crystal.png",
   "modifiers": [
-    { "attribute": "modularshoot:bullet_speed", "operation": "add", "value": 10.0 }
+    {
+      "attribute": "modularshoot:bullet_speed",
+      "operation": "add",
+      "value": 10.0
+    }
   ],
   "bullet_style": {
     "modifiers": [
-      { "type": "tint", "color": [0.7, 0.4, 1.0, 1.0] }
+      {
+        "type": "tint",
+        "color": [
+          0.7,
+          0.4,
+          1.0,
+          1.0
+        ]
+      }
     ]
   },
   "texture_overlay": {
@@ -14,10 +28,18 @@
     "layer": 20,
     "alignment": "center",
     "fit": "contain",
-    "tint": [0.7, 0.4, 1.0, 1.0],
+    "tint": [
+      0.7,
+      0.4,
+      1.0,
+      1.0
+    ],
     "blend": "screen"
   },
   "name": "lang:modularshoot.example.plugin.fragment_crystal",
   "brief": "lang:modularshoot.example.plugin.fragment_crystal.brief",
-  "description": "lang:modularshoot.example.plugin.fragment_crystal.desc"
+  "description": "lang:modularshoot.example.plugin.fragment_crystal.desc",
+  "extra_values": {
+    "modularrarity:rarity": 2
+  }
 }

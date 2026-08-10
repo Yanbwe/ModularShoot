@@ -59,12 +59,17 @@ import org.yanbwe.modularshoot.network.BulletS2CPacket.FullBulletEntry;
  * delta packets (periodic drift recovery) without the per-interval visual
  * jump that a full rebuild caused (设计文档 §同步策略).</p>
  *
- * <p>Position interpolation: each render object keeps a
- * {@link BulletRenderObject#getPrevPosition() prevPosition} that lags one tick
- * behind {@link BulletRenderObject#getPosition() position}. The renderer
- * blends the two with {@link RenderInterpolation#lerpPosition(Vec3, Vec3, float)}
- * using the frame's {@code partialTick} to smooth high-speed bullets across
- * frames (设计文档 §位置插值).</p>
+ * <p>Position interpolation (回弹修复): each render object keeps a
+ * {@link BulletRenderObject#getPrevPosition() prevPosition} that lags one sync
+ * segment behind {@link BulletRenderObject#getPosition() position}. The
+ * renderer blends the two with
+ * {@link BulletRenderObject#getInterpolationFactor(long)} — a <em>time-based</em>
+ * factor grown from the last sync-packet arrival and saturated at 1 — to
+ * smooth high-speed bullets across frames. The client-tick {@code partialTick}
+ * is deliberately not used for the lerp: the pair is advanced by network
+ * packets (server-tick clock), so a packet-less client tick would reset
+ * {@code partialTick} and bounce a stale pair backward
+ * (设计文档 §位置插值; see {@link RenderInterpolation#interpolationFactor}).</p>
  *
  * <p>Render objects are cleaned up automatically on level unload and player
  * disconnect via {@link ClientPlayerNetworkEvent.LoggingOut} and

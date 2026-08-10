@@ -1,10 +1,20 @@
 {
-  "tags": ["c:gun", "c:barrel"],
+  "tags": [
+    "c:gun",
+    "c:barrel"
+  ],
   "item_icon": "modularshoot:textures/plugins/fragment_gun.png",
   "modifiers": [
-    { "attribute": "modularshoot:fire_rate", "operation": "multiply", "value": 0.5 }
+    {
+      "attribute": "modularshoot:fire_rate",
+      "operation": "multiply",
+      "value": 0.5
+    }
   ],
   "name": "lang:modularshoot.example.plugin.fragment_gun",
   "brief": "lang:modularshoot.example.plugin.fragment_gun.brief",
-  "description": "lang:modularshoot.example.plugin.fragment_gun.desc"
+  "description": "lang:modularshoot.example.plugin.fragment_gun.desc",
+  "extra_values": {
+    "modularrarity:rarity": 1
+  }
 }

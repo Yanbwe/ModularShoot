@@ -1,15 +1,33 @@
 {
-  "tags": ["c:magic"],
+  "tags": [
+    "c:magic"
+  ],
   "item_icon": "modularshoot:textures/plugins/fragment_fire.png",
-  "adds_variants": { "modularshoot:example_fireball": 0.5 },
+  "adds_variants": {
+    "modularshoot:example_fireball": 0.5
+  },
   "exclusive_group": "group:element",
-  "traits": { "modularshoot:example_flame": true },
+  "traits": {
+    "modularshoot:example_flame": true
+  },
   "modifiers": [
-    { "attribute": "modularshoot:hit_damage", "operation": "multiply", "value": 0.2 }
+    {
+      "attribute": "modularshoot:hit_damage",
+      "operation": "multiply",
+      "value": 0.2
+    }
   ],
   "bullet_style": {
     "modifiers": [
-      { "type": "tint", "color": [1.0, 0.5, 0.2, 1.0] }
+      {
+        "type": "tint",
+        "color": [
+          1.0,
+          0.5,
+          0.2,
+          1.0
+        ]
+      }
     ]
   },
   "texture_overlay": {
@@ -17,10 +35,18 @@
     "layer": 10,
     "alignment": "center",
     "fit": "none",
-    "tint": [1.0, 0.5, 0.2, 1.0],
+    "tint": [
+      1.0,
+      0.5,
+      0.2,
+      1.0
+    ],
     "blend": "add"
   },
   "name": "lang:modularshoot.example.plugin.fragment_fire",
   "brief": "lang:modularshoot.example.plugin.fragment_fire.brief",
-  "description": "lang:modularshoot.example.plugin.fragment_fire.desc"
+  "description": "lang:modularshoot.example.plugin.fragment_fire.desc",
+  "extra_values": {
+    "modularrarity:rarity": 3
+  }
 }
