@@ -2,12 +2,14 @@ package org.yanbwe.modularshoot.registry.gun;
 
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
@@ -76,6 +78,18 @@ public final class GunRegistry {
     private static final Map<ResourceLocation, GunDefinition> JAVA_API_GUNS =
             new ConcurrentHashMap<>();
 
+    /**
+     * Registered dynamic definition providers, queried in registration
+     * order between the Java API map and the datapack registry
+     * (改进① 动态定义来源).
+     *
+     * <p>Uses {@link CopyOnWriteArrayList} so concurrent reads from query
+     * methods safely observe writes from any thread (same concurrency
+     * contract as {@link #JAVA_API_GUNS}).</p>
+     */
+    private static final List<GunDefinitionProvider> DEFINITION_PROVIDERS =
+            new CopyOnWriteArrayList<>();
+
     private GunRegistry() {
     }
 
@@ -129,6 +143,36 @@ public final class GunRegistry {
         return Collections.unmodifiableMap(JAVA_API_GUNS);
     }
 
+    /**
+     * Registers a dynamic gun definition provider.
+     *
+     * <p>The provider is queried by {@link #getGun} in registration order,
+     * after the Java API map and before the datapack registry (改进①
+     * 动态定义来源). Return empty from the provider to fall through to the
+     * next source. Registration is process-wide and survives
+     * {@code /reload} (same semantics as {@link #registerGun}).</p>
+     *
+     * @param provider the provider to register; must not be {@code null}
+     */
+    public static void registerGunDefinitionProvider(GunDefinitionProvider provider) {
+        Objects.requireNonNull(provider, "provider");
+        DEFINITION_PROVIDERS.add(provider);
+    }
+
+    /**
+     * Returns an unmodifiable snapshot of all registered gun definition
+     * providers.
+     *
+     * <p>Read-only view for testing and debugging; the returned list is a
+     * snapshot, not a live view.</p>
+     *
+     * @return an unmodifiable list of the registered providers; empty when
+     *         none have been registered
+     */
+    public static List<GunDefinitionProvider> getGunDefinitionProviders() {
+        return List.copyOf(DEFINITION_PROVIDERS);
+    }
+
     // ---- Query methods --------------------------------------------------
 
     /**
@@ -137,8 +181,11 @@ public final class GunRegistry {
      *
      * <p>Java-API-registered entries (via {@link #registerGun}) take
      * priority over datapack entries with the same id (设计文档
-     * §注册冲突与覆盖, line 2289). When the id is present in both sources
-     * the Java-API definition is returned.</p>
+     * §注册冲突与覆盖, line 2289). Dynamic providers registered via
+     * {@link #registerGunDefinitionProvider} are consulted next, before the
+     * datapack registry; the first non-empty provider result wins (改进①
+     * 动态定义来源). When the id is present in both sources the Java-API
+     * definition is returned.</p>
      *
      * @param registryAccess the runtime registry view (from a loaded world)
      * @param gunId          the gun definition id, e.g.
@@ -150,6 +197,12 @@ public final class GunRegistry {
         final GunDefinition javaApiGun = JAVA_API_GUNS.get(gunId);
         if (javaApiGun != null) {
             return Optional.of(javaApiGun);
+        }
+        for (GunDefinitionProvider provider : DEFINITION_PROVIDERS) {
+            final Optional<GunDefinition> provided = provider.get(gunId);
+            if (provided.isPresent()) {
+                return provided;
+            }
         }
         return registryAccess.registry(ModularShootRegistries.GUNS_KEY)
                 .flatMap(registry -> registry.getOptional(gunId));
