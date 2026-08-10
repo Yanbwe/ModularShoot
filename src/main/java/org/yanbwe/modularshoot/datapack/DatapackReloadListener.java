@@ -174,8 +174,9 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
      * {@code WARN} via {@link DatapackErrorHandler#logReferenceWarning}
      * (拼错 ID 显式 WARN，不再静默失效).
      *
-     * <p>Covers the three tables with a dedicated validator: guns, plugins
-     * and variants. The {@code attribute_meta} table is <em>not</em> checked
+     * <p>Covers the four tables with a dedicated validator: guns, plugins,
+     * variants and shooters. The {@code attribute_meta} table is
+     * <em>not</em> checked
      * here: its {@code binds} validation is exclusively owned by
      * {@link AttributeMetaDatapackLoader#validateBindings} (invoked from
      * {@link #summarizeAttributeMeta} on every reload), so the same bad bind
@@ -200,6 +201,8 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
                 collectEntries(access, ModularShootRegistries.GUNS_KEY));
         CrossReferenceValidator.validatePlugins(access,
                 collectEntries(access, ModularShootRegistries.PLUGINS_KEY));
+        CrossReferenceValidator.validateShooters(access,
+                collectEntries(access, ModularShootRegistries.SHOOTERS_KEY));
         ItemBindingValidator.validateGunBindings(access,
                 collectEntries(access, ModularShootRegistries.GUN_ITEMS_KEY));
         ItemBindingValidator.validatePluginBindings(access,

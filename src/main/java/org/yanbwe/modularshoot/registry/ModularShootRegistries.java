@@ -7,6 +7,7 @@ import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
 import org.yanbwe.modularshoot.registry.binding.GunItemBinding;
 import org.yanbwe.modularshoot.registry.binding.PluginItemBinding;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
+import org.yanbwe.modularshoot.registry.shooter.ShooterDefinition;
 import org.yanbwe.modularshoot.registry.variant.VariantDefinition;
 import org.yanbwe.modularshoot.state.StateDefinition;
 
@@ -20,11 +21,11 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.registries.DataPackRegistryEvent;
 
 /**
- * Central declaration of the framework's nine dynamic datapack registries.
+ * Central declaration of the framework's ten dynamic datapack registries.
  *
- * <p>Eight framework registries ({@code guns}, {@code plugins},
+ * <p>Nine framework registries ({@code guns}, {@code plugins},
  * {@code plugin_types}, {@code traits}, {@code states}, {@code variants},
- * {@code gun_items}, {@code plugin_items}) and
+ * {@code gun_items}, {@code plugin_items}, {@code shooters}) and
  * one attribute metadata table ({@code attribute_meta}) are registered
  * through NeoForge's
  * {@link DataPackRegistryEvent.NewRegistry} mechanism rather than static
@@ -32,7 +33,7 @@ import net.neoforged.neoforge.registries.DataPackRegistryEvent;
  * and allows datapack JSON to populate the same registry instances used by the
  * Java API.</p>
  *
- * <p>All nine registries are registered with a non-null network codec so
+ * <p>All ten registries are registered with a non-null network codec so
  * their contents are synced to clients on connect (clients must have the mod
  * to join a server that uses these registries).</p>
  *
@@ -79,6 +80,10 @@ public final class ModularShootRegistries {
     public static final ResourceKey<Registry<PluginItemBinding>> PLUGIN_ITEMS_KEY =
             createRegistryKey("plugin_items");
 
+    /** Registry key for {@code modularshoot:shooters} — independent firing configurations. */
+    public static final ResourceKey<Registry<ShooterDefinition>> SHOOTERS_KEY =
+            createRegistryKey("shooters");
+
     /**
      * Builds a root registry key under the mod's namespace.
      *
@@ -92,7 +97,7 @@ public final class ModularShootRegistries {
     }
 
     /**
-     * Registers all nine framework datapack registries.
+     * Registers all ten framework datapack registries.
      *
      * <p>Each registry is registered with its codec as both the load codec and
      * the network codec, so entries are synced to clients. This event fires on
@@ -111,6 +116,7 @@ public final class ModularShootRegistries {
         register(event, VARIANTS_KEY, VariantDefinition.CODEC);
         register(event, GUN_ITEMS_KEY, GunItemBinding.CODEC);
         register(event, PLUGIN_ITEMS_KEY, PluginItemBinding.CODEC);
+        register(event, SHOOTERS_KEY, ShooterDefinition.CODEC);
     }
 
     /**

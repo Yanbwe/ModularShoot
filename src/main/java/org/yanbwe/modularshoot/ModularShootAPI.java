@@ -42,6 +42,8 @@ import org.yanbwe.modularshoot.registry.binding.PluginItemBinding;
 import org.yanbwe.modularshoot.registry.binding.PluginItemBindingRegistry;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
+import org.yanbwe.modularshoot.registry.shooter.ShooterDefinition;
+import org.yanbwe.modularshoot.registry.shooter.ShooterRegistry;
 import org.yanbwe.modularshoot.damage.DamageHandler;
 import org.yanbwe.modularshoot.damage.DamageHandlerRegistry;
 import org.yanbwe.modularshoot.damage.ModularShootDamageTypes;
@@ -808,6 +810,52 @@ public final class ModularShootAPI {
         Objects.requireNonNull(registryAccess, "registryAccess");
         Objects.requireNonNull(gunId, "gunId");
         return GunRegistry.getGun(registryAccess, gunId);
+    }
+
+    /**
+     * Looks up a shooter definition by id in the
+     * {@code modularshoot:shooters} registry.
+     *
+     * <p>Delegates to {@link ShooterRegistry#getShooter}. The registry is
+     * datapack-driven and empty on the main menu, so a {@link RegistryAccess}
+     * from a loaded world is required.</p>
+     *
+     * @param registryAccess the runtime registry view; must not be {@code null}
+     * @param shooterId      the shooter definition id; must not be
+     *                       {@code null}
+     * @return the matching {@link ShooterDefinition}, or empty when the
+     *         registry is absent or the id is not registered
+     */
+    public static Optional<ShooterDefinition> getShooterDefinition(
+            RegistryAccess registryAccess, ResourceLocation shooterId) {
+        Objects.requireNonNull(registryAccess, "registryAccess");
+        Objects.requireNonNull(shooterId, "shooterId");
+        return ShooterRegistry.getShooter(registryAccess, shooterId);
+    }
+
+    /**
+     * Registers a shooter definition via the Java API.
+     *
+     * <p>Delegates to {@link ShooterRegistry#registerShooter}. Must be called
+     * during mod initialisation (before datapack loading begins, i.e. in the
+     * mod constructor or {@code FMLCommonSetupEvent}). The registered id is
+     * marked with {@link RegistrationCoordinator#markJavaApiRegistered} so
+     * that any later datapack JSON attempting to register the same id is
+     * rejected with a {@code WARN} (设计文档 §注册冲突与覆盖, line 2289).</p>
+     *
+     * <p>Java-API-registered entries survive {@code /reload} and take
+     * priority over datapack entries with the same id. See
+     * {@link ShooterRegistry#registerShooter} for full semantics.</p>
+     *
+     * @param shooterId  the shooter definition id, e.g.
+     *                   {@code modularshoot:bone_shooter}; must not be
+     *                   {@code null}
+     * @param definition the shooter definition; must not be {@code null}
+     */
+    public static void registerShooter(ResourceLocation shooterId, ShooterDefinition definition) {
+        Objects.requireNonNull(shooterId, "shooterId");
+        Objects.requireNonNull(definition, "definition");
+        ShooterRegistry.registerShooter(shooterId, definition);
     }
 
     // ---- Gun queries ----------------------------------------------------

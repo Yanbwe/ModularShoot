@@ -1,0 +1,14 @@
+{
+  "stats": {
+    "modularshoot:hit_damage": 6.0,
+    "modularshoot:bullet_speed": 2.5,
+    "modularshoot:range": 48.0,
+    "modularshoot:bullet_size": 0.25
+  },
+  "bullet_style": {
+    "base": {
+      "render_mode": "billboard",
+      "texture": "modularshoot:textures/bullet/default.png"
+    }
+  }
+}

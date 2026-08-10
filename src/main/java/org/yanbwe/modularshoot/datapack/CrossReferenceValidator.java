@@ -1,5 +1,6 @@
 package org.yanbwe.modularshoot.datapack;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -17,6 +18,7 @@ import org.yanbwe.modularshoot.plugin.PluginDefinition;
 import org.yanbwe.modularshoot.plugin.PluginModifier;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
+import org.yanbwe.modularshoot.registry.shooter.ShooterDefinition;
 import org.yanbwe.modularshoot.registry.variant.VariantDefinition;
 
 /**
@@ -163,6 +165,35 @@ public final class CrossReferenceValidator {
                                     + "' is not registered in the vanilla damage type registry");
                 }
             });
+        }
+    }
+
+    /**
+     * Validates every cross-table reference carried by a shooter definition.
+     *
+     * <p>Checks performed (all emit {@code WARN}):</p>
+     * <ul>
+     *   <li>{@code attribute_binds} ids exist in the {@code attribute_meta}
+     *       table (an unregistered bind silently keeps the template value at
+     *       snapshot time, so a typo is worth surfacing)</li>
+     * </ul>
+     *
+     * @param access   the reloaded registry access
+     * @param shooters the loaded shooter id to {@link ShooterDefinition}
+     *                 entries
+     */
+    public static void validateShooters(
+            RegistryAccess access, Map<ResourceLocation, ShooterDefinition> shooters) {
+        if (shooters.isEmpty()) {
+            return;  // 注册表缺失时静默
+        }
+        Set<ResourceLocation> metaKeys =
+                registryKeys(access, ModularShootRegistries.ATTRIBUTE_META_KEY);
+        for (Map.Entry<ResourceLocation, ShooterDefinition> entry : shooters.entrySet()) {
+            ResourceLocation shooterId = entry.getKey();
+            ShooterDefinition shooter = entry.getValue();
+            checkTableKeys(shooterId, "attribute_binds", "attribute_meta",
+                    new HashSet<>(shooter.attributeBinds()), metaKeys);
         }
     }
 
