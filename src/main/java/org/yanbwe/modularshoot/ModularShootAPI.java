@@ -14,8 +14,12 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ItemLike;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
+import org.yanbwe.modularshoot.bullet.BulletManager;
+import org.yanbwe.modularshoot.bullet.BulletRecord;
 import org.yanbwe.modularshoot.bullet.BulletSnapshot;
+import org.yanbwe.modularshoot.bullet.BulletSnapshotBuilder;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginData;
@@ -40,6 +44,7 @@ import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 import org.yanbwe.modularshoot.damage.DamageHandler;
 import org.yanbwe.modularshoot.damage.DamageHandlerRegistry;
+import org.yanbwe.modularshoot.damage.ModularShootDamageTypes;
 import org.yanbwe.modularshoot.shooting.ShootEffect;
 import org.yanbwe.modularshoot.shooting.ShootEffectRegistry;
 import org.yanbwe.modularshoot.shooting.ShootPredicate;
@@ -1202,6 +1207,94 @@ public final class ModularShootAPI {
         Objects.requireNonNull(registryKey, "registryKey");
         Objects.requireNonNull(id, "id");
         RegistrationCoordinator.markJavaApiRegistered(registryKey, id);
+    }
+
+    // ---- Independent firing ---------------------------------------------
+
+    /**
+     * Creates a fresh {@link BulletSnapshotBuilder} for the independent-firing
+     * flow (设计文档 §独立发射).
+     *
+     * <p>Independent firing is the non-player-source path (turret, trap, boss
+     * attack, scripted scenario, ...): the bullet's {@link BulletSnapshot} is
+     * built by hand rather than frozen by the player shooting engine, then
+     * handed to {@link #fireBullet}. Per the independent-firing snapshot
+     * convention (设计文档 §独立发射的快照字段约定) the builder always
+     * produces snapshots with {@code gunId = null} and
+     * {@code gunInstanceUuid = null}; the shooter uuid is supplied separately
+     * at {@link #fireBullet} time (null for ownerless sources).</p>
+     *
+     * <p>Example:</p>
+     * <pre>{@code
+     * BulletSnapshot snapshot = ModularShootAPI.createBulletSnapshot()
+     *         .stat(modularshoot:damage, 10.0)
+     *         .trait(modularshoot:ignite, true)
+     *         .style(new BulletStyle(Optional.of(base), List.of()))
+     *         .build(level.registryAccess());
+     * ModularShootAPI.fireBullet(level, pos, dir, snapshot, null);
+     * }</pre>
+     *
+     * @return a new, reusable snapshot builder
+     */
+    public static BulletSnapshotBuilder createBulletSnapshot() {
+        return new BulletSnapshotBuilder();
+    }
+
+    /**
+     * Fires a bullet from a custom, non-player source without going through
+     * the player shooting engine (设计文档 §独立发射).
+     *
+     * <p>Delegates to
+     * {@link BulletManager#fireBullet(Level, Vec3, Vec3, BulletSnapshot, UUID)}.
+     * Unlike the player shoot path this performs <b>no fire-rate control, no
+     * ShootPredicate check, no PreShootEvent/PostShootEvent and no sound
+     * playback</b> — the bullet enters the normal tick loop (flight,
+     * collision, damage, trait hooks) once registered.</p>
+     *
+     * <p><b>Snapshot conventions</b> (设计文档 §独立发射的快照字段约定): the
+     * snapshot should carry {@code gunId = null} and
+     * {@code gunInstanceUuid = null} (the
+     * {@link #createBulletSnapshot() builder} enforces this). {@code shooter}
+     * {@code null} marks an ownerless source (traps, scripts); supply a player
+     * uuid to attribute the bullet. The caller is responsible for
+     * normalizing {@code position}/{@code direction} expectations — the
+     * direction is consumed as-is by the flight simulation.</p>
+     *
+     * <p><b>Damage-type patch:</b> when {@code snapshot} carries a
+     * {@code null} damage type, the framework default
+     * ({@link ModularShootDamageTypes#holderOrThrow}) is resolved from
+     * {@code level.registryAccess()} and written into the snapshot before
+     * firing, so callers may omit the holder entirely
+     * (throws {@link IllegalStateException} if the framework damage type is
+     * missing from the runtime registries).</p>
+     *
+     * @param level     the dimension to fire into; must not be {@code null}
+     * @param position  the launch position; must not be {@code null}
+     * @param direction the initial flight direction (normalized); must not
+     *                  be {@code null}
+     * @param snapshot  the bullet snapshot (builder- or hand-constructed);
+     *                  must not be {@code null}
+     * @param shooter   the shooter uuid, or {@code null} for ownerless
+     *                  sources
+     * @return the newly created and registered {@link BulletRecord}
+     * @throws NullPointerException when {@code level}, {@code position},
+     *                              {@code direction} or {@code snapshot} is
+     *                              {@code null}
+     */
+    public static BulletRecord fireBullet(
+            Level level,
+            Vec3 position,
+            Vec3 direction,
+            BulletSnapshot snapshot,
+            @Nullable UUID shooter) {
+        Objects.requireNonNull(level, "level");
+        Objects.requireNonNull(position, "position");
+        Objects.requireNonNull(direction, "direction");
+        Objects.requireNonNull(snapshot, "snapshot");
+        if (snapshot.getDamageType() == null) {
+            snapshot.setDamageType(ModularShootDamageTypes.holderOrThrow(level.registryAccess()));
+        }
+        return BulletManager.get(level).fireBullet(level, position, direction, snapshot, shooter);
     }
 
     // ---- Dual-channel recognition helpers (private) ----------------------
