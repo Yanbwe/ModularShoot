@@ -41,6 +41,7 @@ import org.yanbwe.modularshoot.registry.binding.GunItemBindingRegistry;
 import org.yanbwe.modularshoot.registry.binding.PluginItemBinding;
 import org.yanbwe.modularshoot.registry.binding.PluginItemBindingRegistry;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
+import org.yanbwe.modularshoot.registry.gun.GunDefinitionProvider;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 import org.yanbwe.modularshoot.registry.shooter.ShooterDefinition;
 import org.yanbwe.modularshoot.registry.shooter.ShooterRegistry;
@@ -750,6 +751,22 @@ public final class ModularShootAPI {
         Objects.requireNonNull(gunId, "gunId");
         Objects.requireNonNull(definition, "definition");
         GunRegistry.registerGun(gunId, definition);
+    }
+
+    /**
+     * Registers a dynamic gun definition provider.
+     *
+     * <p>Delegates to {@link GunRegistry#registerGunDefinitionProvider}.
+     * The provider is consulted by {@link GunRegistry#getGun} after the
+     * Java API map and before the datapack registry, enabling definitions
+     * that are per-player or generated at query time (改进① 动态定义来源,
+     * 2026-08-10 探讨整理). Safe to call during mod common-setup.</p>
+     *
+     * @param provider the provider to register; must not be {@code null}
+     */
+    public static void registerGunDefinitionProvider(GunDefinitionProvider provider) {
+        Objects.requireNonNull(provider, "provider");
+        GunRegistry.registerGunDefinitionProvider(provider);
     }
 
     /**
