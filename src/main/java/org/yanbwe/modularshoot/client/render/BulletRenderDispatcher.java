@@ -1,6 +1,8 @@
 package org.yanbwe.modularshoot.client.render;
 
 import java.util.Collection;
+import java.util.Comparator;
+import java.util.List;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Camera;
@@ -44,12 +46,18 @@ import org.yanbwe.modularshoot.network.ClientBulletSnapshot;
  *       client-tick {@code partialTick} must not drive the lerp, see
  *       {@link RenderInterpolation#interpolationFactor})
  *       (设计文档 §位置插值, line 1242)</li>
+ *   <li>Sorts the objects <em>back-to-front</em> by camera distance before
+ *       drawing. The billboard RenderType does not write depth (a square
+ *       sprite's fully-transparent corners must not occlude bullets behind
+ *       it), so alpha blending — whose order is submission order — resolves
+ *       which bullet draws in front of another: farthest first, nearer
+ *       bullets overwrite them with their opaque spheres (透明遮挡修复)</li>
  *   <li>Dispatches to the appropriate renderer based on
  *       {@link BulletRenderObject#getRenderMode()}:
  *       <ul>
  *         <li>{@code billboard} → {@link BillboardRenderer} — builds a
  *             camera-facing quad, binds a custom RenderType (depth test,
- *             alpha blend, no lighting), samples the texture
+ *             no depth write, alpha blend, no lighting), samples the texture
  *             (设计文档 §渲染流程, line 1240)</li>
  *         <li>{@code 3d} → Model3DRenderer (子任务 10, TODO)</li>
  *       </ul>
@@ -137,7 +145,13 @@ public final class BulletRenderDispatcher {
         double fadeDistance = ModularShootClientConfig.getFadeDistance();
         float minOpacity = ModularShootClientConfig.getMinOpacity();
 
-        for (BulletRenderObject renderObject : renderObjects) {
+        // Back-to-front ordering (透明遮挡修复): the billboard RenderType no
+        // longer writes depth, so alpha blending resolves bullet-over-bullet
+        // occlusion — and blending order is submission order. Farthest bullets
+        // must be drawn first so nearer opaque spheres overwrite them.
+        List<BulletRenderObject> ordered = sortBackToFront(renderObjects, cameraPos);
+
+        for (BulletRenderObject renderObject : ordered) {
             // Fire visual-tick hooks so traits can mutate appearance before draw.
             // The snapshot supplies frozen stats/traits so hooks can make
             // data-driven visual decisions (设计文档 §特性视觉钩子, line 1298).
@@ -155,6 +169,37 @@ public final class BulletRenderDispatcher {
             renderByMode(renderObject, poseStack, bufferSource, partialTick, cameraPos,
                     interpolatedPos, distanceAlpha);
         }
+    }
+
+    /**
+     * Orders render objects by descending camera distance (farthest first).
+     *
+     * <p>The billboard RenderType writes no depth — a square sprite's
+     * fully-transparent corners must not occlude bullets behind it — so the
+     * depth test can no longer decide which bullet draws in front of another;
+     * alpha blending does, and blending order is submission order (透明遮挡修复).
+     * Farthest-first submission makes a nearer bullet's opaque sphere
+     * (alpha = 1) correctly overwrite the farther bullet while its transparent
+     * corners let it show through.</p>
+     *
+     * <p>The sort key is the bullet's raw tick position
+     * ({@link BulletRenderObject#getPosition()}) rather than the interpolated
+     * one: interpolation happens per-draw, and the pair {@code prevPosition →
+     * position} spans less than one sync segment — a distance far below the
+     * overlap scale this ordering resolves. The sort is stable, so bullets at
+     * an equal distance keep the manager's insertion order and the draw
+     * sequence is deterministic.</p>
+     *
+     * @param renderObjects the active render objects, in manager iteration order
+     * @param cameraPos     the camera world position
+     * @return the same objects ordered farthest-to-nearest
+     */
+    static List<BulletRenderObject> sortBackToFront(
+            Collection<BulletRenderObject> renderObjects, Vec3 cameraPos) {
+        return renderObjects.stream()
+                .sorted(Comparator.comparingDouble(
+                        (BulletRenderObject obj) -> obj.getPosition().distanceToSqr(cameraPos)).reversed())
+                .toList();
     }
 
     /**

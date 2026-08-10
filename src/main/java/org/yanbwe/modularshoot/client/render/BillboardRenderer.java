@@ -19,9 +19,9 @@ import org.joml.Vector4f;
  * <p>Constructs a 4-vertex quad oriented to face the camera using the
  * camera's right and up vectors, then submits it through the custom
  * {@link BulletRenderType billboard RenderType} that enables depth test,
- * translucent blending, no lightmap and no cull. The quad is centered on
- * the bullet's interpolated position — the {@link PoseStack} is already
- * translated there by {@link BulletRenderDispatcher} — and scaled by
+ * translucent blending, no depth write, no lightmap and no cull. The quad is
+ * centered on the bullet's interpolated position — the {@link PoseStack} is
+ * already translated there by {@link BulletRenderDispatcher} — and scaled by
  * {@link BulletRenderObject#getScale()}.</p>
  *
  * <p><b>Vertex layout</b> (viewed from the camera, world-aligned axes):</p>

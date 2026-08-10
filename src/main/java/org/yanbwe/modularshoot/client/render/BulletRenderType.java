@@ -17,6 +17,13 @@ import net.minecraft.resources.ResourceLocation;
  * <ul>
  *   <li><b>Depth test</b> — LEQUAL, so bullets are correctly occluded by
  *       closer terrain and entities</li>
+ *   <li><b>No depth write</b> — COLOR_WRITE, so a square sprite's
+ *       fully-transparent corners never write depth and occlude bullets
+ *       behind them (透明遮挡修复); the depth test still reads the buffer,
+ *       so terrain occlusion is unaffected. Bullet-over-bullet occlusion is
+ *       resolved by alpha blending instead — see
+ *       {@link BulletRenderDispatcher#sortBackToFront} for the required
+ *       farthest-first draw order</li>
  *   <li><b>Transparency</b> — translucent (src-alpha / one-minus-src-alpha),
  *       standard alpha blending for soft sprite edges</li>
  *   <li><b>No lightmap</b> — the bullet is always full-bright (emissive),
@@ -33,11 +40,13 @@ import net.minecraft.resources.ResourceLocation;
  * through its built-in Access Transformer (the vanilla method is
  * package-private). The {@link RenderType.CompositeState} builder assembles
  * the state shards, mirroring how vanilla builds
- * {@code RenderType.eyes(ResourceLocation)} — but with translucent blending
- * (instead of additive) and depth-write enabled for correct occlusion of
- * in-flight bullets. The {@code rendertype_eyes} shader is chosen because it
- * is the canonical vanilla shader that requires neither a lightmap nor an
- * overlay sampler, making it the safe pairing for NO_LIGHTMAP / NO_OVERLAY.</p>
+ * {@code RenderType.eyes(ResourceLocation)} — with translucent blending
+ * (instead of additive) and depth writing disabled (instead of the builder's
+ * default COLOR_DEPTH_WRITE), matching vanilla particle sprites
+ * ({@code PARTICLE_SHEET_TRANSLUCENT} also writes no depth). The
+ * {@code rendertype_eyes} shader is chosen because it is the canonical
+ * vanilla shader that requires neither a lightmap nor an overlay sampler,
+ * making it the safe pairing for NO_LIGHTMAP / NO_OVERLAY.</p>
  *
  * <p><b>Memoization.</b> RenderTypes are cached per texture via
  * {@link Util#memoize}, so all bullets sharing the same texture reuse a
@@ -93,6 +102,9 @@ public final class BulletRenderType {
      *   <li>Texture — the bullet sprite, no blur, no mipmap</li>
      *   <li>Transparency — translucent (standard alpha blend)</li>
      *   <li>Depth test — LEQUAL (occluded by closer terrain)</li>
+     *   <li>Depth write — disabled (COLOR_WRITE): the square sprite's fully
+     *       transparent corners must not occlude bullets behind it
+     *       (透明遮挡修复)</li>
      *   <li>Cull — disabled (visible from both sides)</li>
      *   <li>Lightmap — disabled (always full-bright)</li>
      *   <li>Overlay — disabled (no hurt/damage overlay)</li>
@@ -115,6 +127,7 @@ public final class BulletRenderType {
                         .setTextureState(new RenderStateShard.TextureStateShard(texture, false, false))
                         .setTransparencyState(RenderStateShard.TRANSLUCENT_TRANSPARENCY)
                         .setDepthTestState(RenderStateShard.LEQUAL_DEPTH_TEST)
+                        .setWriteMaskState(RenderStateShard.COLOR_WRITE)
                         .setCullState(RenderStateShard.NO_CULL)
                         .setLightmapState(RenderStateShard.NO_LIGHTMAP)
                         .setOverlayState(RenderStateShard.NO_OVERLAY)

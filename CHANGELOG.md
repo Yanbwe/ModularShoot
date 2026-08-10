@@ -10,6 +10,8 @@
 
 - **修复子弹飞行视觉回弹**：`BulletRenderDispatcher` 每帧统一读取一次时钟供全帧子弹共用（`TimeBasedInterpolationTest`）。
 
+- **修复子弹方形纹理透明区域遮挡后方子弹**：billboard 渲染的 RenderType 写掩码由默认 `COLOR_DEPTH_WRITE` 改为 `COLOR_WRITE`（深度只读不写）。
+
 ## [0.1.2] - 2026-08-08
 
 ### 变更 / Changed
