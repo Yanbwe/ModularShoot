@@ -82,6 +82,24 @@ class PluginDefinitionCodecTest {
     }
 
     @Test
+    void addsSlotsAbsentDefaultsToEmptyMap() {
+        PluginDefinition definition = parse("{\"item_icon\": \"m:icon\"}");
+        assertTrue(definition.addsSlots().isEmpty(),
+                "adds_slots should default to an empty map");
+    }
+
+    @Test
+    void addsSlotsParsesBareKeyWithModularshootNamespace() {
+        PluginDefinition definition = parse(
+                "{\"item_icon\": \"m:icon\", \"adds_slots\": {\"combat\": 1, \"modularshoot:accessory\": -1}}");
+        assertEquals(2, definition.addsSlots().size(), "both keys should parse");
+        assertEquals(1, definition.addsSlots().get(ResourceLocation.parse("modularshoot:combat")),
+                "bare key defaults to the modularshoot namespace");
+        assertEquals(-1, definition.addsSlots().get(ResourceLocation.parse("modularshoot:accessory")),
+                "negative values are allowed");
+    }
+
+    @Test
     void visualPriorityAbsentDefaultsToEmpty() {
         PluginDefinition definition = parse("{\"item_icon\": \"m:icon\"}");
         assertTrue(definition.visualPriority().isEmpty(),

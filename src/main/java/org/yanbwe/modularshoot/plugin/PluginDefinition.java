@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Optional;
 import net.minecraft.resources.ResourceLocation;
 import org.yanbwe.modularshoot.registry.gun.BulletStyle;
+import org.yanbwe.modularshoot.registry.gun.SharedKeyCodecs;
 import org.yanbwe.modularshoot.registry.gun.TextureScaleMode;
 
 /**
@@ -74,6 +75,19 @@ import org.yanbwe.modularshoot.registry.gun.TextureScaleMode;
  *   <li>{@code description} &mdash; optional long-form description.</li>
  *   <li>{@code color} &mdash; optional name colour (e.g.
  *       {@code "#FF4444"}).</li>
+ *   <li>{@code adds_slots} &mdash; optional "slot type id → count" map
+ *       appended to the gun's effective slot configuration
+ *       (设计规格 §adds_slots 槽位扩展): the effective capacity of a slot
+ *       type is the gun's declared {@code slots} value plus the sum of every
+ *       installed plugin's {@code adds_slots} contribution, and the effective
+ *       key set is the union of both — a plugin can therefore increase an
+ *       existing slot count <em>or</em> create a slot type the gun never
+ *       declared. Values are arbitrary integers (negative values occupy
+ *       slots); bare keys default to the {@code modularshoot} namespace
+ *       (same rule as the gun's {@code slots}). Keys must reference entries
+ *       of the {@code plugin_types} registry (validated with a
+ *       {@code WARN} by {@code CrossReferenceValidator}). Defaults to an
+ *       empty map.</li>
  *   <li>{@code adds_variants} &mdash; optional "variant id → base weight"
  *       map appended to the gun's per-shot variant pool (设计规格 §6.2 来源表：
  *       插件向枪的池子追加变体 id + base_weight); defaults to an empty
@@ -102,6 +116,9 @@ import org.yanbwe.modularshoot.registry.gun.TextureScaleMode;
  * @param brief          optional one-line summary
  * @param description    optional long-form description
  * @param color          optional name colour
+ * @param addsSlots      optional slot type id → count map appended to the
+ *                       gun's effective slot configuration (negative values
+ *                       occupy slots); empty when the plugin adds no slots
  * @param addsVariants   optional variant id → base weight map appended to the
  *                       gun's per-shot variant pool (设计规格 §6.2); empty
  *                       when the plugin adds no variants
@@ -126,6 +143,7 @@ public record PluginDefinition(
         Optional<String> brief,
         Optional<String> description,
         Optional<String> color,
+        Map<ResourceLocation, Integer> addsSlots,
         Map<ResourceLocation, Double> addsVariants,
         Optional<Integer> visualPriority
 ) {
@@ -148,21 +166,31 @@ public record PluginDefinition(
                     Codec.STRING.optionalFieldOf("brief").forGetter(PluginDefinition::brief),
                     Codec.STRING.optionalFieldOf("description").forGetter(PluginDefinition::description),
                     Codec.STRING.optionalFieldOf("color").forGetter(PluginDefinition::color),
-                    // Kind1.group 的参数上限是 16（DFU 8.0.16），record 有 17 个
-                    // 组件：把 adds_variants 与 visual_priority 嵌套为一组 Pair 合并
-                    // 成第 16 个 group 参数，两个键仍写入同一张扁平 JSON map。
+                    // Kind1.group 的参数上限是 16（DFU 8.0.16），record 有 18 个
+                    // 组件：把 adds_slots 与 adds_variants、visual_priority 嵌套为
+                    // 两级 Pair 合并成第 16 个 group 参数，三个键仍写入同一张扁平
+                    // JSON map。
                     instance.group(
-                            Codec.unboundedMap(ResourceLocation.CODEC, Codec.DOUBLE)
-                                    .optionalFieldOf("adds_variants", Map.of())
-                                    .forGetter(PluginDefinition::addsVariants),
-                            Codec.INT.optionalFieldOf("visual_priority")
-                                    .forGetter(PluginDefinition::visualPriority)
+                            Codec.unboundedMap(SharedKeyCodecs.MODULARSHOOT_KEY, Codec.INT)
+                                    .optionalFieldOf("adds_slots", Map.of())
+                                    .forGetter(PluginDefinition::addsSlots),
+                            instance.group(
+                                    Codec.unboundedMap(ResourceLocation.CODEC, Codec.DOUBLE)
+                                            .optionalFieldOf("adds_variants", Map.of())
+                                            .forGetter(PluginDefinition::addsVariants),
+                                    Codec.INT.optionalFieldOf("visual_priority")
+                                            .forGetter(PluginDefinition::visualPriority)
+                            ).apply(instance, Pair::new)
                     ).apply(instance, Pair::new)
             ).apply(instance, (tags, priority, itemIcon, textureScale, modifiers, traits, exclusiveGroup,
                     bulletStyle, textureOverlay, gunOutline, extraValues, name, brief, description, color,
-                    lastPair) -> new PluginDefinition(tags, priority, itemIcon, textureScale, modifiers, traits,
-                    exclusiveGroup, bulletStyle, textureOverlay, gunOutline, extraValues, name, brief, description,
-                    color, lastPair.getFirst(), lastPair.getSecond()))
+                    lastPair) -> {
+                Map<ResourceLocation, Integer> addsSlots = lastPair.getFirst();
+                Pair<Map<ResourceLocation, Double>, Optional<Integer>> nested = lastPair.getSecond();
+                return new PluginDefinition(tags, priority, itemIcon, textureScale, modifiers, traits,
+                        exclusiveGroup, bulletStyle, textureOverlay, gunOutline, extraValues, name, brief,
+                        description, color, addsSlots, nested.getFirst(), nested.getSecond());
+            })
     );
 
     /**

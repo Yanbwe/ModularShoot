@@ -48,6 +48,7 @@ class PluginExtraValueServiceTest {
                 Optional.empty(),
                 Optional.empty(),
                 Map.of(),
+                Map.of(),
                 Optional.empty());
     }
 
