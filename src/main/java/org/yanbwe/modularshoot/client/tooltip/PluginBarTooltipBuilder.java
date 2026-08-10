@@ -17,6 +17,7 @@ import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.component.PluginInstance;
 import org.yanbwe.modularshoot.degradation.PluginDegradationHandler;
 import org.yanbwe.modularshoot.degradation.PluginTypeDegradationHandler;
+import org.yanbwe.modularshoot.plugin.EffectiveSlotService;
 import org.yanbwe.modularshoot.plugin.PluginDefinition;
 import org.yanbwe.modularshoot.plugin.PluginTypeDefinition;
 import org.yanbwe.modularshoot.plugin.PluginTypeRegistry;
@@ -107,7 +108,10 @@ public final class PluginBarTooltipBuilder {
         }
 
         GunDefinition gunDef = gunDefOpt.get();
-        Map<ResourceLocation, Integer> slots = gunDef.slots();
+        // Effective slot configuration: gun base slots ∪ every installed
+        // plugin's adds_slots, so slot-adding plugins and their created slot
+        // types show up in the bar (设计规格 §adds_slots 槽位扩展 §7).
+        Map<ResourceLocation, Integer> slots = EffectiveSlotService.effectiveSlots(gunStack, registryAccess);
         if (slots.isEmpty()) {
             return List.of();
         }
