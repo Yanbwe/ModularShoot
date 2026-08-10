@@ -6,6 +6,8 @@ import com.mojang.serialization.JsonOps;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import net.minecraft.resources.ResourceLocation;
 import org.junit.jupiter.api.Test;
@@ -18,8 +20,25 @@ import static org.junit.jupiter.api.Assertions.*;
  * at runtime. Currently covers the {@code attribute_meta} registry; the
  * gun/plugin/trait/state codec round-trips are covered by the inline-JSON
  * codec tests (GunDefinitionKeyCodecTest, PluginDefinitionCodecTest, etc.).
+ *
+ * <p>Since {@link AttributeMeta#CODEC} resolves {@code entity_types} through
+ * {@code BuiltInRegistries.ENTITY_TYPE}, whose static initializer requires a
+ * bootstrapped game, this class bootstraps the vanilla registries once per
+ * JVM (probe-verified recipe of
+ * {@link org.yanbwe.modularshoot.ModularShootAPIItemBindingTest}). The test
+ * only parses JSON and never registers anything, so no
+ * {@code GameData.unfreezeData()} is needed.</p>
  */
 class DatapackJsonCodecTest {
+
+    static {
+        // FML shim + game-version shim, then full vanilla registry bootstrap
+        // (identical to ModularShootAPIItemBindingTest's probe-verified order).
+        net.neoforged.fml.loading.LoadingModList.of(
+                List.of(), List.of(), List.of(), List.of(), Map.of());
+        net.minecraft.SharedConstants.setVersion(net.minecraft.DetectedVersion.BUILT_IN);
+        net.minecraft.server.Bootstrap.bootStrap();
+    }
 
     private static JsonElement load(String path) {
         InputStream in = DatapackJsonCodecTest.class.getClassLoader()
