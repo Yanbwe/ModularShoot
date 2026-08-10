@@ -105,9 +105,10 @@ public final class AttributeResolver {
      * {@code binds} 目标原版属性 → 实体属性实例 and returns
      * {@link AttributeInstance#getValue()} of the resolved instance. Every
      * missing link degrades to {@code 0.0} without throwing: the metadata
-     * entry may be absent, the bound attribute may be unregistered, or the
-     * attribute may not be mounted on the entity (e.g. a non-player mob that
-     * never received the framework's attributes).</p>
+     * entry may be absent, the bound attribute may be unregistered, the
+     * entity's type may be outside the entry's {@code entity_types}
+     * read whitelist, or the attribute may not be mounted on the entity
+     * (e.g. a non-player mob that never received the framework's attributes).</p>
      *
      * <p>Never uses {@link LivingEntity#getAttributeValue} because that
      * method throws {@link IllegalArgumentException} when the attribute is
@@ -119,11 +120,14 @@ public final class AttributeResolver {
      * @param registryAccess the runtime registry view (for
      *                       {@code attribute_meta})
      * @return the final attribute value, or {@code 0.0} when any link in the
-     *         chain is missing
+     *         chain is missing or the entity type is not whitelisted
      */
     public static double readFinalValue(LivingEntity entity, ResourceLocation logicalId, RegistryAccess registryAccess) {
         AttributeMeta meta = metaFor(registryAccess, logicalId);
         if (meta == null) {
+            return 0.0;
+        }
+        if (!meta.allowsEntity(entity.getType())) {
             return 0.0;
         }
         Holder<Attribute> holder = resolveBoundHolder(meta);

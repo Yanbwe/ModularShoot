@@ -30,6 +30,9 @@ import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
  * <ul>
  *   <li>{@code binds} — required, the registered vanilla attribute id</li>
  *   <li>{@code default_value} — required, the gun base value</li>
+ *   <li>{@code entity_types} — optional list of entity types the attribute
+ *       takes effect on (read whitelist), defaults to
+ *       {@code ["minecraft:player"]}</li>
  *   <li>{@code description} — optional, defaults to {@code ""}</li>
  *   <li>{@code color} — optional hex color; absent when unspecified</li>
  *   <li>{@code priority} — optional display priority, defaults to {@code 0}</li>

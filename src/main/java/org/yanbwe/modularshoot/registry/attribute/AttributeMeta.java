@@ -2,8 +2,11 @@ package org.yanbwe.modularshoot.registry.attribute;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import java.util.List;
 import java.util.Optional;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.EntityType;
 
 /**
  * Metadata entry for the {@code modularshoot:attribute_meta} datapack table.
@@ -29,6 +32,14 @@ import net.minecraft.resources.ResourceLocation;
  *                      calculations. Stored in the metadata table and is
  *                      hot-reloadable. Unrelated to the vanilla attribute's
  *                      {@code base} (which is always 0 for framework attributes).
+ * @param entityTypes   the read-effect whitelist: only entities whose
+ *                      {@code EntityType} is contained in this list have their
+ *                      attribute value read by the framework. The mounting side
+ *                      pre-mounts every entity type, so this datapack field
+ *                      alone controls whose value takes effect; an entity type
+ *                      outside the whitelist degrades to {@code 0.0} on read.
+ *                      Defaults to player-only, preserving the pre-whitelist
+ *                      behavior.
  * @param description   optional human-readable description text; empty when
  *                      absent.
  * @param color         optional hex color code (e.g. {@code "#FF4444"}) for the
@@ -46,6 +57,7 @@ import net.minecraft.resources.ResourceLocation;
 public record AttributeMeta(
         ResourceLocation binds,
         double defaultValue,
+        List<EntityType<?>> entityTypes,
         String description,
         Optional<String> color,
         int priority,
@@ -56,6 +68,9 @@ public record AttributeMeta(
             instance -> instance.group(
                     ResourceLocation.CODEC.fieldOf("binds").forGetter(AttributeMeta::binds),
                     Codec.DOUBLE.fieldOf("default_value").forGetter(AttributeMeta::defaultValue),
+                    BuiltInRegistries.ENTITY_TYPE.byNameCodec().listOf()
+                            .optionalFieldOf("entity_types", List.of(EntityType.PLAYER))
+                            .forGetter(AttributeMeta::entityTypes),
                     Codec.STRING.optionalFieldOf("description", "").forGetter(AttributeMeta::description),
                     Codec.STRING.optionalFieldOf("color").forGetter(AttributeMeta::color),
                     Codec.INT.optionalFieldOf("priority", 0).forGetter(AttributeMeta::priority),
@@ -67,14 +82,29 @@ public record AttributeMeta(
     /**
      * Convenience factory for creating an {@link AttributeMeta} with only the
      * required fields. Optional fields are filled with their defaults
-     * (empty description, no color, priority {@code 0}, forceShow
-     * {@code false}, no unit).
+     * (player-only whitelist, empty description, no color, priority {@code 0},
+     * forceShow {@code false}, no unit).
      *
      * @param binds        the registered vanilla attribute id to bind to
      * @param defaultValue the gun base value used when a gun omits this attribute
      * @return a new immutable {@link AttributeMeta} instance
      */
     public static AttributeMeta of(ResourceLocation binds, double defaultValue) {
-        return new AttributeMeta(binds, defaultValue, "", Optional.empty(), 0, false, Optional.empty());
+        return new AttributeMeta(binds, defaultValue, List.of(EntityType.PLAYER), "",
+                Optional.empty(), 0, false, Optional.empty());
+    }
+
+    /**
+     * Checks whether the read-effect whitelist covers the given entity type.
+     *
+     * <p>An entity type outside the whitelist yields {@code 0.0} from
+     * {@code AttributeResolver#readFinalValue}; the check is a pure query
+     * with no side effects.
+     *
+     * @param type the entity type to test
+     * @return {@code true} when {@code type} is contained in {@code entityTypes}
+     */
+    public boolean allowsEntity(EntityType<?> type) {
+        return entityTypes.contains(type);
     }
 }
