@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
@@ -53,10 +54,18 @@ import org.yanbwe.modularshoot.registry.gun.GunRegistry;
  *
  * <h2>Free-slot calculation</h2>
  * <p>For a category {@code typeId} on a gun, the free slot count is
- * {@code gunDefinition.slots().get(typeId) − installedCount}, where
+ * {@code effectiveCapacity − installedCount}, where
+ * {@code effectiveCapacity} is the gun's <em>effective</em> slot count
+ * (设计规格 §adds_slots 槽位扩展: the gun definition's base {@code slots}
+ * value plus the sum of every installed plugin's {@code adds_slots}
+ * contribution — see {@link EffectiveSlotService#aggregateSlots}) and
  * {@code installedCount} is the number of already-installed plugin instances
- * whose persisted {@code installedTypeId} equals {@code typeId}. A category is
- * a candidate only when this value is positive (设计文档 line 479).</p>
+ * whose persisted {@code installedTypeId} equals {@code typeId}. The
+ * categories considered are the effective key set (gun base keys ∪ installed
+ * plugins' {@code adds_slots} keys), so a slot-adding plugin can create a
+ * slot type the gun never declared and that type becomes matchable once
+ * installed. A category is a candidate only when the free count is positive
+ * (设计文档 line 479).</p>
  *
  * <p>All methods are static utility methods; the class is not instantiable.
  * The two core algorithms ({@link #tagsIntersect} and
@@ -159,15 +168,19 @@ public final class PluginMatchingService {
      *   <li>Look up the {@link PluginDefinition} via
      *       {@link PluginRegistry#getPlugin(RegistryAccess, ResourceLocation)};
      *       absent → empty list.</li>
-     *   <li>For every category id in {@link GunDefinition#slots()} key set,
-     *       look up the {@link PluginTypeDefinition} and keep it when
+     *   <li>For every category id in the <em>effective</em> slot key set
+     *       (gun base {@code slots} ∪ installed plugins' {@code adds_slots}
+     *       keys), look up the {@link PluginTypeDefinition} and keep it when
      *       {@link #tagsIntersect(Set, Set)} is {@code true} <em>and</em> the
      *       category has a free slot. Each match is wrapped in a
      *       {@link TypeMatch} carrying both the id and the definition.</li>
      * </ol>
      *
      * <p>Free slot count for a category {@code typeId} is
-     * {@code gunDefinition.slots().get(typeId) − installedCount}, where
+     * {@code effectiveCapacity − installedCount}, where
+     * {@code effectiveCapacity} comes from the effective slot map
+     * ({@link EffectiveSlotService#aggregateSlots}: gun base plus every
+     * installed plugin's {@code adds_slots} contribution) and
      * {@code installedCount} is the number of installed plugin instances whose
      * persisted {@code installedTypeId} equals {@code typeId} (设计文档 line
      * 479). Only categories with a positive free count are returned.</p>
@@ -196,13 +209,18 @@ public final class PluginMatchingService {
         Set<ResourceLocation> pluginTags = new HashSet<>(pluginDef.get().tags());
         List<PluginInstance> installed = gunData.installedPlugins();
         List<TypeMatch> result = new ArrayList<>();
-        for (ResourceLocation typeId : gunDef.get().slots().keySet()) {
+        // Iterate the effective slot key set (gun base ∪ installed plugins'
+        // adds_slots) so a plugin can create a slot type the gun never
+        // declared and have that type matched (设计规格 §adds_slots 槽位扩展).
+        Map<ResourceLocation, Integer> effective = EffectiveSlotService.aggregateSlots(
+                gunDef.get(), EffectiveSlotService.resolveDefs(installed, registryAccess));
+        for (ResourceLocation typeId : effective.keySet()) {
             Optional<PluginTypeDefinition> typeDef = PluginTypeRegistry.getPluginType(registryAccess, typeId);
             if (typeDef.isEmpty()) {
                 continue;
             }
             Set<ResourceLocation> typeTags = new HashSet<>(typeDef.get().tags());
-            if (tagsIntersect(pluginTags, typeTags) && hasFreeSlot(gunDef.get(), installed, typeId)) {
+            if (tagsIntersect(pluginTags, typeTags) && hasFreeSlot(effective, installed, typeId)) {
                 result.add(new TypeMatch(typeId, typeDef.get()));
             }
         }
@@ -212,17 +230,22 @@ public final class PluginMatchingService {
     /**
      * Checks whether a category on a gun still has at least one free slot.
      *
-     * <p>Free = capacity − installed, where capacity is the slot count from
-     * {@link GunDefinition#slots()} and installed is the number of plugin
-     * instances whose {@code installedTypeId} equals {@code typeId}.</p>
+     * <p>Free = capacity − installed, where capacity is the effective slot
+     * count ({@link EffectiveSlotService#aggregateSlots}: gun base plus every
+     * installed plugin's {@code adds_slots} contribution) and installed is
+     * the number of plugin instances whose {@code installedTypeId} equals
+     * {@code typeId}.</p>
      *
-     * @param gunDef   the gun definition carrying the slot configuration
+     * @param effective the effective slot configuration (category id →
+     *                  capacity) of the gun
      * @param installed the gun's currently installed plugin instances
-     * @param typeId   the category id to check
+     * @param typeId    the category id to check
      * @return {@code true} when the installed count is below the capacity
      */
-    private static boolean hasFreeSlot(GunDefinition gunDef, List<PluginInstance> installed, ResourceLocation typeId) {
-        int capacity = gunDef.slots().getOrDefault(typeId, 0);
+    private static boolean hasFreeSlot(
+            Map<ResourceLocation, Integer> effective,
+            List<PluginInstance> installed, ResourceLocation typeId) {
+        int capacity = effective.getOrDefault(typeId, 0);
         return countInstalled(installed, typeId) < capacity;
     }
 
