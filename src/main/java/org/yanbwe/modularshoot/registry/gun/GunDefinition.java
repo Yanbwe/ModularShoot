@@ -6,7 +6,6 @@ import java.util.Map;
 import java.util.Optional;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
-import org.yanbwe.modularshoot.ModularShoot;
 
 /**
  * Immutable definition of a gun entry in the {@code modularshoot:guns}
@@ -92,20 +91,6 @@ public record GunDefinition(
         Map<ResourceLocation, Double> extraValues,
         Optional<Float> soundRange
 ) {
-    /**
-     * Map 键 codec：裸键（无冒号）默认补 {@code modularshoot} 命名空间。
-     *
-     * <p>与插件修饰符 attribute 裸键规则一致（见
-     * {@link org.yanbwe.modularshoot.attribute.AttributeModifierService#resolveAttributeHolder}）：
-     * 逻辑属性/特性/插槽/变体 id 均属模组命名空间，裸键落 {@code minecraft} 是历史错误。
-     * encode 侧保持原样（round-trip 稳定：完整命名空间键 decode 不动）。</p>
-     */
-    private static final Codec<ResourceLocation> MODULARSHOOT_KEY = ResourceLocation.CODEC.xmap(
-            loc -> loc.getNamespace().equals(ResourceLocation.DEFAULT_NAMESPACE)
-                    ? ResourceLocation.fromNamespaceAndPath(ModularShoot.MODID, loc.getPath())
-                    : loc,
-            loc -> loc);
-
     public static final Codec<GunDefinition> CODEC = RecordCodecBuilder.create(
             instance -> instance.group(
                     Codec.STRING.optionalFieldOf("name").forGetter(GunDefinition::name),
@@ -113,12 +98,12 @@ public record GunDefinition(
                     ResourceLocation.CODEC.optionalFieldOf("shoot_texture").forGetter(GunDefinition::shootTexture),
                     ShootTextureMode.CODEC.optionalFieldOf("shoot_texture_mode", ShootTextureMode.PER_SHOT).forGetter(GunDefinition::shootTextureMode),
                     TextureScaleMode.CODEC.optionalFieldOf("texture_scale", TextureScaleMode.AUTO).forGetter(GunDefinition::textureScale),
-                    Codec.unboundedMap(MODULARSHOOT_KEY, Codec.DOUBLE).optionalFieldOf("stats", Map.of()).forGetter(GunDefinition::stats),
-                    Codec.unboundedMap(MODULARSHOOT_KEY, Codec.BOOL).optionalFieldOf("traits", Map.of()).forGetter(GunDefinition::traits),
-                    Codec.unboundedMap(MODULARSHOOT_KEY, Codec.INT).optionalFieldOf("slots", Map.of()).forGetter(GunDefinition::slots),
+                    Codec.unboundedMap(SharedKeyCodecs.MODULARSHOOT_KEY, Codec.DOUBLE).optionalFieldOf("stats", Map.of()).forGetter(GunDefinition::stats),
+                    Codec.unboundedMap(SharedKeyCodecs.MODULARSHOOT_KEY, Codec.BOOL).optionalFieldOf("traits", Map.of()).forGetter(GunDefinition::traits),
+                    Codec.unboundedMap(SharedKeyCodecs.MODULARSHOOT_KEY, Codec.INT).optionalFieldOf("slots", Map.of()).forGetter(GunDefinition::slots),
                     Codec.unboundedMap(Codec.STRING, ResourceLocation.CODEC).optionalFieldOf("sounds", Map.of()).forGetter(GunDefinition::sounds),
                     BulletStyle.CODEC.optionalFieldOf("bullet_style").forGetter(GunDefinition::bulletStyle),
-                    Codec.unboundedMap(MODULARSHOOT_KEY, Codec.DOUBLE).optionalFieldOf("variants", Map.of()).forGetter(GunDefinition::variants),
+                    Codec.unboundedMap(SharedKeyCodecs.MODULARSHOOT_KEY, Codec.DOUBLE).optionalFieldOf("variants", Map.of()).forGetter(GunDefinition::variants),
                     Codec.unboundedMap(ResourceLocation.CODEC, Codec.DOUBLE)
                             .optionalFieldOf("extra_values", Map.of())
                             .forGetter(GunDefinition::extraValues),
