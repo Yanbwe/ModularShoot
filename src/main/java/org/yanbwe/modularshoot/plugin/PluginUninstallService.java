@@ -46,9 +46,14 @@ import org.yanbwe.modularshoot.plugin.event.PrePluginUninstallEvent;
  *       {@code returnItems} is {@code false} or {@code player} is
  *       {@code null}, the plugin is silently discarded.</li>
  *   <li><b>{@code force}</b> &mdash; when {@code true}, locked plugins are
- *       removed regardless of their {@code locked} flag. When {@code false},
- *       locked plugins are skipped (not removed) and reported as
- *       {@code success = false}.</li>
+ *       removed regardless of their {@code locked} flag and the
+ *       overflow pre-check is bypassed (设计规格 §adds_slots 槽位扩展 §6.2:
+ *       a force-removed slot-adding plugin leaves the over-capacity plugins
+ *       in place; they stay installed but the slot cannot accept new ones).
+ *       When {@code false}, locked plugins are skipped (not removed) and
+ *       reported as {@code success = false}, and a plugin whose removal
+ *       would overflow a slot type is rejected with
+ *       {@link UninstallResult.Reason#WOULD_OVERFLOW}.</li>
  *   <li><b>{@code returnItems}</b> &mdash; controls whether the removed
  *       plugin is returned as an item stack. See the {@code player}
  *       description above for the full interaction. A plugin whose
@@ -108,6 +113,10 @@ public final class PluginUninstallService {
      *       {@code (false, null, instanceUuid, UUID_NOT_FOUND)};</li>
      *   <li>if {@code force} is {@code false} and the plugin is locked,
      *       skip and return {@code (false, pluginId, instanceUuid, LOCKED)};</li>
+     *   <li>if {@code force} is {@code false} and removing the plugin would
+     *       leave some slot type over its effective capacity (a slot-adding
+     *       plugin still holding its contribution), skip and return
+     *       {@code (false, pluginId, instanceUuid, WOULD_OVERFLOW)};</li>
      *   <li>fire {@link PrePluginUninstallEvent}; if cancelled, skip and
      *       return {@code (false, pluginId, instanceUuid, CANCELED)};</li>
      *   <li>remove the plugin, write the new {@link GunData}, optionally
@@ -154,6 +163,11 @@ public final class PluginUninstallService {
         if (!force && plugin.locked()) {
             return new UninstallResult(false, plugin.pluginId(), instanceUuid, UninstallResult.Reason.LOCKED);
         }
+        if (!force && EffectiveSlotService.removalCausesOverflow(
+                gun, gunData, plugin, registryAccess)) {
+            return new UninstallResult(false, plugin.pluginId(), instanceUuid,
+                    UninstallResult.Reason.WOULD_OVERFLOW);
+        }
         PrePluginUninstallEvent preEvent = new PrePluginUninstallEvent(
                 player, gun, instanceUuid, plugin.pluginId());
         NeoForge.EVENT_BUS.post(preEvent);
@@ -175,9 +189,12 @@ public final class PluginUninstallService {
      * Removes one randomly chosen uninstallable plugin from a gun stack.
      *
      * <p>Candidates are the installed plugins that are either unlocked or
-     * would be force-removed. One is picked uniformly at random and
-     * delegated to {@link #uninstallPlugin}. When no candidate is available
-     * (empty list or all locked without {@code force}) the result is
+     * would be force-removed; when {@code force} is {@code false}, plugins
+     * whose removal would overflow a slot type are excluded from the
+     * candidates as well (设计规格 §adds_slots 槽位扩展 §6.3). One is picked
+     * uniformly at random and delegated to {@link #uninstallPlugin}. When no
+     * candidate is available (empty list, all locked without {@code force},
+     * or every uninstallable plugin would overflow) the result is
      * {@code (false, null, null, NO_CANDIDATE)}.</p>
      *
      * <p>The random source is consistent with the install path: when
@@ -207,7 +224,12 @@ public final class PluginUninstallService {
             return new UninstallResult(false, null, null, UninstallResult.Reason.NOT_GUN_OR_NO_DATA);
         }
         List<PluginInstance> candidates = gunData.installedPlugins().stream()
-                .filter(p -> force || !p.locked())
+                // Non-force candidates exclude plugins whose removal would
+                // overflow a slot type (设计规格 §adds_slots 槽位扩展 §6.3);
+                // force bypasses both the locked and the overflow checks.
+                .filter(p -> force || (!p.locked()
+                        && !EffectiveSlotService.removalCausesOverflow(
+                                gun, gunData, p, registryAccess)))
                 .toList();
         if (candidates.isEmpty()) {
             return new UninstallResult(false, null, null, UninstallResult.Reason.NO_CANDIDATE);

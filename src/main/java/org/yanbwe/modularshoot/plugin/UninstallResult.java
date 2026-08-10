@@ -51,6 +51,8 @@ public record UninstallResult(
         LOCKED,
         /** PrePluginUninstallEvent 被监听器取消。 */
         CANCELED,
+        /** 卸载该插件将导致某槽位类型超编（非 force 时拒绝；force 可绕过）。 */
+        WOULD_OVERFLOW,
         /** 随机卸载无候选（空列表或全部锁定且未 force）。 */
         NO_CANDIDATE
     }
