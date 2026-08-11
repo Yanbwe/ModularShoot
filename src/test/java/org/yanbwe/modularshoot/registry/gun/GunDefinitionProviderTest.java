@@ -90,6 +90,74 @@ class GunDefinitionProviderTest {
     }
 
     @Test
+    void firstNonEmptyProviderWinsInRegistrationOrder() {
+        ResourceLocation id = uniqueId("order");
+        GunDefinition first = minimalDef("first");
+        GunDefinition second = minimalDef("second");
+        // Both providers respond to the same id; the earlier-registered one wins.
+        GunRegistry.registerGunDefinitionProvider(providerId ->
+                providerId.equals(id) ? Optional.of(first) : Optional.empty());
+        GunRegistry.registerGunDefinitionProvider(providerId ->
+                providerId.equals(id) ? Optional.of(second) : Optional.empty());
+
+        Optional<GunDefinition> result = GunRegistry.getGun(EMPTY, id);
+
+        assertTrue(result.isPresent(), "注册序在前的非空提供者必须胜出");
+        assertSame(first, result.get(), "返回第一个非空提供者的定义");
+    }
+
+    @Test
+    void emptyFirstProviderFallsThroughToNextProvider() {
+        ResourceLocation id = uniqueId("order_fallthrough");
+        GunDefinition def = minimalDef("second_wins");
+        GunRegistry.registerGunDefinitionProvider(providerId -> Optional.empty());
+        GunRegistry.registerGunDefinitionProvider(providerId ->
+                providerId.equals(id) ? Optional.of(def) : Optional.empty());
+
+        Optional<GunDefinition> result = GunRegistry.getGun(EMPTY, id);
+
+        assertTrue(result.isPresent(), "前序提供者返回空时必须由后序提供者接手");
+        assertSame(def, result.get());
+    }
+
+    @Test
+    void nullProviderResultTreatedAsEmpty() {
+        ResourceLocation id = uniqueId("null_result");
+        GunDefinition def = minimalDef("after_null");
+        GunRegistry.registerGunDefinitionProvider(providerId -> null);
+        GunRegistry.registerGunDefinitionProvider(providerId ->
+                providerId.equals(id) ? Optional.of(def) : Optional.empty());
+
+        Optional<GunDefinition> result = GunRegistry.getGun(EMPTY, id);
+
+        assertTrue(result.isPresent(), "null 结果必须按空处理并回退下一来源");
+        assertSame(def, result.get());
+    }
+
+    @Test
+    void throwingProviderIsSwallowedAndFallsThrough() {
+        ResourceLocation id = uniqueId("throwing");
+        GunDefinition def = minimalDef("after_throwing");
+        GunRegistry.registerGunDefinitionProvider(providerId -> {
+            throw new IllegalStateException("provider exploded");
+        });
+        GunRegistry.registerGunDefinitionProvider(providerId ->
+                providerId.equals(id) ? Optional.of(def) : Optional.empty());
+
+        Optional<GunDefinition> result = GunRegistry.getGun(EMPTY, id);
+
+        assertTrue(result.isPresent(), "抛异常的提供者必须被吞掉并回退下一来源");
+        assertSame(def, result.get());
+    }
+
+    @Test
+    void nullProviderRegistrationRejected() {
+        assertThrows(NullPointerException.class,
+                () -> GunRegistry.registerGunDefinitionProvider(null),
+                "null provider must be rejected at the boundary");
+    }
+
+    @Test
     void unregisteredIdStaysEmptyWithoutProviders() {
         // 回归：不注册任何 provider 时 getGun 行为与现状一致。
         ResourceLocation id = uniqueId("regression");

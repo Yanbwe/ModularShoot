@@ -107,7 +107,6 @@ public final class PluginBarTooltipBuilder {
             return List.of();
         }
 
-        GunDefinition gunDef = gunDefOpt.get();
         // Effective slot configuration: gun base slots ∪ every installed
         // plugin's adds_slots, so slot-adding plugins and their created slot
         // types show up in the bar (设计规格 §adds_slots 槽位扩展 §7).

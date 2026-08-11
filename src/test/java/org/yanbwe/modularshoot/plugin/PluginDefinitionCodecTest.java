@@ -1,7 +1,9 @@
 package org.yanbwe.modularshoot.plugin;
 
+import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
+import java.util.Map;
 import java.util.Optional;
 import net.minecraft.resources.ResourceLocation;
 import org.junit.jupiter.api.Test;
@@ -97,6 +99,31 @@ class PluginDefinitionCodecTest {
                 "bare key defaults to the modularshoot namespace");
         assertEquals(-1, definition.addsSlots().get(ResourceLocation.parse("modularshoot:accessory")),
                 "negative values are allowed");
+    }
+
+    @Test
+    void addsSlotsEncodeRoundTrip() {
+        PluginDefinition definition = parse(
+                "{\"item_icon\": \"m:icon\", \"adds_slots\": {\"combat\": 1, \"modularshoot:accessory\": -1}}");
+        JsonElement encoded = PluginDefinition.CODEC.encodeStart(JsonOps.INSTANCE, definition)
+                .getOrThrow(msg -> new AssertionError("Encode failed: " + msg));
+        PluginDefinition roundTripped = PluginDefinition.CODEC.decode(JsonOps.INSTANCE, encoded)
+                .getOrThrow(msg -> new AssertionError("Re-decode failed: " + msg))
+                .getFirst();
+        assertEquals(definition.addsSlots(), roundTripped.addsSlots(),
+                "encode → decode must preserve the adds_slots map");
+    }
+
+    @Test
+    void combinedExtensionFieldsParseTogether() {
+        PluginDefinition definition = parse(
+                "{\"item_icon\": \"m:icon\", \"adds_slots\": {\"combat\": 2}, "
+                        + "\"adds_variants\": {\"modularshoot:fire\": 3.0}, \"visual_priority\": 120}");
+        assertEquals(Map.of(ResourceLocation.parse("modularshoot:combat"), 2),
+                definition.addsSlots(), "adds_slots parses alongside the other extension fields");
+        assertEquals(1, definition.addsVariants().size(), "adds_variants parses alongside adds_slots");
+        assertEquals(120, definition.visualPriority().orElseThrow(),
+                "visual_priority parses alongside adds_slots");
     }
 
     @Test

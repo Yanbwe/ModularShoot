@@ -164,7 +164,7 @@ public final class PluginUninstallService {
             return new UninstallResult(false, plugin.pluginId(), instanceUuid, UninstallResult.Reason.LOCKED);
         }
         if (!force && EffectiveSlotService.removalCausesOverflow(
-                gun, gunData, plugin, registryAccess)) {
+                gunData, plugin, registryAccess)) {
             return new UninstallResult(false, plugin.pluginId(), instanceUuid,
                     UninstallResult.Reason.WOULD_OVERFLOW);
         }
@@ -229,7 +229,7 @@ public final class PluginUninstallService {
                 // force bypasses both the locked and the overflow checks.
                 .filter(p -> force || (!p.locked()
                         && !EffectiveSlotService.removalCausesOverflow(
-                                gun, gunData, p, registryAccess)))
+                                gunData, p, registryAccess)))
                 .toList();
         if (candidates.isEmpty()) {
             return new UninstallResult(false, null, null, UninstallResult.Reason.NO_CANDIDATE);

@@ -116,6 +116,15 @@ class EffectiveSlotServiceTest {
     }
 
     @Test
+    void multiplePluginsStackOntoSameType() {
+        Map<ResourceLocation, Integer> slots = EffectiveSlotService.aggregateSlots(
+                gun(Map.of(COMBAT, 2)),
+                List.of(def(Map.of(COMBAT, 1)), def(Map.of(COMBAT, 1))));
+        assertEquals(Map.of(COMBAT, 4), slots,
+                "every plugin's contribution sums onto the same type");
+    }
+
+    @Test
     void emptyGunSlotsWithPluginCreatesOnlyPluginKeys() {
         Map<ResourceLocation, Integer> slots = EffectiveSlotService.aggregateSlots(
                 gun(Map.of()), List.of(def(Map.of(ACCESSORY, 1))));
@@ -139,6 +148,35 @@ class EffectiveSlotServiceTest {
                 List.of(inst("a", "modularshoot:combat"), inst("b", "modularshoot:combat")),
                 List.of(def(Map.of()), def(Map.of())));
         assertFalse(overflow, "installed count within capacity never overflows");
+    }
+
+    @Test
+    void noOverflowWhenExactlyAtCapacity() {
+        boolean overflow = EffectiveSlotService.overflowAfterRemoval(
+                gun(Map.of(COMBAT, 2)),
+                List.of(inst("a", "modularshoot:combat"), inst("b", "modularshoot:combat")),
+                List.of(def(Map.of()), def(Map.of())));
+        assertFalse(overflow, "count exactly at capacity is not an overflow");
+    }
+
+    @Test
+    void removalKeepsSurvivingSlotAddersContributions() {
+        // Two slot-adding plugins (+1 each) with one combat plugin installed:
+        // removing one adder leaves the other's contribution, so no overflow.
+        boolean overflow = EffectiveSlotService.overflowAfterRemoval(
+                gun(Map.of(COMBAT, 1)),
+                List.of(inst("x", "modularshoot:combat"), inst("b", "modularshoot:combat")),
+                List.of(def(Map.of()), def(Map.of(COMBAT, 1))));
+        assertFalse(overflow, "the surviving slot adder still contributes its capacity");
+    }
+
+    @Test
+    void negativeCapacityOverflowsWithInstalledPlugins() {
+        boolean overflow = EffectiveSlotService.overflowAfterRemoval(
+                gun(Map.of(COMBAT, -1)),
+                List.of(inst("a", "modularshoot:combat")),
+                List.of(def(Map.of())));
+        assertTrue(overflow, "a negative net capacity with any installed plugin overflows");
     }
 
     @Test

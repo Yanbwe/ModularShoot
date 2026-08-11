@@ -27,6 +27,15 @@ import org.jetbrains.annotations.NotNull;
  *       providers (设计文档 §注册冲突与覆盖 语义延伸).</li>
  *   <li>Implementations must be side-safe (no client-only calls) because
  *       {@code getGun} runs on both sides.</li>
+ *   <li>Per-player definitions must be <em>deterministic across ends</em>:
+ *       the same provider runs on the server and on the client, but client
+ *       query points (tooltip, item name resolution, rendering, hit sounds)
+ *       have no access to server-side player state. A definition that
+ *       depends on server-only state either degrades to the datapack
+ *       fallback on the client (tooltip shows the degraded name) or shows
+ *       different values on each end — the framework has no sync mechanism
+ *       for provider results. Prefer definitions derived from data available
+ *       on both sides (e.g. the gun id itself).</li>
  * </ul>
  *
  * <p>Registration is process-wide and survives {@code /reload}; use

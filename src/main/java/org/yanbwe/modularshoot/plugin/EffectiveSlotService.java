@@ -88,11 +88,14 @@ public final class EffectiveSlotService {
             List<@Nullable PluginDefinition> remainingDefs) {
         Map<ResourceLocation, Integer> after = aggregateSlots(gunDef,
                 remainingDefs.stream().filter(Objects::nonNull).toList());
+        // Single-pass counting: tally each type once, then compare each
+        // against its effective capacity (O(n) instead of O(n²)).
+        Map<ResourceLocation, Long> counts = new HashMap<>();
         for (PluginInstance p : remaining) {
-            long count = remaining.stream()
-                    .filter(q -> q.installedTypeId().equals(p.installedTypeId()))
-                    .count();
-            if (count > after.getOrDefault(p.installedTypeId(), 0)) {
+            counts.merge(p.installedTypeId(), 1L, Long::sum);
+        }
+        for (Map.Entry<ResourceLocation, Long> e : counts.entrySet()) {
+            if (e.getValue() > after.getOrDefault(e.getKey(), 0)) {
                 return true;
             }
         }
@@ -128,7 +131,6 @@ public final class EffectiveSlotService {
      * <p>枪械定义缺失时保守放行（{@code false}）——容量无法证明，不阻塞卸载。
      * 已装插件定义缺失（降级）按贡献 0 参与判定。</p>
      *
-     * @param gun      the gun item stack to inspect
      * @param gunData  the gun's current data component
      * @param target   the plugin instance about to be removed
      * @param access   the runtime registry view
@@ -136,7 +138,7 @@ public final class EffectiveSlotService {
      *         type over capacity
      */
     public static boolean removalCausesOverflow(
-            ItemStack gun, GunData gunData, PluginInstance target, RegistryAccess access) {
+            GunData gunData, PluginInstance target, RegistryAccess access) {
         Optional<GunDefinition> gunDef = GunRegistry.getGun(access, gunData.gunId());
         if (gunDef.isEmpty()) {
             return false;

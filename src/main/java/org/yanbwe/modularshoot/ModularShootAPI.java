@@ -760,7 +760,9 @@ public final class ModularShootAPI {
      * The provider is consulted by {@link GunRegistry#getGun} after the
      * Java API map and before the datapack registry, enabling definitions
      * that are per-player or generated at query time (改进① 动态定义来源,
-     * 2026-08-10 探讨整理). Safe to call during mod common-setup.</p>
+     * 2026-08-10 探讨整理). Registration is process-wide and survives
+     * {@code /reload} (same semantics as {@link #registerGun}). Safe to
+     * call during mod common-setup.</p>
      *
      * @param provider the provider to register; must not be {@code null}
      */
@@ -815,7 +817,10 @@ public final class ModularShootAPI {
      *
      * <p>Delegates to {@link GunRegistry#getGun}. The registry is
      * datapack-driven and empty on the main menu, so a {@link RegistryAccess}
-     * from a loaded world is required.</p>
+     * from a loaded world is required. Dynamic providers registered via
+     * {@link #registerGunDefinitionProvider} participate in the query
+     * (consulted between the Java API map and the datapack registry); see
+     * {@link GunRegistry#getGun} for the full source ordering.</p>
      *
      * @param registryAccess the runtime registry view; must not be {@code null}
      * @param gunId          the gun definition id; must not be {@code null}

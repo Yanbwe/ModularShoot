@@ -15,6 +15,7 @@ import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.attribute.AttributeModifierService;
 import org.yanbwe.modularshoot.component.GunData;
@@ -35,7 +36,8 @@ import org.yanbwe.modularshoot.registry.ModularShootRegistries;
  * query method therefore takes a {@link RegistryAccess} (or a {@link Level}
  * that provides one) so the caller supplies the correct runtime view.</p>
  *
- * <p>This class supports two registration paths (设计文档 §注册冲突与覆盖):
+ * <p>This class supports three registration/query sources (设计文档
+ * §注册冲突与覆盖, 改进① 动态定义来源):
  * <ul>
  *   <li><b>Datapack JSON</b> &mdash; entries loaded from
  *       {@code data/<namespace>/modularshoot/guns/<id>.json} during world
@@ -47,6 +49,14 @@ import org.yanbwe.modularshoot.registry.ModularShootRegistries;
  *       framework's {@link RegistrationCoordinator} tracks every claimed id
  *       so that later datapack loads cannot override them (设计文档
  *       §注册冲突与覆盖, line 2289).</li>
+ *   <li><b>Dynamic providers</b> &mdash; definitions computed at query time
+ *       via {@link #registerGunDefinitionProvider}, consulted after the Java
+ *       API map and before the datapack registry; the first non-empty
+ *       provider result wins. Provider-defined ids are <em>not</em>
+ *       enumerated by {@link #getAllGunIds} (they are query-time only) and
+ *       are <em>not</em> marked with {@link RegistrationCoordinator}, so a
+ *       datapack JSON with the same id loads silently and is shadowed at
+ *       query time (改进① 动态定义来源).</li>
  * </ul>
  *
  * <p>Because the dynamic registry is frozen after world load, Java-API-
@@ -184,8 +194,9 @@ public final class GunRegistry {
      * §注册冲突与覆盖, line 2289). Dynamic providers registered via
      * {@link #registerGunDefinitionProvider} are consulted next, before the
      * datapack registry; the first non-empty provider result wins (改进①
-     * 动态定义来源). When the id is present in both sources the Java-API
-     * definition is returned.</p>
+     * 动态定义来源). When multiple sources match the same id the Java-API
+     * definition wins, then the first non-empty provider result; a provider
+     * result shadows the datapack entry without warning (see class javadoc).</p>
      *
      * @param registryAccess the runtime registry view (from a loaded world)
      * @param gunId          the gun definition id, e.g.
@@ -199,13 +210,35 @@ public final class GunRegistry {
             return Optional.of(javaApiGun);
         }
         for (GunDefinitionProvider provider : DEFINITION_PROVIDERS) {
-            final Optional<GunDefinition> provided = provider.get(gunId);
+            final Optional<GunDefinition> provided = queryProvider(provider, gunId);
             if (provided.isPresent()) {
                 return provided;
             }
         }
         return registryAccess.registry(ModularShootRegistries.GUNS_KEY)
                 .flatMap(registry -> registry.getOptional(gunId));
+    }
+
+    /**
+     * Queries a single provider defensively (改进① 动态定义来源, 容错契约).
+     *
+     * <p>Providers are third-party integration points: a {@code null} result
+     * is treated as empty (fall through to the next source) and any thrown
+     * exception is caught, logged as a WARN and swallowed — a faulty provider
+     * must not crash the shooting hot path, consistent with the framework's
+     * degradation-first principle (同 {@code DatapackErrorHandler} 降级).</p>
+     */
+    private static Optional<GunDefinition> queryProvider(
+            GunDefinitionProvider provider, ResourceLocation gunId) {
+        try {
+            Optional<GunDefinition> provided = provider.get(gunId);
+            return provided == null ? Optional.empty() : provided;
+        } catch (Exception e) {
+            ModularShoot.LOGGER.warn(
+                    "Gun definition provider {} threw an exception for {}; falling back to the next source",
+                    provider.getClass().getName(), gunId, e);
+            return Optional.empty();
+        }
     }
 
     /**
@@ -227,7 +260,11 @@ public final class GunRegistry {
      * <p>The returned set is the union of datapack-registered ids and
      * Java-API-registered ids (via {@link #registerGun}). When the same id
      * appears in both sources it is included only once (Java-API takes
-     * priority at query time, see {@link #getGun}).</p>
+     * priority at query time, see {@link #getGun}). Provider-defined ids
+     * (via {@link #registerGunDefinitionProvider}) are <strong>not</strong>
+     * enumerated: they are computed at query time and may not even exist as
+     * stable ids (e.g. {@code player:<uuid>}), so callers such as the
+     * creative tab never see dynamic guns here.</p>
      *
      * @param registryAccess the runtime registry view
      * @return an unmodifiable set of all gun ids; an empty set when the
