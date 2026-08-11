@@ -276,15 +276,19 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer imple
         // same per-shot shootAnimTimer as the third-person arm pose and the
         // per_shot texture mode, so the kick pulses per accepted shot. Only
         // the local player's main-hand stack in a first-person context is
-        // affected; the pose frame at this point is item-centred with +X
-        // pointing into the screen and +Z along the screen's left-right axis
-        // (see FirstPersonRecoilKick).
+        // affected; renderByItem receives the camera frame at this point:
+        // +X is the screen's right, +Y up, and +Z points toward the viewer,
+        // so the kick translates along -Z (push back into the screen) and
+        // rotates around +X (the screen's left-right horizontal axis, muzzle
+        // rise toward the viewer) — see FirstPersonRecoilKick (0.1.5 review
+        // fix: the former +X translation / +Z rotation pressed the muzzle
+        // down in the camera frame and was corrected).
         if (context.firstPerson() && isLocalMainHandStack(stack)) {
             FirstPersonRecoilKick.Kick kick = FirstPersonRecoilKick.compute(
                     PlayerShootStateManager.getInstance().getAnimTimer(minecraft.player.getUUID()));
             if (kick.isActive()) {
-                poseStack.translate(kick.pushBlocks(), 0.0F, 0.0F);
-                poseStack.mulPose(Axis.ZP.rotationDegrees(kick.riseDegrees()));
+                poseStack.translate(0.0F, 0.0F, -kick.pushBlocks());
+                poseStack.mulPose(Axis.XP.rotationDegrees(kick.riseDegrees()));
             }
         }
 

@@ -65,6 +65,8 @@
   "modularshoot.tooltip.degraded_plugin": "[失效插件] %s",
   "modularshoot.tooltip.installable_to": "可安装至: ",
   "modularshoot.tooltip.list_separator": "、",
+  "modularshoot.tooltip.locked_anchor": "⚓",
+  "modularshoot.tooltip.slot_count": "（%s/%s）",
   "modularshoot.tooltip.unknown_type": "[未知种类]",
   "modularshoot.tooltip.installable_unknown": "可安装至: 未知",
   "modularshoot.tooltip.unknown_gun": "未知枪械 (%s)",

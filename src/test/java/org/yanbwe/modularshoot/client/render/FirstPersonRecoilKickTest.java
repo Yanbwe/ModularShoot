@@ -88,9 +88,9 @@ class FirstPersonRecoilKickTest {
 
     @Test
     void riseIsPositiveAndPushIsPositive() {
-        // Sign conventions: push along +X (into the screen, away from the
-        // viewer) and a positive rotation around +Z (muzzle rise toward the
-        // viewer) — see FirstPersonRecoilKick's axis documentation.
+        // Sign conventions: positive push (translated along -Z, back into
+        // the screen) and a positive rotation around +X (muzzle rise toward
+        // the viewer) — see FirstPersonRecoilKick's axis documentation.
         FirstPersonRecoilKick.Kick kick = FirstPersonRecoilKick.compute(PEAK);
         assertTrue(kick.pushBlocks() > 0.0F, "the gun must push back into the screen");
         assertTrue(kick.riseDegrees() > 0.0F, "the muzzle must rise toward the viewer");

@@ -28,8 +28,11 @@ import org.yanbwe.modularshoot.registry.gun.GunDefinition;
  * lines 1472-1511).
  *
  * <p>Iterates the gun's slot configuration (category id → slot count),
- * rendering one header line per category — {@code [类型名]（已安装数/插槽数）}
- * — followed by the installed plugins grouped under that category. Categories
+ * rendering one header line per category — {@code [类型名]（已安装数/插槽数）},
+ * the count suffix's parentheses and format coming from the lang key
+ * {@code modularshoot.tooltip.slot_count} (en_us {@code (%s/%s)},
+ * zh_cn {@code （%s/%s）}) — followed by the installed plugins grouped under
+ * that category. Categories
  * are sorted by {@code priority} descending and are always shown, even when
  * empty (设计文档 line 1473, 1476).</p>
  *
@@ -170,7 +173,8 @@ public final class PluginBarTooltipBuilder {
      * header name — but their installed plugins have already been moved to
      * the trailing {@code [未知种类]} group by
      * {@link PluginTypeDegradationHandler#groupPluginsByType}, so the
-     * configured header always shows {@code （0/插槽数）}.</p>
+     * configured header always shows {@code （0/插槽数）} (parentheses and
+     * format from the lang key {@code modularshoot.tooltip.slot_count}).</p>
      *
      * @param slots          the gun's slot configuration (category id → count)
      * @param registryAccess the runtime registry view
@@ -219,7 +223,10 @@ public final class PluginBarTooltipBuilder {
      * Builds the category header line {@code [类型名]（已安装数/插槽数）}.
      *
      * <p>The category name is coloured with its definition {@code color}
-     * when present; the count suffix is grey (设计文档 line 1473).</p>
+     * when present; the count suffix is grey (设计文档 line 1473). The
+     * suffix's parentheses and format come from the lang key
+     * {@code modularshoot.tooltip.slot_count} (en_us {@code (%s/%s)},
+     * zh_cn {@code （%s/%s）}).</p>
      *
      * @param entry          the slot entry
      * @param installedCount the number of plugins installed in this category
@@ -238,9 +245,8 @@ public final class PluginBarTooltipBuilder {
                 nameComp = nameComp.withColor(TooltipUtils.parseHexColor(color.get()));
             }
         }
-        return nameComp.append(Component.literal(
-                "（" + installedCount + "/" + entry.slotCount() + "）")
-                .withStyle(ChatFormatting.GRAY));
+        return nameComp.append(Component.translatable("modularshoot.tooltip.slot_count",
+                installedCount, entry.slotCount()).withStyle(ChatFormatting.GRAY));
     }
 
     /**
@@ -251,7 +257,9 @@ public final class PluginBarTooltipBuilder {
      * line 2356). Otherwise the default view shows
      * {@code ⚓插件名 - brief} (⚓ when locked) and the Shift view expands to
      * {@code ⚓插件名} followed by {@code |description} (or {@code |brief})
-     * (设计文档 lines 1474, 1500-1502).</p>
+     * (设计文档 lines 1474, 1500-1502). The lock anchor ⚓ comes from the
+     * lang key {@code modularshoot.tooltip.locked_anchor} and is appended
+     * only when the plugin is locked (空分支保持空字面量).</p>
      *
      * @param plugin         the installed plugin instance
      * @param registryAccess the runtime registry view
@@ -264,7 +272,7 @@ public final class PluginBarTooltipBuilder {
         // A-04: degraded plugin — grey [失效插件] <path>, no brief/description.
         if (PluginDegradationHandler.isPluginDefinitionMissing(plugin, registryAccess)) {
             Component anchor = plugin.locked()
-                    ? Component.literal("⚓") : Component.literal("");
+                    ? Component.translatable("modularshoot.tooltip.locked_anchor") : Component.literal("");
             lines.add(Component.literal("  ")
                     .append(anchor)
                     .append(PluginDegradationHandler.getDegradedPluginName(plugin)));
@@ -288,7 +296,7 @@ public final class PluginBarTooltipBuilder {
         }
 
         Component anchor = plugin.locked()
-                ? Component.literal("⚓") : Component.literal("");
+                ? Component.translatable("modularshoot.tooltip.locked_anchor") : Component.literal("");
         if (shift) {
             // Shift: 插件名 on first line, |description (or |brief) on second.
             lines.add(Component.literal("  ").append(anchor).append(nameComp));
