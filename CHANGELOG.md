@@ -4,22 +4,21 @@
 
 ### 修复 / Fixed
 
-- **专用服务器崩溃**：`GunItem`/`PluginItem` 的 `getName` 无条件调用客户端包 `ItemNameResolver`（引用 `Minecraft`），专用服务器上抛 `NoClassDefFoundError`（`catch(Exception)` 捕不住）直接崩服——入口改为按物理端守卫（`FMLEnvironment.dist.isDedicatedServer()` 直接回退），客户端类引用不再被触达（命令 `/modularshoot stats`/`variants`/`debug on`、死亡消息等路径均受保护）。
-- **插件裸键命名空间漂移**：`PluginDefinition` 的 `traits`/`adds_variants` 裸键落 `minecraft:` 命名空间，与枪械侧 `modularshoot:`（`SharedKeyCodecs.MODULARSHOOT_KEY`）合并契约静默失效（枪械固有特性压过插件的语义被破坏、variants 权重不合并）——两处 codec 统一为 `MODULARSHOOT_KEY`。
-- **零速子弹永不消亡**：冻结 `bullet_speed ≤ 0` 的子弹 `traveledDistance` 恒 0、范围检查永假、无 age 兜底，永久驻留 BulletManager 空跑每 tick hook/广播——管线新增静止过期检查（位置推进前立即按 EXPIRED 移除，onExpire 先触发）。
-- **BulletSnapshot 死代码与文档失实**：`encodeState`/`decodeState` 声称"state 初始值经 BulletS2CPacket 传客户端"，实际 `ClientBulletSnapshot` 刻意不下发 state（设计文档 §子弹快照）、两方法无调用者——删除死代码，javadoc 明确 state 仅服务端可见。
-- **reload 校验误报**：`CrossReferenceValidator` 插件 tag 只要有一个未匹配就 WARN 且断言"装不上任何枪"（部分匹配误报）——改为仅全部 tag 均无交集才 WARN；`ItemBindingValidator` 的 "Bound gun not found" 只对照 datapack 键集，指向 Java API 注册枪械的合法绑定每次 reload 误报——已知集合改为 datapack 键 ∪ Java API 注册键（provider 通道不可枚举、不含）。
-- **第一人称后坐方向修正**：`renderByItem` 收到的是相机坐标系（+X=屏幕右、+Y=上、+Z=指向观察者），原 +X 平移 + 绕 +Z 旋转实测表现为**枪口下压**——改为沿 -Z 后收入屏 + 绕 +X（屏幕左右水平轴）正旋转（枪口顶端朝观察者抬起），javadoc/设计文档同步。
+- **专用服务器崩溃**：修复专用服务器上枪械/插件物品名称解析抛 `NoClassDefFoundError` 崩服的问题（`/modularshoot stats` 等命令、死亡消息等路径均受保护）。
+- **插件裸键命名空间漂移**：插件定义的 `traits`/`adds_variants` 裸键与枪械一致归入 `modularshoot` 命名空间，枪械与插件同名的特性/变体现在可以正常合并。
+- **零速子弹永不消亡**：速度为 0 的子弹不再永久驻留，立即按过期移除。
+- **reload 校验误报**：插件标签仅部分未匹配时不再误报"装不上任何枪"；指向 Java API 注册枪械的合法绑定不再误报"未找到"。
+- **第一人称后坐方向修正**：枪口下压修正为微微上抬（后收进屏幕 + 枪口朝观察者上抬）。
 
 ### 改进 / Improved
 
-- **卸载超编预检测试补全**：`preflightReason`/`isRandomCandidate` 决策纯函数化并补 10 条测试（非 force 拒绝 WOULD_OVERFLOW / force 绕过 / 随机候选过滤 / `removalCausesOverflow` stub 注册表集成），0.1.4 三条最易错路径首次有自动化断言。
-- **健壮性**：`resolveDamageType` 非法 state 串不再抛未检查异常（tryParse + 降级回退）；`decodeStateMap` 损坏 NBT 键跳过并 WARN（与 unregistered 降级哲学一致）；`EffectiveSlotService` 槽位聚合改饱和加法（防 int 回绕锁死槽位）；`AttachLayerModifier` 默认 tint 防御性拷贝（防共享可变引用全局污染）。
-- **一致性**：卸载路径 pre-event 后重读组件（对齐安装路径，监听器改动不再被静默抹掉）；tooltip 插件栏已装计数与超编判定统一按 installedTypeId 全量计数；`GunDegradationHandler` WARN 节流表登出清理（防缓慢内存泄漏）；`checkRegistrationConflicts` 补 `gun_items`/`plugin_items`；reload 汇总补 shooters 行。
-- **渲染**：3D 子弹光照改用插值位置（不再滞后一个同步段）。
-- **清理**：删除死代码（`checkGunTextures`、`DegradationTextures`、空 `BLOCKS` DeferredRegister、`AntiCheatState.baselineVersion`、`InstallResult.failure(String)`、不可达 `definition_not_found` 分支、`clearCache()`）与 6 处失实 javadoc（注册表计数、命令线程模型、挥臂 Mixin、standalone 变体、nextLong 计数等）。
-- **测试补强**：出厂数据包 JSON 全量真实 codec 解码断言（9 张表 45 个文件，codec 映射覆盖 10 张注册表）；`BulletS2CPacket` codec 往返测试（8 条：null 哨兵/枚举 ordinal/三桶/forceFullSync）；全量 414 用例。
-- **本地化补强**：tooltip 插件栏的全角括号计数（`（x/y）`）与锁定锚字符 `⚓` 由硬编码改为 lang 键（`modularshoot.tooltip.slot_count` / `locked_anchor`），en_us 下不再显示 CJK 标点。
+- **卸载超编预检测试**：0.1.4 的超编预检与随机卸载候选过滤补 10 条自动化测试。
+- **健壮性**：非法伤害类型、损坏状态数据、槽位数值溢出、共享可变引用等边界情况不再导致崩溃或异常。
+- **一致性**：卸载流程尊重事件监听器的修改；tooltip 插件栏计数与超编判定口径统一；登出清理节流表；reload 校验补绑定表与 shooters 汇总。
+- **渲染**：3D 子弹光照改用插值位置，高速移动时更准确。
+- **清理**：删除 8 处死代码，修正 7 处过时 javadoc。
+- **测试补强**：出厂数据包 JSON 全量解码断言（45 个文件）；`BulletS2CPacket` 编解码往返测试；全量 414 用例。
+- **本地化补强**：tooltip 计数括号与锁定锚字符改为 lang 键，en_us 下不再显示 CJK 标点。
 
 ## [0.1.4] - 2026-08-10
 
