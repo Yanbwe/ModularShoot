@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.5] - 2026-08-11
+
+### Fixed
+
+- **Dedicated server crash**: fixed a `NoClassDefFoundError` crash when resolving gun/plugin item display names on a dedicated server (paths like the `/modularshoot stats` command and death messages are protected).
+- **Plugin bare-key namespace drift**: bare `traits` / `adds_variants` keys in plugin definitions now land in the `modularshoot` namespace, matching guns — same-name traits and variants between a gun and its plugins now merge correctly.
+- **Zero-speed bullets never expire**: bullets with a speed of 0 are now removed immediately as expired instead of lingering forever.
+- **Reload validation false positives**: a plugin whose tags only partially match is no longer warned as "cannot be installed on any gun"; valid bindings pointing at Java-API-registered guns are no longer reported as "not found".
+- **First-person recoil direction fix**: the muzzle was pressed down — now corrected to a slight rise (kick back into the screen + muzzle rise toward the viewer).
+
+### Improved
+
+- **Uninstall overflow precheck tests**: added 10 automated tests covering the 0.1.4 overflow precheck and random-uninstall candidate filtering.
+- **Robustness**: edge cases such as invalid damage types, corrupted state data, slot-count integer overflow and shared mutable references no longer cause crashes or lock-ups.
+- **Consistency**: uninstall now respects listener mutations; tooltip plugin-bar counts match the overflow rules; rate-limit state is cleaned up on logout; reload validation now covers the binding tables and the shooters summary.
+- **Rendering**: 3D bullet lighting now uses the interpolated position, more accurate at high speed.
+- **Cleanup**: removed 8 pieces of dead code and fixed 7 outdated javadocs.
+- **Tests**: every shipped datapack JSON is now decoded by its real codec (45 files); `BulletS2CPacket` codec round-trip tests added; 414 tests in total.
+- **Localization**: tooltip count parentheses and the lock anchor character are now lang keys — no more CJK punctuation in en_us.
+
 ## [0.1.4] - 2026-08-10
 
 ### Added
