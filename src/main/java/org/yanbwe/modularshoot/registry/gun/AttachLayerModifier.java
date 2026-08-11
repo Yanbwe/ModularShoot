@@ -54,6 +54,21 @@ public record AttachLayerModifier(
     public static final String TYPE_NAME = "attach_layer";
 
     /**
+     * Compact constructor with a defensive copy of {@code tint}.
+     *
+     * <p>The codec's {@code optionalFieldOf("tint", ...)} default is a single
+     * {@link Vector4f} instance shared by every decode that omits the field;
+     * without the copy, all such instances would alias one mutable object and
+     * an in-place mutation anywhere would globally pollute every omitted-tint
+     * layer (稳健性修复).</p>
+     *
+     * @param tint the layer tint; the stored value is a copy of the argument
+     */
+    public AttachLayerModifier {
+        tint = new Vector4f(tint);
+    }
+
+    /**
      * Per-record {@link MapCodec}. Dispatch consumes the {@code "type"} field;
      * this codec declares only the payload fields. Optional
      * {@link ResourceLocation}s use {@link Codec#optionalFieldOf(String)}

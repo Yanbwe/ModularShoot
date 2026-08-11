@@ -230,6 +230,26 @@ public final class CrossReferenceValidator {
     }
 
     /**
+     * Pure: true when the plugin's tags match no plugin type's tag set
+     * (the plugin can never be installed on any gun). Empty tag sets
+     * never match (审查修复 M4).
+     *
+     * @param pluginTags  the plugin's declared tags (string form)
+     * @param typeTagSets plugin type id to that type's tag set
+     * @return {@code true} when every plugin tag is absent from every type's
+     *         tag set; {@code false} when at least one tag matches or the
+     *         plugin declares no tags
+     */
+    static boolean matchesNoType(
+            Set<String> pluginTags, Map<ResourceLocation, Set<String>> typeTagSets) {
+        if (pluginTags.isEmpty()) {
+            return false;
+        }
+        List<String> unmatched = findUnmatchedTags(pluginTags, typeTagSets);
+        return unmatched.size() == pluginTags.size();
+    }
+
+    /**
      * Collects the key set of a framework registry; empty when the registry
      * is absent.
      *
@@ -328,10 +348,9 @@ public final class CrossReferenceValidator {
         Set<String> pluginTags = plugin.tags().stream()
                 .map(ResourceLocation::toString)
                 .collect(Collectors.toSet());
-        List<String> unmatched = findUnmatchedTags(pluginTags, typeTagSets);
-        if (!unmatched.isEmpty()) {
+        if (matchesNoType(pluginTags, typeTagSets)) {
             DatapackErrorHandler.logReferenceWarning(pluginId,
-                    "tags " + unmatched + " match no plugin type's tags; "
+                    "tags " + pluginTags + " match no plugin type's tags; "
                             + "the plugin cannot be installed on any gun");
         }
     }

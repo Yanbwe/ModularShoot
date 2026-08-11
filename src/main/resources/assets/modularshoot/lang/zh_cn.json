@@ -22,7 +22,6 @@
   "modularshoot.install.error.not_plugin": "该物品不是插件",
   "modularshoot.install.error.no_gun_data": "目标枪械没有 gun_data 组件",
   "modularshoot.install.error.no_slot": "枪械没有空余的安装槽，或该插件与这把枪械不匹配",
-  "modularshoot.install.error.definition_not_found": "插件定义未找到",
   "modularshoot.install.error.blocked": "安装被监听器阻止",
   "modularshoot.install.error.generic": "安装失败",
   "modularshoot.install.error.exclusive_group": "与已安装插件 %s 互斥",

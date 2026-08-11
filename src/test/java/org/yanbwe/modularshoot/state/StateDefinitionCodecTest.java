@@ -4,8 +4,11 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.serialization.JsonOps;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import org.junit.jupiter.api.Test;
 import org.yanbwe.modularshoot.bullet.StateConditionEvaluator;
@@ -281,6 +284,33 @@ class StateDefinitionCodecTest {
         assertEquals(StateValueType.STRING, decoded.valueType());
         assertInstanceOf(String.class, decoded.defaultValue());
         assertEquals("foo", decoded.defaultValue());
+    }
+
+    // --- decodeStateMap 损坏 NBT 键降级 ---
+
+    @Test
+    void decodeStateMapSkipsInvalidKeys() {
+        // 损坏/编辑过的 state NBT 键（":::" 无法解析为 ResourceLocation，
+        // 例如磁盘损坏或第三方模组写入乱值）：decodeStateMap 必须跳过该键并
+        // WARN，不抛未检查异常（与 unregistered 条目"保留原始 tag"的降级
+        // 哲学一致）。RegistryAccess.EMPTY 不含 STATES 注册表，合法键走
+        // unregistered 路径保留原始 tag。
+        CompoundTag tag = new CompoundTag();
+        tag.putString(":::", "not a valid entry");
+        CompoundTag validEntry = new CompoundTag();
+        validEntry.putInt("type", 0);
+        tag.put("modularshoot:valid_key", validEntry);
+
+        Map<ResourceLocation, Object> result =
+                StateValueCodecs.decodeStateMap(tag, RegistryAccess.EMPTY);
+
+        // ":::" 无法构造为 ResourceLocation，非法键只能通过"结果不含它"验证：
+        // 结果只包含合法键即证明非法键被跳过（且解码全程未抛异常）。
+        assertEquals(1, result.size(), "only the valid key survives decoding");
+        assertTrue(result.containsKey(ResourceLocation.parse("modularshoot:valid_key")),
+                "valid keys still decode (unregistered path preserves raw tag)");
+        assertEquals(validEntry, result.get(ResourceLocation.parse("modularshoot:valid_key")),
+                "unregistered entry is carried forward unchanged");
     }
 
     // --- visual_modifiers field (设计规格 §3.5) ---

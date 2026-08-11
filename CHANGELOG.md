@@ -1,5 +1,24 @@
 # 更新记录 / Changelog
 
+## [0.1.5] - 2026-08-11
+
+### 修复 / Fixed
+
+- **专用服务器崩溃**：`GunItem`/`PluginItem` 的 `getName` 无条件调用客户端包 `ItemNameResolver`（引用 `Minecraft`），专用服务器上抛 `NoClassDefFoundError`（`catch(Exception)` 捕不住）直接崩服——入口改为按物理端守卫（`FMLEnvironment.dist.isDedicatedServer()` 直接回退），客户端类引用不再被触达（命令 `/modularshoot stats`/`variants`/`debug on`、死亡消息等路径均受保护）。
+- **插件裸键命名空间漂移**：`PluginDefinition` 的 `traits`/`adds_variants` 裸键落 `minecraft:` 命名空间，与枪械侧 `modularshoot:`（`SharedKeyCodecs.MODULARSHOOT_KEY`）合并契约静默失效（枪械固有特性压过插件的语义被破坏、variants 权重不合并）——两处 codec 统一为 `MODULARSHOOT_KEY`。
+- **零速子弹永不消亡**：冻结 `bullet_speed ≤ 0` 的子弹 `traveledDistance` 恒 0、范围检查永假、无 age 兜底，永久驻留 BulletManager 空跑每 tick hook/广播——管线新增静止过期检查（位置推进前立即按 EXPIRED 移除，onExpire 先触发）。
+- **BulletSnapshot 死代码与文档失实**：`encodeState`/`decodeState` 声称"state 初始值经 BulletS2CPacket 传客户端"，实际 `ClientBulletSnapshot` 刻意不下发 state（设计文档 §子弹快照）、两方法无调用者——删除死代码，javadoc 明确 state 仅服务端可见。
+- **reload 校验误报**：`CrossReferenceValidator` 插件 tag 只要有一个未匹配就 WARN 且断言"装不上任何枪"（部分匹配误报）——改为仅全部 tag 均无交集才 WARN；`ItemBindingValidator` 的 "Bound gun not found" 只对照 datapack 键集，指向 Java API 注册枪械的合法绑定每次 reload 误报——已知集合改为 datapack 键 ∪ Java API 注册键（provider 通道不可枚举、不含）。
+
+### 改进 / Improved
+
+- **卸载超编预检测试补全**：`preflightReason`/`isRandomCandidate` 决策纯函数化并补 10 条测试（非 force 拒绝 WOULD_OVERFLOW / force 绕过 / 随机候选过滤 / `removalCausesOverflow` stub 注册表集成），0.1.4 三条最易错路径首次有自动化断言。
+- **健壮性**：`resolveDamageType` 非法 state 串不再抛未检查异常（tryParse + 降级回退）；`decodeStateMap` 损坏 NBT 键跳过并 WARN（与 unregistered 降级哲学一致）；`EffectiveSlotService` 槽位聚合改饱和加法（防 int 回绕锁死槽位）；`AttachLayerModifier` 默认 tint 防御性拷贝（防共享可变引用全局污染）。
+- **一致性**：卸载路径 pre-event 后重读组件（对齐安装路径，监听器改动不再被静默抹掉）；tooltip 插件栏已装计数与超编判定统一按 installedTypeId 全量计数；`GunDegradationHandler` WARN 节流表登出清理（防缓慢内存泄漏）；`checkRegistrationConflicts` 补 `gun_items`/`plugin_items`；reload 汇总补 shooters 行。
+- **渲染**：3D 子弹光照改用插值位置（不再滞后一个同步段）。
+- **清理**：删除死代码（`checkGunTextures`、`DegradationTextures`、空 `BLOCKS` DeferredRegister、`AntiCheatState.baselineVersion`、`InstallResult.failure(String)`、不可达 `definition_not_found` 分支、`clearCache()`）与 6 处失实 javadoc（注册表计数、命令线程模型、挥臂 Mixin、standalone 变体、nextLong 计数等）。
+- **测试补强**：出厂数据包 JSON 全量真实 codec 解码断言（9 张表 45 个文件，codec 映射覆盖 10 张注册表）；`BulletS2CPacket` codec 往返测试（8 条：null 哨兵/枚举 ordinal/三桶/forceFullSync）；全量 414 用例。
+
 ## [0.1.4] - 2026-08-10
 
 ### 新增 / Added

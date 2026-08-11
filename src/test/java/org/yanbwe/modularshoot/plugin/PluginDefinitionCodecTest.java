@@ -84,6 +84,32 @@ class PluginDefinitionCodecTest {
     }
 
     @Test
+    void bareTraitsKeyDefaultsToModularshootNamespace() {
+        // 裸键必须与枪械 traits（SharedKeyCodecs.MODULARSHOOT_KEY）保持一致：
+        // 落 modularshoot 命名空间，否则 TraitMergeService 按键合并契约静默失效
+        // （裸键落 minecraft 是历史错误，见 SharedKeyCodecs javadoc）。
+        PluginDefinition definition = parse(
+                "{\"item_icon\": \"m:icon\", \"traits\": {\"auto_fire\": true}}");
+        assertEquals(1, definition.traits().size(), "single bare trait key should parse");
+        assertEquals(true, definition.traits().get(ResourceLocation.parse("modularshoot:auto_fire")),
+                "bare trait key defaults to the modularshoot namespace");
+    }
+
+    @Test
+    void bareAddsVariantsKeyDefaultsToModularshootNamespace() {
+        // 裸键必须与枪械 variants（SharedKeyCodecs.MODULARSHOOT_KEY）保持一致：
+        // 落 modularshoot 命名空间，否则 VariantPoolService 的
+        // merge(id, v, Double::sum) 因键不相等而失效；显式其他命名空间保持原样。
+        PluginDefinition definition = parse(
+                "{\"item_icon\": \"m:icon\", \"adds_variants\": {\"my_var\": 1.0, \"mypack:x\": 2.0}}");
+        assertEquals(2, definition.addsVariants().size(), "both keys should parse");
+        assertEquals(1.0, definition.addsVariants().get(ResourceLocation.parse("modularshoot:my_var")), 1.0E-9,
+                "bare key defaults to the modularshoot namespace");
+        assertEquals(2.0, definition.addsVariants().get(ResourceLocation.parse("mypack:x")), 1.0E-9,
+                "explicit foreign namespace stays unchanged");
+    }
+
+    @Test
     void addsSlotsAbsentDefaultsToEmptyMap() {
         PluginDefinition definition = parse("{\"item_icon\": \"m:icon\"}");
         assertTrue(definition.addsSlots().isEmpty(),

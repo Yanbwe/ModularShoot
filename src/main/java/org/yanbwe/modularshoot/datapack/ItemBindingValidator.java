@@ -1,6 +1,7 @@
 package org.yanbwe.modularshoot.datapack;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +18,7 @@ import org.yanbwe.modularshoot.registry.binding.GunItemBinding;
 import org.yanbwe.modularshoot.registry.binding.GunItemBindingRegistry;
 import org.yanbwe.modularshoot.registry.binding.PluginItemBinding;
 import org.yanbwe.modularshoot.registry.binding.PluginItemBindingRegistry;
+import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 
 /**
  * Post-reload validator for the item binding tables
@@ -69,8 +71,13 @@ public final class ItemBindingValidator {
      * <ul>
      *   <li>{@code item} exists in the vanilla {@code ITEM} registry
      *       (绑定物品不存在时条目保留但运行时绑定不生效)</li>
-     *   <li>{@code gun} exists in the {@code guns} table (枪械定义缺失时
-     *       自然表现为"无法射击" + 现有缺失定义提示)</li>
+     *   <li>{@code gun} exists in the known gun id set — the union of the
+     *       {@code guns} table keys and the Java-API-registered gun ids
+     *       ({@link GunRegistry#getJavaApiRegisteredGuns()}); provider-defined
+     *       ids ({@link GunRegistry#registerGunDefinitionProvider}) are
+     *       runtime-generated and not enumerable, so they are not part of the
+     *       set (与 {@link GunRegistry#getAllGunIds} 的 javadoc 一致，审查修复
+     *       M5；枪械定义缺失时自然表现为"无法射击" + 现有缺失定义提示)</li>
      *   <li>a bound item id appears in at most one entry — the entry with the
      *       lexicographically smallest key wins, every other entry for the
      *       same item id warns (同一物品 ID 重复绑定，字典序最小键胜出)</li>
@@ -89,7 +96,11 @@ public final class ItemBindingValidator {
         if (entries.isEmpty()) {
             return;  // 注册表缺失时静默
         }
-        Set<ResourceLocation> gunKeys = registryKeys(access, ModularShootRegistries.GUNS_KEY);
+        // 已知枪械 id = datapack guns 注册表键 ∪ Java API 注册键（审查修复 M5）：
+        // 仅对照 datapack 键集会误报 Java API 注册枪械（运行时绑定实际生效）
+        Set<ResourceLocation> gunKeys = new HashSet<>(
+                registryKeys(access, ModularShootRegistries.GUNS_KEY));
+        gunKeys.addAll(GunRegistry.getJavaApiRegisteredGuns().keySet());
         Set<ResourceLocation> javaApiItemIds = GunItemBindingRegistry.getJavaApiBindings()
                 .values().stream().map(GunItemBinding::itemId).collect(Collectors.toSet());
         for (Map.Entry<ResourceLocation, GunItemBinding> entry : entries.entrySet()) {
@@ -99,15 +110,15 @@ public final class ItemBindingValidator {
                 DatapackErrorHandler.logReferenceWarning(key,
                         "Bound item not found: " + binding.itemId());
             }
-            if (!gunKeys.contains(binding.gunId())) {
-                DatapackErrorHandler.logReferenceWarning(key,
-                        "Bound gun not found: " + binding.gunId());
-            }
             if (javaApiItemIds.contains(binding.itemId())) {
                 DatapackErrorHandler.logReferenceWarning(key,
                         "Conflict with Java API binding; Java API takes priority: "
                                 + binding.itemId());
             }
+        }
+        for (ResourceLocation unknownGunKey : findBindingsWithUnknownGunId(entries, gunKeys)) {
+            DatapackErrorHandler.logReferenceWarning(unknownGunKey,
+                    "Bound gun not found: " + entries.get(unknownGunKey).gunId());
         }
         warnDuplicateBindings(entries, GunItemBinding::itemId);
     }
@@ -138,17 +149,79 @@ public final class ItemBindingValidator {
                 DatapackErrorHandler.logReferenceWarning(key,
                         "Bound item not found: " + binding.itemId());
             }
-            if (!pluginKeys.contains(binding.pluginId())) {
-                DatapackErrorHandler.logReferenceWarning(key,
-                        "Bound plugin not found: " + binding.pluginId());
-            }
             if (javaApiItemIds.contains(binding.itemId())) {
                 DatapackErrorHandler.logReferenceWarning(key,
                         "Conflict with Java API binding; Java API takes priority: "
                                 + binding.itemId());
             }
         }
+        // 插件侧没有 Java API 插件定义通道（PluginRegistry 仅
+        // getPlugin/getAllPluginIds/createPluginStack），键集就是 plugins 表
+        for (ResourceLocation unknownPluginKey :
+                findBindingsWithUnknownPluginId(entries, pluginKeys)) {
+            DatapackErrorHandler.logReferenceWarning(unknownPluginKey,
+                    "Bound plugin not found: " + entries.get(unknownPluginKey).pluginId());
+        }
         warnDuplicateBindings(entries, PluginItemBinding::itemId);
+    }
+
+    /**
+     * Returns the keys of all gun-binding entries whose target gun id is not
+     * in the known gun id set ("Bound gun not found", 审查修复 M5).
+     *
+     * <p>The known set must be the union of the datapack {@code guns}
+     * registry keys and the Java-API-registered gun ids
+     * ({@link GunRegistry#getJavaApiRegisteredGuns()}): a binding pointing
+     * at a Java-API-registered gun is fully effective at runtime and must
+     * not be flagged, while provider-defined ids
+     * ({@link GunRegistry#registerGunDefinitionProvider}) are query-time only
+     * and not enumerable, so they are not part of the set (与
+     * {@link GunRegistry#getAllGunIds} 的 javadoc 一致).</p>
+     *
+     * <p>Pure function (no {@link RegistryAccess}) so the rule is
+     * unit-testable. The result follows the entries map's iteration order;
+     * empty {@code entries} or a fully-known set yields an empty list.</p>
+     *
+     * @param entries      the binding-table key to {@link GunItemBinding}
+     *                     map
+     * @param knownGunIds  the known gun ids (datapack ∪ Java API)
+     * @return the keys whose binding's {@code gunId} is absent from
+     *         {@code knownGunIds}, in the entries map's iteration order
+     */
+    static List<ResourceLocation> findBindingsWithUnknownGunId(
+            Map<ResourceLocation, GunItemBinding> entries, Set<ResourceLocation> knownGunIds) {
+        return entries.entrySet().stream()
+                .filter(e -> !knownGunIds.contains(e.getValue().gunId()))
+                .map(Map.Entry::getKey)
+                .toList();
+    }
+
+    /**
+     * Returns the keys of all plugin-binding entries whose target plugin id
+     * is not in the known plugin id set — symmetric counterpart of
+     * {@link #findBindingsWithUnknownGunId} against the {@code plugins}
+     * table.
+     *
+     * <p>{@code PluginRegistry} has no Java-API plugin definition channel
+     * (only {@code getPlugin}/{@code getAllPluginIds}/{@code createPluginStack}),
+     * so the known set is exactly the datapack {@code plugins} registry
+     * keys. The function is extracted purely for symmetry with the gun
+     * variant so the inlined check stays unit-testable and consistent.</p>
+     *
+     * @param entries          the binding-table key to {@link PluginItemBinding}
+     *                         map
+     * @param knownPluginIds   the known plugin ids (datapack {@code plugins}
+     *                         table keys)
+     * @return the keys whose binding's {@code pluginId} is absent from
+     *         {@code knownPluginIds}, in the entries map's iteration order
+     */
+    static List<ResourceLocation> findBindingsWithUnknownPluginId(
+            Map<ResourceLocation, PluginItemBinding> entries,
+            Set<ResourceLocation> knownPluginIds) {
+        return entries.entrySet().stream()
+                .filter(e -> !knownPluginIds.contains(e.getValue().pluginId()))
+                .map(Map.Entry::getKey)
+                .toList();
     }
 
     /**

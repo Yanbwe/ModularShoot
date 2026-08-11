@@ -316,8 +316,10 @@ public final class ShootingEngine {
      * <p>Reads the reserved per-gun state {@code modularshoot:ammo_damage_type}.
      * If the value is non-empty it is parsed as a {@link ResourceLocation} and
      * resolved to a {@link Holder<DamageType>} from the damage-type registry.
-     * If the value is empty or the referenced damage type is not registered,
-     * the framework default {@code modularshoot:bullet_damage} is used.</p>
+     * If the value is empty, not a valid resource location (third-party mod
+     * junk written via GunState), or the referenced damage type is not
+     * registered, the framework default {@code modularshoot:bullet_damage}
+     * is used (降级 + WARN，不抛未检查异常).</p>
      *
      * @param player  the shooting player (provides registry access)
      * @param gunData the gun data (carries the per-gun state)
@@ -328,8 +330,16 @@ public final class ShootingEngine {
         if (damageTypeId.isEmpty()) {
             return ModularShootDamageTypes.holderOrThrow(player.registryAccess());
         }
-        ResourceKey<DamageType> key = ResourceKey.create(
-                Registries.DAMAGE_TYPE, ResourceLocation.parse(damageTypeId));
+        Optional<ResourceLocation> parsed = tryParseDamageTypeId(damageTypeId);
+        if (parsed.isEmpty()) {
+            // 第三方模组经 GunState 写入乱值时降级（与下方 not-found 分支同款
+            // "降级 + WARN" 风格，不炸掉服务端射击路径）。
+            ModularShoot.LOGGER.warn(
+                    "Damage type {} is not a valid resource location; falling back to default.",
+                    damageTypeId);
+            return ModularShootDamageTypes.holderOrThrow(player.registryAccess());
+        }
+        ResourceKey<DamageType> key = ResourceKey.create(Registries.DAMAGE_TYPE, parsed.get());
         Optional<Holder.Reference<DamageType>> holder =
                 player.registryAccess().registryOrThrow(Registries.DAMAGE_TYPE).getHolder(key);
         if (holder.isPresent()) {
@@ -339,6 +349,22 @@ public final class ShootingEngine {
                 "Damage type {} not found in registry; falling back to default.",
                 damageTypeId);
         return ModularShootDamageTypes.holderOrThrow(player.registryAccess());
+    }
+
+    /**
+     * 纯函数 seam（TDD）：把 per-gun state 写入的伤害类型 id 解析为
+     * {@link ResourceLocation}。非法字符串（第三方模组/损坏 state 写入的乱值）
+     * 返回 {@link Optional#empty()} 而非抛出
+     * {@code ResourceLocationSyntaxException}，由调用方降级到默认伤害类型
+     * （与射击管线其余步骤的"降级 + WARN"哲学一致）。
+     *
+     * @param damageTypeId the raw state string (e.g.
+     *                     {@code "modularshoot:bullet_damage"})
+     * @return the parsed location, or empty when the string is not a valid
+     *         resource location
+     */
+    static Optional<ResourceLocation> tryParseDamageTypeId(String damageTypeId) {
+        return Optional.ofNullable(ResourceLocation.tryParse(damageTypeId));
     }
 
     // --- Step 6: Spread --------------------------------------------------

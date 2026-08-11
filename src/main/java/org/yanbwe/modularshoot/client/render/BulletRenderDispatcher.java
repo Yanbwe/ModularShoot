@@ -277,7 +277,8 @@ public final class BulletRenderDispatcher {
         if (BulletRenderObject.RENDER_MODE_BILLBOARD.equals(renderMode)) {
             BillboardRenderer.render(renderObject, poseStack, bufferSource, partialTick, cameraPos, distanceAlpha);
         } else if (BulletRenderObject.RENDER_MODE_3D.equals(renderMode)) {
-            Model3DRenderer.render(renderObject, poseStack, bufferSource, partialTick, cameraPos, distanceAlpha);
+            Model3DRenderer.render(renderObject, poseStack, bufferSource, partialTick,
+                    interpolatedPos, distanceAlpha);
         }
 
         // 2. attach_layer draws: each layer pushes its own pose per follow

@@ -62,10 +62,33 @@ public final class EffectiveSlotService {
         Map<ResourceLocation, Integer> result = new HashMap<>(gunDef.slots());
         for (PluginDefinition def : pluginDefs) {
             for (Map.Entry<ResourceLocation, Integer> e : def.addsSlots().entrySet()) {
-                result.merge(e.getKey(), e.getValue(), Integer::sum);
+                // 饱和加法：两个大贡献（如 15 亿 + 15 亿）若用 Integer::sum 会
+                // 回绕为负容量，导致槽位永久不可装、非 force 卸载全被
+                // WOULD_OVERFLOW 锁死（稳健性修复）。
+                result.merge(e.getKey(), e.getValue(), EffectiveSlotService::saturatingAdd);
             }
         }
         return Map.copyOf(result);
+    }
+
+    /**
+     * 饱和加法（long 中间值钳制）：{@code a + b} 在 int 范围内时返回精确值，
+     * 溢出时钳制到 {@link Integer#MAX_VALUE}/{@link Integer#MIN_VALUE} 而非
+     * 回绕。
+     *
+     * @param a the first addend
+     * @param b the second addend
+     * @return the saturated sum
+     */
+    static int saturatingAdd(int a, int b) {
+        long sum = (long) a + b;
+        if (sum > Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        if (sum < Integer.MIN_VALUE) {
+            return Integer.MIN_VALUE;
+        }
+        return (int) sum;
     }
 
     /**

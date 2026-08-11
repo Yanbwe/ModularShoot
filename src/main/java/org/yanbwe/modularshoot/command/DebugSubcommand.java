@@ -37,10 +37,11 @@ import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
  * ({@link AttributeResolver#readFinalValue}). {@code debug off} clears both
  * fields and stops the overlay.</p>
  *
- * <p>The flag and uuid are {@code volatile} because they are written from the
- * command thread (netty) and read from the server tick thread. Only one
- * player can be tracked at a time; a second {@code debug on} from another
- * player silently switches the tracked uuid.</p>
+ * <p>The flag and uuid are {@code volatile} as a defensive marker only:
+ * both the command execution and the {@link LevelTickEvent} tick handling
+ * run on the server main thread. Only one player can be tracked at a time; a
+ * second {@code debug on} from another player silently switches the tracked
+ * uuid.</p>
  */
 @EventBusSubscriber(modid = ModularShoot.MODID)
 public final class DebugSubcommand {

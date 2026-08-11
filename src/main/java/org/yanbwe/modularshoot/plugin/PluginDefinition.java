@@ -154,7 +154,7 @@ public record PluginDefinition(
                     ResourceLocation.CODEC.fieldOf("item_icon").forGetter(PluginDefinition::itemIcon),
                     TextureScaleMode.CODEC.optionalFieldOf("texture_scale", TextureScaleMode.AUTO).forGetter(PluginDefinition::textureScale),
                     PluginModifier.CODEC.listOf().optionalFieldOf("modifiers", List.of()).forGetter(PluginDefinition::modifiers),
-                    Codec.unboundedMap(ResourceLocation.CODEC, Codec.BOOL).optionalFieldOf("traits", Map.of()).forGetter(PluginDefinition::traits),
+                    Codec.unboundedMap(SharedKeyCodecs.MODULARSHOOT_KEY, Codec.BOOL).optionalFieldOf("traits", Map.of()).forGetter(PluginDefinition::traits),
                     Codec.STRING.optionalFieldOf("exclusive_group").forGetter(PluginDefinition::exclusiveGroup),
                     BulletStyle.CODEC.optionalFieldOf("bullet_style").forGetter(PluginDefinition::bulletStyle),
                     TextureOverlay.CODEC.optionalFieldOf("texture_overlay").forGetter(PluginDefinition::textureOverlay),
@@ -175,7 +175,7 @@ public record PluginDefinition(
                                     .optionalFieldOf("adds_slots", Map.of())
                                     .forGetter(PluginDefinition::addsSlots),
                             instance.group(
-                                    Codec.unboundedMap(ResourceLocation.CODEC, Codec.DOUBLE)
+                                    Codec.unboundedMap(SharedKeyCodecs.MODULARSHOOT_KEY, Codec.DOUBLE)
                                             .optionalFieldOf("adds_variants", Map.of())
                                             .forGetter(PluginDefinition::addsVariants),
                                     Codec.INT.optionalFieldOf("visual_priority")

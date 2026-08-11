@@ -88,17 +88,6 @@ public final class PluginInstallService {
         public static InstallResult failure(Component error) {
             return new InstallResult(false, null, null, Optional.of(error));
         }
-
-        /**
-         * Literal-string convenience overload, retained for compatibility:
-         * the string is wrapped in {@link Component#literal(String)}.
-         *
-         * @param error the plain-text rejection reason
-         * @return a failing {@link InstallResult} carrying the literal message
-         */
-        public static InstallResult failure(String error) {
-            return failure(Component.literal(error));
-        }
     }
 
     /**
@@ -229,11 +218,10 @@ public final class PluginInstallService {
                     Component.translatable("modularshoot.install.error.no_slot")), null);
         }
         // e. Look up the plugin definition for the exclusive-group check.
+        //    The definition is guaranteed to exist here: getMatchingTypes
+        //    only yields a candidate when the definition is present, so an
+        //    empty Optional is unreachable (b 步已排除定义缺失路径).
         Optional<PluginDefinition> pluginDef = PluginRegistry.getPlugin(registryAccess, pluginId);
-        if (pluginDef.isEmpty()) {
-            return new SelectionOutcome(ValidationResult.error(
-                    Component.translatable("modularshoot.install.error.definition_not_found")), null);
-        }
         // f. Exclusive-group conflict check.
         ValidationResult exclusiveResult =
                 PluginValidationService.checkExclusiveGroup(gun, pluginDef.get(), registryAccess);
@@ -355,9 +343,15 @@ public final class PluginInstallService {
      * server's authoritative copy syncs back via container synchronization;
      * the server-side uuid is the final record.</p>
      *
-     * <p>The player random is advanced by exactly two {@code nextLong()}
-     * calls per install on each side; the two sides' sequences are unrelated,
-     * which is expected — derive exists only for per-side stability.</p>
+     * <p>The number of {@code nextLong()} calls drawn from the player random
+     * per install attempt varies with the validation path: three on a
+     * successful install ({@link #randomFrom} consumes one for category
+     * auto-selection, then the uuid derivation below consumes two), none
+     * when no candidate category matches (b 步 fails before any draw), and
+     * one when candidates match but a later gate (e.g. the exclusive-group
+     * conflict check) rejects the install. The two sides' sequences are
+     * unrelated, which is expected — derive exists only for per-side
+     * stability.</p>
      *
      * @param player the player whose random source derives the uuid
      * @return a new uuid built from two longs drawn from the player's random

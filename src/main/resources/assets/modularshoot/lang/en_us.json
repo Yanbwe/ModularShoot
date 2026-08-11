@@ -22,7 +22,6 @@
   "modularshoot.install.error.not_plugin": "This item is not a plugin",
   "modularshoot.install.error.no_gun_data": "The target gun has no gun_data component",
   "modularshoot.install.error.no_slot": "The gun has no free install slot, or this plugin does not match the gun",
-  "modularshoot.install.error.definition_not_found": "Plugin definition not found",
   "modularshoot.install.error.blocked": "Installation was blocked by a listener",
   "modularshoot.install.error.generic": "Install failed",
   "modularshoot.install.error.exclusive_group": "Mutually exclusive with installed plugin %s",

@@ -160,13 +160,13 @@ public final class PluginUninstallService {
             return new UninstallResult(false, null, instanceUuid, UninstallResult.Reason.UUID_NOT_FOUND);
         }
         PluginInstance plugin = target.get();
-        if (!force && plugin.locked()) {
-            return new UninstallResult(false, plugin.pluginId(), instanceUuid, UninstallResult.Reason.LOCKED);
-        }
-        if (!force && EffectiveSlotService.removalCausesOverflow(
-                gunData, plugin, registryAccess)) {
-            return new UninstallResult(false, plugin.pluginId(), instanceUuid,
-                    UninstallResult.Reason.WOULD_OVERFLOW);
+        // 预检门（审查修复 M7）：locked 优先于 wouldOverflow 报告；force 时
+        // 短路不计算 removalCausesOverflow（避免无效注册表查询，与重构前等价）。
+        UninstallResult.Reason gate = preflightReason(force, plugin.locked(),
+                !force && EffectiveSlotService.removalCausesOverflow(
+                        gunData, plugin, registryAccess));
+        if (gate != null) {
+            return new UninstallResult(false, plugin.pluginId(), instanceUuid, gate);
         }
         PrePluginUninstallEvent preEvent = new PrePluginUninstallEvent(
                 player, gun, instanceUuid, plugin.pluginId());
@@ -174,7 +174,10 @@ public final class PluginUninstallService {
         if (preEvent.isCanceled()) {
             return new UninstallResult(false, plugin.pluginId(), instanceUuid, UninstallResult.Reason.CANCELED);
         }
-        removePluginFromGun(gun, gunData, instanceUuid);
+        // Re-read after the pre-event so listener mutations are not clobbered
+        // (审查修复: 与安装路径的写回前重读对齐).
+        GunData latest = readGunData(gun, registryAccess);
+        removePluginFromGun(gun, latest != null ? latest : gunData, instanceUuid);
         if (returnItems && player != null
                 && !PluginDegradationHandler.isPluginDefinitionMissing(plugin, registryAccess)) {
             returnPluginItem(player, plugin.pluginId());
@@ -227,8 +230,10 @@ public final class PluginUninstallService {
                 // Non-force candidates exclude plugins whose removal would
                 // overflow a slot type (设计规格 §adds_slots 槽位扩展 §6.3);
                 // force bypasses both the locked and the overflow checks.
-                .filter(p -> force || (!p.locked()
-                        && !EffectiveSlotService.removalCausesOverflow(
+                // The !force && guard short-circuits the registry query for
+                // forced uninstalls (审查修复 M7).
+                .filter(p -> isRandomCandidate(force, p.locked(),
+                        !force && EffectiveSlotService.removalCausesOverflow(
                                 gunData, p, registryAccess)))
                 .toList();
         if (candidates.isEmpty()) {
@@ -342,6 +347,46 @@ public final class PluginUninstallService {
     }
 
     // ---- helpers -------------------------------------------------------
+
+    /**
+     * 纯函数：卸载预检门（审查修复 M7，设计规格 §adds_slots 槽位扩展 §6.1
+     * 检查规则）。非 force 时 locked 优先于 wouldOverflow 报告（与原内联
+     * 决策段顺序一致）；force 一律放行（返回 {@code null}）。
+     *
+     * @param force        {@code true} 时绕过全部预检
+     * @param locked       {@code true} 表示目标插件已锁定
+     * @param wouldOverflow {@code true} 表示移除该插件将导致某槽位类型超编
+     *                      （调用方负责在 force 时传入 {@code false} 或已短路
+     *                      跳过注册表查询）
+     * @return 拦截原因（{@link UninstallResult.Reason#LOCKED} 或
+     *         {@link UninstallResult.Reason#WOULD_OVERFLOW}），放行时为
+     *         {@code null}
+     */
+    static UninstallResult.Reason preflightReason(
+            boolean force, boolean locked, boolean wouldOverflow) {
+        if (!force && locked) {
+            return UninstallResult.Reason.LOCKED;
+        }
+        if (!force && wouldOverflow) {
+            return UninstallResult.Reason.WOULD_OVERFLOW;
+        }
+        return null;
+    }
+
+    /**
+     * 纯函数：随机卸载候选判定（审查修复 M7，设计规格 §adds_slots 槽位扩展
+     * §6.3 各卸载入口的行为）。force 绕过 locked 与超编检查；非 force 时
+     * 锁定或卸载会超编的插件都不是候选。
+     *
+     * @param force        {@code true} 时全部已装插件都是候选
+     * @param locked       {@code true} 表示该插件已锁定
+     * @param wouldOverflow {@code true} 表示移除该插件将导致某槽位类型超编
+     * @return {@code true} 时该插件可作为随机卸载候选
+     */
+    static boolean isRandomCandidate(
+            boolean force, boolean locked, boolean wouldOverflow) {
+        return force || (!locked && !wouldOverflow);
+    }
 
     /**
      * Reads and validates the {@link GunData} component from a stack.

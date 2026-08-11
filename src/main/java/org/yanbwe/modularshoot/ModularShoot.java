@@ -23,7 +23,6 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 public class ModularShoot {
     public static final String MODID = "modularshoot";
     public static final Logger LOGGER = LogUtils.getLogger();
-    public static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(MODID);
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(MODID);
     public static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
 
@@ -31,7 +30,6 @@ public class ModularShoot {
         ModularShootAttributes.ATTRIBUTES.register(modEventBus);
         ModularShootDataComponents.DATA_COMPONENTS.register(modEventBus);
         ModularShootAttachmentTypes.ATTACHMENT_TYPES.register(modEventBus);
-        BLOCKS.register(modEventBus);
         ModularShootItems.init();
         ITEMS.register(modEventBus);
         ModularShootCreativeTabs.init();

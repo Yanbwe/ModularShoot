@@ -131,7 +131,13 @@ public final class PluginBarTooltipBuilder {
         // (设计文档 line 1473).
         List<SlotEntry> slotEntries = collectSlotEntries(slots, registryAccess);
         for (SlotEntry entry : slotEntries) {
-            int installedCount = grouped.getOrDefault(entry.typeId(), List.of()).size();
+            // 口径统一（稳健性修复）：已装计数按 installedTypeId 全量统计，
+            // 与 EffectiveSlotService 超编判定同口径。类型定义缺失的插件已被
+            // groupPluginsByType 移入 [未知种类] 组，若按分组大小计数，头部会
+            // 显示 0/N 与超编规则打架（显示与规则打架）。
+            int installedCount = (int) installed.stream()
+                    .filter(p -> p.installedTypeId().equals(entry.typeId()))
+                    .count();
             lines.add(buildTypeHeader(entry, installedCount));
             List<PluginInstance> plugins = grouped.getOrDefault(entry.typeId(), List.of());
             for (PluginInstance plugin : plugins) {

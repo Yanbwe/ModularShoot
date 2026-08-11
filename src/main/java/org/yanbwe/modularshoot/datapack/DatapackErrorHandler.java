@@ -7,7 +7,7 @@ import org.yanbwe.modularshoot.ModularShoot;
 /**
  * Unified error-handling sink for datapack loading diagnostics.
  *
- * <p>This is the single logging entry point for the three categories of
+ * <p>This is the single logging entry point for the two categories of
  * datapack problems defined in 设计文档 §数据包JSON加载失败错误处理
  * (lines 2362&ndash;2383):</p>
  *
@@ -23,11 +23,6 @@ import org.yanbwe.modularshoot.ModularShoot;
  *       plugin's {@code tags} match no registered category). A {@code WARN}
  *       is logged; the entry stays registered and degrades at runtime
  *       (设计文档 line 2375).</li>
- *   <li><b>Missing resource</b> &mdash; the entry registered fine, but a
- *       referenced asset path (texture, model) does not exist. The entry
- *       stays registered (the registry only stores the path string, it does
- *       not preload the asset); the runtime falls back to the framework's
- *       default asset and a {@code WARN} is logged (设计文档 line 2380).</li>
  * </ul>
  *
  * <p>All methods route through {@link ModularShoot#LOGGER} so operators have
@@ -115,25 +110,4 @@ public final class DatapackErrorHandler {
         ModularShoot.LOGGER.warn("Reference warning for '{}': {}", id, message);
     }
 
-    /**
-     * Logs a {@code WARN} for an entry that registered successfully but
-     * whose referenced asset path does not exist.
-     *
-     * <p>The entry stays registered (the registry only stores the path
-     * string, it does not preload the asset). At runtime the framework
-     * falls back to its default asset (e.g. the grey {@code "?"} icon for
-     * textures) and this warning is emitted (设计文档 line 2380).</p>
-     *
-     * @param id           the registry id of the entry whose asset is missing
-     * @param resourcePath the asset path that could not be found
-     * @throws NullPointerException if {@code id} or {@code resourcePath} is
-     *         {@code null}
-     */
-    public static void logMissingResource(ResourceLocation id, String resourcePath) {
-        Objects.requireNonNull(id, "id");
-        Objects.requireNonNull(resourcePath, "resourcePath");
-        ModularShoot.LOGGER.warn("Missing resource for '{}': path '{}' not found; "
-                        + "entry registered, runtime will use fallback asset.",
-                id, resourcePath);
-    }
 }

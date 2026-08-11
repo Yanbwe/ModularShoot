@@ -56,7 +56,11 @@ import org.yanbwe.modularshoot.trait.RemoveReason;
  * (设计文档 §位置推进). The step length equals {@code bullet_speed / 20}
  * (the attribute value is in blocks-per-second; dividing by 20 yields
  * blocks-per-tick), read from the frozen snapshot, so in-flight attribute
- * changes on the gun do not affect already-fired bullets.</p>
+ * changes on the gun do not affect already-fired bullets. A bullet whose
+ * frozen {@code bullet_speed} is ≤ 0 (the attribute floor is 0 and plugin
+ * modifiers can push it there) can never advance — its step length and
+ * traveled distance stay zero, so range expiry can never fire; it is removed
+ * immediately as {@code EXPIRED} before position advance (审查修复 M2).</p>
  */
 @EventBusSubscriber(modid = ModularShoot.MODID)
 public final class BulletTickHandler {
@@ -158,6 +162,15 @@ public final class BulletTickHandler {
 
         // 2. age++
         bullet.incrementAge();
+
+        // 2.5 stationary expiry — speed ≤ 0 can never advance past range
+        //     (审查修复 M2): mirrors checkRangeExpiry's onExpire → remove(EXPIRED)
+        //     ordering, then bails out of the rest of this tick's pipeline.
+        if (isStationary(bullet.getSnapshot())) {
+            BulletHookInvoker.fireOnExpire(bullet);
+            manager.removeBullet(bullet.getBulletId(), RemoveReason.EXPIRED);
+            return;
+        }
 
         // 3. position advance (records prevPos for collision detection)
         Vec3 prevPos = bullet.getPosition();
@@ -291,6 +304,26 @@ public final class BulletTickHandler {
     private static Vec3 computeHitPos(BulletRecord bullet, Vec3 prevPos, double distance) {
         Vec3 direction = bullet.getDirection();
         return prevPos.add(direction.multiply(distance, distance, distance));
+    }
+
+    /**
+     * Pure decision: a bullet whose frozen speed is ≤ 0 can never advance
+     * past its range and must expire immediately (审查修复 M2).
+     *
+     * <p>With {@code stepLength = bullet_speed / 20}, a zero or negative
+     * speed yields a zero (or backwards, non-accumulating) step and
+     * {@code traveledDistance} can never exceed {@code range}, so
+     * {@link #checkRangeExpiry} would never fire and the bullet would linger
+     * in the {@link BulletManager} forever, burning per-tick hook/broadcast
+     * work until dimension unload. A missing stat key degrades to
+     * {@code 0.0} via {@link BulletSnapshot#getStat}, i.e. also stationary —
+     * consistent with the value {@link #advancePosition} would read.</p>
+     *
+     * @param snapshot the bullet's frozen snapshot
+     * @return {@code true} if the bullet cannot advance and must expire
+     */
+    static boolean isStationary(BulletSnapshot snapshot) {
+        return snapshot.getStat(BULLET_SPEED_ID) <= 0.0;
     }
 
     /**

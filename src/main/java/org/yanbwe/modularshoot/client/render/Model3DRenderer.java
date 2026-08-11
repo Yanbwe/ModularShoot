@@ -45,8 +45,8 @@ import org.joml.Vector4f;
  * <p>The {@link BulletRenderObject#getModelLocation() model location} is a
  * {@link ResourceLocation} pointing at a vanilla JSON model. It is normalised
  * (stripping a leading {@code models/} and trailing {@code .json} so callers
- * may store either the asset path or the bare model id) and wrapped as an
- * <em>inventory</em>-variant {@link ModelResourceLocation}, then resolved via
+ * may store either the asset path or the bare model id) and wrapped as a
+ * <em>standalone</em>-variant {@link ModelResourceLocation}, then resolved via
  * {@link ModelManager#getModel}. When the model is absent the manager returns
  * its built-in missing model (the black-and-purple cube), so rendering never
  * crashes.</p>
@@ -55,7 +55,8 @@ import org.joml.Vector4f;
  * present in the model manager's baked registry if something references it.
  * Bullet models must therefore be registered for baking separately — e.g.
  * via NeoForge's additional-model registration
- * ({@code ModelEvent.RegisterAdditional}).</p>
+ * ({@code ModelEvent.RegisterAdditional}), which matches the
+ * {@code standalone} variant this renderer queries.</p>
  *
  * <p>This renderer intentionally does <strong>not</strong> perform that
  * registration. There is a fundamental timing constraint:
@@ -63,10 +64,7 @@ import org.joml.Vector4f;
  * worker thread), before datapack-driven registries such as
  * {@code modularshoot:guns} are populated on the client. The gun definitions
  * — and therefore the bullet model paths — are simply not available at
- * registration time. Additionally, {@code RegisterAdditional} requires the
- * {@code STANDALONE_VARIANT} variant, while this renderer looks up models
- * via the {@code inventory} variant, making the two incompatible without a
- * dual-registration scheme.</p>
+ * registration time.</p>
  *
  * <p>Instead, this renderer adopts a <em>deferred-loading</em> strategy:
  * {@link ModelManager#getModel} returns the built-in missing model (the
@@ -176,29 +174,30 @@ public final class Model3DRenderer {
      * used here.</p>
      *
      * <p><b>Near-camera translucency</b> (系统七 §近相机距离透明度): when
-     * {@code composedTint.w × distanceAlpha} drops below 1 the model is
+     * {@code composedTint.w × distanceAlpha} drops below 1 the bullet is
      * drawn through the translucent render type with per-quad alpha; bullets
      * at full opacity keep the original cutout path unchanged. The tint held
      * by the render object is never mutated.</p>
      *
-     * @param renderObject  the bullet to render
-     * @param poseStack     the camera-space pose stack, already translated to
-     *                      the bullet position
-     * @param bufferSource  the vertex buffer source for submitting geometry
-     * @param partialTick   the frame partial tick (unused, reserved for parity)
-     * @param cameraPos     the camera world position (unused, reserved for
-     *                      parity — the dispatcher derives the distance fade
-     *                      from it and passes the resulting multiplier)
-     * @param distanceAlpha the distance-based opacity multiplier in
-     *                      {@code [0.2, 1]} from
-     *                      {@link DistanceAlphaCurve#computeAlpha}
+     * @param renderObject   the bullet to render
+     * @param poseStack      the camera-space pose stack, already translated to
+     *                       the bullet position
+     * @param bufferSource   the vertex buffer source for submitting geometry
+     * @param partialTick    the frame partial tick (unused, reserved for parity)
+     * @param interpolatedPos the bullet's interpolated world position — used
+     *                       for the light lookup so lighting tracks the
+     *                       drawn (interpolated) position, not the raw tick
+     *                       position (稳健性修复)
+     * @param distanceAlpha  the distance-based opacity multiplier in
+     *                       {@code [0.2, 1]} from
+     *                       {@link DistanceAlphaCurve#computeAlpha}
      */
     public static void render(
             BulletRenderObject renderObject,
             PoseStack poseStack,
             MultiBufferSource bufferSource,
             float partialTick,
-            Vec3 cameraPos,
+            Vec3 interpolatedPos,
             float distanceAlpha) {
         ResourceLocation modelLocation = renderObject.getModelLocation();
         if (modelLocation == null) {
@@ -220,7 +219,7 @@ public final class Model3DRenderer {
 
         poseStack.pushPose();
         applyTransforms(poseStack, renderObject.getDirection(), renderObject.getScale());
-        int light = computeLight(renderObject.getPosition());
+        int light = computeLight(interpolatedPos);
         if (finalAlpha >= 1.0F - 1e-3F) {
             // Effectively opaque: keep the original cutout path (zero visual
             // change for bullets beyond the fade distance).
@@ -259,7 +258,7 @@ public final class Model3DRenderer {
 
     /**
      * Loads a baked model from the vanilla model manager, normalising the
-     * location to an inventory-variant {@link ModelResourceLocation}.
+     * location to a standalone-variant {@link ModelResourceLocation}.
      *
      * @param rawLocation the raw model location
      * @return the baked model (missing model if not registered for baking)
@@ -456,15 +455,5 @@ public final class Model3DRenderer {
             }
             consumer.putBulkData(pose, quad, r, g, b, alpha, light, OverlayTexture.NO_OVERLAY);
         }
-    }
-
-    /**
-     * Clears the baked-model cache. Public so an explicit reload hook can
-     * force invalidation if ever needed; under normal operation the
-     * automatic reload sentinel makes manual calls unnecessary.
-     */
-    public static void clearCache() {
-        MODEL_CACHE.clear();
-        cachedMissingModel = null;
     }
 }

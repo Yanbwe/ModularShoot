@@ -19,26 +19,24 @@ import org.yanbwe.modularshoot.ModularShoot;
  * tolerating the occasional mismatch caused by legitimate network jitter or
  * plugin install/remove timing.</p>
  *
- * <p><b>Algorithm:</b> for each player the server keeps a counter (initial 0)
- * and a baseline snapshot of the last-checked server version. On every shoot
- * request:</p>
+ * <p><b>Algorithm:</b> for each player the server keeps a counter of
+ * consecutive mismatches (initial 0). On every shoot request:</p>
  * <ul>
  *   <li><b>Match</b> (packet version == server version) &mdash; counter reset
- *       to 0, baseline updated, shot allowed.</li>
- *   <li><b>Mismatch, counter &lt; 3</b> &mdash; counter incremented, baseline
- *       updated, shot still allowed (tolerate up to 2 consecutive
- *       mismatches).</li>
+ *       to 0, shot allowed.</li>
+ *   <li><b>Mismatch, counter &lt; 3</b> &mdash; counter incremented, shot
+ *       still allowed (tolerate up to 2 consecutive mismatches).</li>
  *   <li><b>Mismatch, counter &ge; 3</b> &mdash; cheat detected: shot
  *       rejected, {@code WARN} log emitted (player name, packet version,
- *       server version), counter and baseline reset. The player is
+ *       server version), counter reset. The player is
  *       <em>not</em> kicked, to avoid false positives from network jitter or
  *       legitimate plugin install/remove timing.</li>
  * </ul>
  *
  * <p><b>Semantics:</b> three consecutive mismatches since the last match
  * trigger the cheat verdict; any matching packet resets the counter. The
- * baseline is always updated to the current server version so the server
- * tracks what it last saw regardless of the outcome.</p>
+ * counter is the sole basis for the verdict — the server version is
+ * compared per request but no history of it is retained.</p>
  *
  * <p><b>State:</b> a {@code player uuid &rarr; AntiCheatState} map. The state
  * is mutated only on the main game thread (NeoForge runs payload handlers
@@ -49,7 +47,7 @@ public final class ModifierVersionAntiCheat {
     /** Number of consecutive mismatches that triggers a cheat verdict. */
     private static final int CHEAT_THRESHOLD = 3;
 
-    /** Per-player anti-cheat state: player uuid &rarr; counter + baseline. */
+    /** Per-player anti-cheat state: player uuid &rarr; consecutive mismatch counter. */
     private static final Map<UUID, AntiCheatState> antiCheatStates = new HashMap<>();
 
     private ModifierVersionAntiCheat() {
@@ -57,8 +55,7 @@ public final class ModifierVersionAntiCheat {
 
     /**
      * Validates the packet's modifier version against the server's current
-     * value, updating the per-player counter and baseline as described in the
-     * class docs.
+     * value, updating the per-player counter as described in the class docs.
      *
      * @param player        the shooting player; must not be {@code null}
      * @param packetVersion the {@code modifierVersion} carried by the packet
@@ -75,11 +72,11 @@ public final class ModifierVersionAntiCheat {
         // null-check constructs it only when the player has no recorded state.
         AntiCheatState state = antiCheatStates.get(playerId);
         if (state == null) {
-            state = new AntiCheatState(0, serverVersion);
+            state = new AntiCheatState(0);
         }
 
         if (packetVersion == serverVersion) {
-            antiCheatStates.put(playerId, new AntiCheatState(0, serverVersion));
+            antiCheatStates.put(playerId, new AntiCheatState(0));
             return true;
         }
         return handleMismatch(player, playerId, packetVersion, serverVersion, state);
@@ -101,11 +98,11 @@ public final class ModifierVersionAntiCheat {
             ServerPlayer player, UUID playerId, int packetVersion, int serverVersion, AntiCheatState state) {
         int newCounter = state.counter() + 1;
         if (newCounter < CHEAT_THRESHOLD) {
-            antiCheatStates.put(playerId, new AntiCheatState(newCounter, serverVersion));
+            antiCheatStates.put(playerId, new AntiCheatState(newCounter));
             return true;
         }
         logCheatVerdict(player, packetVersion, serverVersion);
-        antiCheatStates.put(playerId, new AntiCheatState(0, serverVersion));
+        antiCheatStates.put(playerId, new AntiCheatState(0));
         return false;
     }
 
@@ -138,7 +135,7 @@ public final class ModifierVersionAntiCheat {
         antiCheatStates.remove(playerId);
     }
 
-    /** Immutable per-player anti-cheat state: consecutive mismatch counter and baseline server version. */
-    private record AntiCheatState(int counter, int baselineVersion) {
+    /** Immutable per-player anti-cheat state: consecutive mismatch counter. */
+    private record AntiCheatState(int counter) {
     }
 }

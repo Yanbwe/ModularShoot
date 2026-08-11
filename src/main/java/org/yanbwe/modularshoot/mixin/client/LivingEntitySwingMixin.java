@@ -26,10 +26,12 @@ import org.yanbwe.modularshoot.ModularShootAPI;
  *
  * <p><b>Client-only.</b> Registered in the {@code "client"} section of
  * {@code modularshoot.mixins.json} and guarded with
- * {@code level().isClientSide()}. The swing on the server side is left
- * untouched so other clients still see the vanilla arm motion for remote
- * players (the Mixin is anyway only loaded on the physical client, but the
- * guard keeps the intent explicit).</p>
+ * {@code level().isClientSide()}. Because every client runs this Mixin, the
+ * swing is suppressed for the gun holder on <em>all</em> clients — including
+ * any observer rendering the holder as a remote player — so the vanilla arm
+ * motion is not shown anywhere. The {@code isClientSide()} guard keeps the
+ * intent explicit: on the server (where this Mixin is not loaded anyway) the
+ * swing is left untouched.</p>
  *
  * <p><b>Degradation:</b> if this Mixin fails to load the player simply sees
  * the vanilla arm swing; shooting logic is completely unaffected.</p>

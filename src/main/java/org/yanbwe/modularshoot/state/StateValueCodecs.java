@@ -13,6 +13,7 @@ import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
+import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
 
 /**
@@ -236,6 +237,11 @@ public final class StateValueCodecs {
      * {@link CompoundTag} values and passes them through unchanged (W26
      * fix).</p>
      *
+     * <p>Keys that are not even valid {@link ResourceLocation} strings
+     * (corrupted/edited NBT keys) are <em>skipped</em> with a WARN: they can
+     * never be registered state ids, so carrying them forward would be a
+     * silent lie about the map's contents.</p>
+     *
      * @param tag            the compound tag produced by
      *                       {@link #encodeStateMap}
      * @param registryAccess the runtime registry view
@@ -246,7 +252,17 @@ public final class StateValueCodecs {
             CompoundTag tag, RegistryAccess registryAccess) {
         final Map<ResourceLocation, Object> result = new HashMap<>();
         for (String key : tag.getAllKeys()) {
-            final ResourceLocation stateId = ResourceLocation.parse(key);
+            final ResourceLocation stateId = ResourceLocation.tryParse(key);
+            if (stateId == null) {
+                // 损坏/编辑过的 state NBT 键（磁盘损坏或第三方模组写入乱值）
+                // 无法解析为 ResourceLocation：跳过该键 + WARN，不抛未检查
+                // 异常击穿 tooltip/stateMap() 读取（与 unregistered 条目
+                // 保留原始 tag 的降级哲学一致）。
+                ModularShoot.LOGGER.warn(
+                        "Skipping state map key {}: not a valid resource location.",
+                        key);
+                continue;
+            }
             final CompoundTag entryTag = tag.getCompound(key);
             final Optional<StateDefinition> definition = lookupState(registryAccess, stateId);
             if (definition.isEmpty()) {

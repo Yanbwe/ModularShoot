@@ -116,6 +116,32 @@ class BulletStyleCodecTest {
     }
 
     @Test
+    void omittedTintDecodesToDistinctInstances() {
+        // 省略 tint 的两次解码必须产生两个不同的 Vector4f 实例（防御性拷贝）：
+        // codec 的 optionalFieldOf 默认值只在类初始化时构造一次，若构造器直接
+        // 共享该引用，未来 in-place 修改会全局污染所有省略 tint 的实例。
+        AttachLayerModifier a = decodeAttachLayerWithoutTint();
+        AttachLayerModifier b = decodeAttachLayerWithoutTint();
+        assertNotSame(a.tint(), b.tint(),
+                "omitted tint must not share the codec's single mutable default instance");
+        // 值仍为白色单位元。
+        assertEquals(1.0f, a.tint().x, 1e-6);
+        assertEquals(1.0f, b.tint().w, 1e-6);
+    }
+
+    /** Decodes a minimal {@code attach_layer} modifier JSON that omits tint. */
+    private static AttachLayerModifier decodeAttachLayerWithoutTint() {
+        JsonObject layer = new JsonObject();
+        layer.addProperty("type", "attach_layer");
+        layer.addProperty("render_mode", "billboard");
+        JsonObject json = new JsonObject();
+        com.google.gson.JsonArray modifiers = new com.google.gson.JsonArray();
+        modifiers.add(layer);
+        json.add("modifiers", modifiers);
+        return (AttachLayerModifier) decode(json).modifiers().get(0);
+    }
+
+    @Test
     void unsupportedModifierDecodesToSentinelAndDoesNotFailList() {
         // spec §5: 看到未知 type → 该条 skip + WARN，其余继续组合。
         // Codec 层实现：未知 type 解码为 UnsupportedModifier 哨兵，整个 list 不失败。

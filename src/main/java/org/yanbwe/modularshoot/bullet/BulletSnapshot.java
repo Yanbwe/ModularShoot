@@ -7,7 +7,6 @@ import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.core.Holder;
 import net.minecraft.core.RegistryAccess;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.damagesource.DamageType;
 import org.jetbrains.annotations.Nullable;
@@ -43,10 +42,17 @@ import org.yanbwe.modularshoot.state.StateWarnLogger;
  * bullet's lifetime". Hooks may read/write it via
  * {@link #getState} / {@link #setState} in any callback
  * ({@code onTick}, {@code onHit}, etc.). Bullets are never persisted, so
- * {@code state} is never saved to disk; its initial values are carried to
- * clients via {@code BulletS2CPacket} (see {@link #encodeState} /
- * {@link #decodeState}), and in-flight mutations are the hook's own
- * responsibility (typically surfaced through {@code onVisualTick}).</p>
+ * {@code state} is never saved to disk.</p>
+ *
+ * <p><b>Server-only working memory:</b> the {@code state} map is visible
+ * <em>only on the server</em> and is deliberately <em>not</em> carried to
+ * clients — client-side visual hooks receive the
+ * {@code ClientBulletSnapshot} projection, which omits server-only fields
+ * such as the per-bullet working-memory state map (设计文档 §子弹快照).
+ * Hooks that need a value to be observable on the client should write it
+ * into {@code stats}/{@code traits} (whose values are synced via
+ * {@code BulletS2CPacket}), or track it in the hook's own client-side state
+ * surfaced through {@code onVisualTick}.</p>
  */
 public final class BulletSnapshot {
 
@@ -342,43 +348,6 @@ public final class BulletSnapshot {
         return def;
     }
 
-    /**
-     * Encodes the per-bullet {@code state} map to an NBT {@link CompoundTag}
-     * for network sync of initial values (设计文档 §持久化与同步 per-bullet).
-     *
-     * <p>Used by {@code BulletS2CPacket} to carry the state map's initial
-     * values to the client when a bullet enters render distance. In-flight
-     * mutations after this snapshot are the hook's own responsibility
-     * (typically surfaced through {@code onVisualTick}).</p>
-     *
-     * @param registryAccess the runtime registry view used to resolve
-     *                       declared state types
-     * @return a {@link CompoundTag} containing all encoded state entries
-     */
-    public CompoundTag encodeState(RegistryAccess registryAccess) {
-        return StateValueCodecs.encodeStateMap(state, registryAccess);
-    }
-
-    /**
-     * Replaces this snapshot's {@code state} map with the decoded contents
-     * of the given NBT {@link CompoundTag} (设计文档 §持久化与同步 per-bullet).
-     *
-     * <p>Used on the client to populate the per-bullet working memory from
-     * the initial values carried by {@code BulletS2CPacket}. The existing
-     * state map is cleared before the decoded entries are loaded.</p>
-     *
-     * @param tag            the compound tag produced by
-     *                       {@link #encodeState} /
-     *                       {@link StateValueCodecs#encodeStateMap}
-     * @param registryAccess the runtime registry view used to resolve
-     *                       declared state types; unregistered state ids
-     *                       are silently skipped
-     */
-    public void decodeState(CompoundTag tag, RegistryAccess registryAccess) {
-        state.clear();
-        state.putAll(StateValueCodecs.decodeStateMap(tag, registryAccess));
-    }
-
     /** Returns the shooter uuid, or {@code null} for independent firing. */
     @Nullable
     public UUID getShooter() {
@@ -399,7 +368,7 @@ public final class BulletSnapshot {
 
     /**
      * 返回变体 JSON 的 bullet_style_override；未设置时为 {@code null}。
-     * 服务端变体选举写入、compose 读取，不序列化到客户端（encodeState/decodeState 不触碰）。
+     * 服务端变体选举写入、compose 读取，不序列化到客户端。
      */
     @Nullable
     public BulletStyle getVariantStyleOverride() {

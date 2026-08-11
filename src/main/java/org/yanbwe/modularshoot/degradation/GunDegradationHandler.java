@@ -9,9 +9,13 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.ModularShootAPI;
 
 /**
@@ -37,10 +41,11 @@ import org.yanbwe.modularshoot.ModularShootAPI;
  *       writes {@code EMPTY} when the definition is missing).</li>
  * </ul>
  *
- * <p>The class is not instantiable; all methods are static.</p>
- *
- * @see DegradationTextures
+ * <p>The class is not instantiable; all methods are static. Registered on the
+ * NeoForge game event bus so per-player rate-limit state can be released on
+ * logout (see {@link #onPlayerLoggedOut}).</p>
  */
+@EventBusSubscriber(modid = ModularShoot.MODID)
 public final class GunDegradationHandler {
 
     /** Dedicated subsystem logger; named so operators can filter degradation warnings. */
@@ -158,5 +163,18 @@ public final class GunDegradationHandler {
                 "Gun definition {} not found for player {}; shot silently cancelled.",
                 gunId,
                 player.getName().getString());
+    }
+
+    /**
+     * 移除该玩家的节流表条目（仿 GunSyncService/BulletSyncService 的登出
+     * 清理模式）：{@link #LAST_WARN_BUCKETS} 是 ConcurrentHashMap 只增不删，
+     * 玩家登出后条目会永久滞留 → 内存增长（稳健性修复）。只移除本类的
+     * WARN 节流键，不触碰任何其他状态。
+     *
+     * @param event the logout event
+     */
+    @SubscribeEvent
+    public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        LAST_WARN_BUCKETS.remove(event.getEntity().getUUID().toString());
     }
 }

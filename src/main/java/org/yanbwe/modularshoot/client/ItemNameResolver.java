@@ -6,6 +6,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.fml.loading.FMLEnvironment;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.client.tooltip.TooltipUtils;
 import org.yanbwe.modularshoot.component.GunData;
@@ -26,9 +27,11 @@ import java.util.Optional;
  * <p>All resolution methods return {@code null} when no name can be
  * resolved — the caller must provide a fallback. This class references
  * {@link Minecraft#getInstance()} and is therefore only safe to call on
- * the physical client; every method wraps its logic in a try/catch so that
- * accidental server-side invocation (e.g. during command feedback) degrades
- * gracefully to {@code null}.</p>
+ * the physical client; each method guards its entry by physical dist
+ * ({@link FMLEnvironment#dist} → {@code isDedicatedServer()} returns
+ * {@code null} immediately), so the client-side class references
+ * (e.g. {@code Minecraft}) are never touched on a dedicated server; the
+ * try/catch inside only backstops client-side exceptions.</p>
  *
  * <p>Resolution logic mirrors the tooltip builders
  * ({@link org.yanbwe.modularshoot.client.tooltip.PluginBarTooltipBuilder},
@@ -65,6 +68,9 @@ public final class ItemNameResolver {
      */
     @Nullable
     public static Component resolveGunDisplayName(ItemStack stack) {
+        if (FMLEnvironment.dist.isDedicatedServer()) {
+            return null;
+        }
         try {
             Minecraft mc = Minecraft.getInstance();
             if (mc.level == null) {
@@ -113,6 +119,9 @@ public final class ItemNameResolver {
      */
     @Nullable
     public static Component resolvePluginDisplayName(ItemStack stack) {
+        if (FMLEnvironment.dist.isDedicatedServer()) {
+            return null;
+        }
         try {
             Minecraft mc = Minecraft.getInstance();
             if (mc.level == null) {

@@ -137,6 +137,29 @@ class EffectiveSlotServiceTest {
                 "no slots and no plugins yield an empty map");
     }
 
+    @Test
+    void hugePositiveContributionsSaturateNotWrap() {
+        // 两个 MAX_VALUE 贡献（如 15 亿 + 15 亿）若用 Integer::sum 会回绕为
+        // 负容量，导致槽位永久不可装、非 force 卸载全被 WOULD_OVERFLOW 锁死。
+        // 饱和加法必须钳制到 Integer.MAX_VALUE。
+        Map<ResourceLocation, Integer> slots = EffectiveSlotService.aggregateSlots(
+                gun(Map.of()),
+                List.of(def(Map.of(COMBAT, Integer.MAX_VALUE)),
+                        def(Map.of(COMBAT, Integer.MAX_VALUE))));
+        assertEquals(Integer.MAX_VALUE, slots.get(COMBAT),
+                "overflowing positive sums must saturate at Integer.MAX_VALUE, not wrap negative");
+    }
+
+    @Test
+    void hugeNegativeContributionsSaturateNotWrap() {
+        Map<ResourceLocation, Integer> slots = EffectiveSlotService.aggregateSlots(
+                gun(Map.of()),
+                List.of(def(Map.of(COMBAT, Integer.MIN_VALUE)),
+                        def(Map.of(COMBAT, Integer.MIN_VALUE))));
+        assertEquals(Integer.MIN_VALUE, slots.get(COMBAT),
+                "overflowing negative sums must saturate at Integer.MIN_VALUE, not wrap");
+    }
+
     // ------------------------------------------------------------------
     // overflowAfterRemoval
     // ------------------------------------------------------------------

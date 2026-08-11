@@ -16,6 +16,7 @@ import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
 import org.yanbwe.modularshoot.registry.shooter.ShooterDefinition;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -101,6 +102,64 @@ class CrossReferenceValidatorTest {
                 "modularshoot:barrel", "modularshoot:scope"));
         assertEquals(List.of("modularshoot:barrel", "modularshoot:scope"),
                 CrossReferenceValidator.findUnmatchedTags(pluginTags, Map.of()));
+    }
+
+    // ---- matchesNoType (审查修复 M4) -------------------------------------
+
+    /**
+     * A plugin with one matched tag and one typo must not be reported as
+     * "cannot be installed on any gun": only zero intersection with every
+     * type's tag set triggers the WARN (审查修复 M4).
+     */
+    @Test
+    void partialMatchDoesNotWarn() {
+        Set<String> pluginTags = new LinkedHashSet<>(List.of(
+                "modularshoot:barrel", "minecraft:typo"));
+        Map<ResourceLocation, Set<String>> typeTagSets = Map.of(
+                TYPE_BARREL, Set.of("modularshoot:barrel"),
+                TYPE_SCOPE, Set.of("modularshoot:scope"));
+        assertFalse(
+                CrossReferenceValidator.matchesNoType(pluginTags, typeTagSets));
+    }
+
+    /**
+     * A plugin whose tags intersect no type's tag set at all triggers the
+     * WARN (审查修复 M4).
+     */
+    @Test
+    void noIntersectionWarns() {
+        Set<String> pluginTags = new LinkedHashSet<>(List.of(
+                "minecraft:a", "minecraft:b"));
+        Map<ResourceLocation, Set<String>> typeTagSets = Map.of(
+                TYPE_BARREL, Set.of("modularshoot:barrel"),
+                TYPE_SCOPE, Set.of("modularshoot:scope"));
+        assertTrue(
+                CrossReferenceValidator.matchesNoType(pluginTags, typeTagSets));
+    }
+
+    /**
+     * Empty tags never satisfy "matches no type": the no-intersection
+     * assertion does not hold for the empty set (审查修复 M4).
+     */
+    @Test
+    void emptyTagsNeverMatch() {
+        Map<ResourceLocation, Set<String>> typeTagSets = Map.of(
+                TYPE_BARREL, Set.of("modularshoot:barrel"));
+        assertFalse(CrossReferenceValidator.matchesNoType(Set.of(), typeTagSets));
+    }
+
+    /**
+     * A single matching tag is enough to disprove "matches no type"
+     * (审查修复 M4).
+     */
+    @Test
+    void singleMatchingTagIsNotNoType() {
+        Set<String> pluginTags = new LinkedHashSet<>(List.of(
+                "modularshoot:barrel"));
+        Map<ResourceLocation, Set<String>> typeTagSets = Map.of(
+                TYPE_BARREL, Set.of("modularshoot:barrel"));
+        assertFalse(
+                CrossReferenceValidator.matchesNoType(pluginTags, typeTagSets));
     }
 
     // ---- validateShooters (stub-registry headless case) ------------------

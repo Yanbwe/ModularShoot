@@ -26,6 +26,7 @@ import org.yanbwe.modularshoot.registry.ModularShootRegistries;
 import org.yanbwe.modularshoot.registry.Trait;
 import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
+import org.yanbwe.modularshoot.registry.shooter.ShooterDefinition;
 import org.yanbwe.modularshoot.registry.shooter.ShooterRegistry;
 import org.yanbwe.modularshoot.registry.variant.VariantDefinition;
 
@@ -34,9 +35,10 @@ import org.yanbwe.modularshoot.registry.variant.VariantDefinition;
  * (设计文档 §/reload 重载行为, line 2305).
  *
  * <p>NeoForge's {@code DataPackRegistryEvent} already handles automatic
- * reloading of the eight dynamic registries ({@code guns}, {@code plugins},
+ * reloading of the ten dynamic registries ({@code guns}, {@code plugins},
  * {@code plugin_types}, {@code traits}, {@code states},
- * {@code attribute_meta}, {@code variants}, {@code shooters}). This listener
+ * {@code attribute_meta}, {@code variants}, {@code gun_items},
+ * {@code plugin_items}, {@code shooters}). This listener
  * complements that
  * with framework-specific post-reload logic that runs in the reload phase
  * (on the game thread), after the vanilla registry pipeline has finished:</p>
@@ -125,8 +127,8 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
     /**
      * Executes the post-reload logic: log, enter DATAPACK phase,
      * validate-and-summarise, cross-reference validation (D1), check
-     * registration conflicts and missing resources, complete phase, then
-     * delegate creative-tab refresh and online-player gun refresh to
+     * registration conflicts, complete phase, then delegate creative-tab
+     * refresh and online-player gun refresh to
      * {@link ReloadBehaviorHandler}.
      *
      * @param access the reloaded registry access (all registries loaded and frozen)
@@ -139,7 +141,6 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
         ModularShoot.LOGGER.info(DatapackLoadSummary.formatAllSummaries(summaries));
         validateCrossReferences(access);
         checkRegistrationConflicts(access);
-        checkMissingResources(access);
         LoadOrderManager.completePhase(LoadOrderManager.LoadPhase.DATAPACK);
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
         if (server != null) {
@@ -151,7 +152,7 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
     }
 
     /**
-     * Builds a per-registry validation summary for all seven framework
+     * Builds a per-registry validation summary for all eight framework
      * registries.
      *
      * @param access the reloaded registry access
@@ -166,6 +167,7 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
         summaries.add(summarizeStates(access));
         summaries.add(summarizeAttributeMeta(access));
         summaries.add(summarizeVariants(access));
+        summaries.add(summarizeShooters(access));
         return summaries;
     }
 
@@ -327,6 +329,26 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
     }
 
     /**
+     * Summarises the {@code shooters} registry (follows the
+     * {@link #summarizeGuns} collect-entries pattern).
+     *
+     * <p>Shooters have no dedicated per-entry validation loader: their
+     * {@code attribute_binds} references are checked by
+     * {@link CrossReferenceValidator#validateShooters} from
+     * {@link #validateCrossReferences} on every reload, so every loaded entry
+     * counts as clean here (warnings surface through the cross-reference
+     * channel instead).</p>
+     *
+     * @param access the reloaded registry access
+     * @return the shooter summary
+     */
+    private static DatapackLoadSummary summarizeShooters(RegistryAccess access) {
+        Map<ResourceLocation, ShooterDefinition> entries =
+                collectEntries(access, ModularShootRegistries.SHOOTERS_KEY);
+        return summarize("shooter definitions", entries.size(), entries.values(), s -> true);
+    }
+
+    /**
      * Logs a {@code WARN} per variant whose base weight is not finite
      * (NaN or Infinity), mirroring {@link GunDatapackLoader}'s stats finite
      * check. A non-finite weight corrupts the per-shot pool probabilities,
@@ -348,7 +370,7 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
     // ──────────────── Registration conflict checks (A-01) ────────────────
 
     /**
-     * Checks all eight framework registries for conflicts between datapack
+     * Checks all ten framework registries for conflicts between datapack
      * entries and ids claimed by the Java API via
      * {@link RegistrationCoordinator#markJavaApiRegistered}.
      *
@@ -364,7 +386,12 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
      * (变体仅由数据包 JSON 注册). The {@code shooters} registry has a Java
      * API write path ({@link ShooterRegistry#registerShooter}), so it is
      * checked like the others: a datapack JSON overriding a Java-API shooter
-     * id is shadowed at the query layer and reported with a {@code WARN}.</p>
+     * id is shadowed at the query layer and reported with a {@code WARN}.
+     * The two binding tables ({@code gun_items}, {@code plugin_items}) are
+     * also checked: {@code registerBinding} calls
+     * {@link RegistrationCoordinator#markJavaApiRegistered} for them, so
+     * omitting them would leave the javadoc-promised {@code WARN} dead
+     * (稳健性修复).</p>
      *
      * @param access the reloaded registry access
      */
@@ -377,6 +404,8 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
         checkConflictsForRegistry(access, ModularShootRegistries.ATTRIBUTE_META_KEY);
         checkConflictsForRegistry(access, ModularShootRegistries.VARIANTS_KEY);
         checkConflictsForRegistry(access, ModularShootRegistries.SHOOTERS_KEY);
+        checkConflictsForRegistry(access, ModularShootRegistries.GUN_ITEMS_KEY);
+        checkConflictsForRegistry(access, ModularShootRegistries.PLUGIN_ITEMS_KEY);
     }
 
     /**
@@ -427,41 +456,6 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
                 RegistrationCoordinator.findConflicts(registryKey, datapackIds);
         for (ResourceLocation conflictId : conflicts) {
             RegistrationCoordinator.attemptDatapackOverride(registryKey, conflictId);
-        }
-    }
-
-    // ──────────────── Missing resource checks (A-02) ────────────────
-
-    /**
-     * Checks registered entries for obviously invalid resource paths
-     * (null or empty).
-     *
-     * <p>The server cannot preload client-side assets (textures, models), so
-     * this check only verifies that required resource path fields are
-     * non-null. When a null path is found,
-     * {@link DatapackErrorHandler#logMissingResource} is called so the
-     * operator is warned that the runtime will fall back to a default asset
-     * (设计文档 line 2380).</p>
-     *
-     * @param access the reloaded registry access
-     */
-    private static void checkMissingResources(RegistryAccess access) {
-        checkGunTextures(access);
-    }
-
-    /**
-     * Checks gun definitions for null texture paths.
-     *
-     * @param access the reloaded registry access
-     */
-    private static void checkGunTextures(RegistryAccess access) {
-        Map<ResourceLocation, GunDefinition> guns =
-                collectEntries(access, ModularShootRegistries.GUNS_KEY);
-        for (Map.Entry<ResourceLocation, GunDefinition> entry : guns.entrySet()) {
-            final GunDefinition gun = entry.getValue();
-            if (gun.texture() == null) {
-                DatapackErrorHandler.logMissingResource(entry.getKey(), "texture (null)");
-            }
         }
     }
 
