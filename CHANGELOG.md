@@ -9,6 +9,7 @@
 - **零速子弹永不消亡**：冻结 `bullet_speed ≤ 0` 的子弹 `traveledDistance` 恒 0、范围检查永假、无 age 兜底，永久驻留 BulletManager 空跑每 tick hook/广播——管线新增静止过期检查（位置推进前立即按 EXPIRED 移除，onExpire 先触发）。
 - **BulletSnapshot 死代码与文档失实**：`encodeState`/`decodeState` 声称"state 初始值经 BulletS2CPacket 传客户端"，实际 `ClientBulletSnapshot` 刻意不下发 state（设计文档 §子弹快照）、两方法无调用者——删除死代码，javadoc 明确 state 仅服务端可见。
 - **reload 校验误报**：`CrossReferenceValidator` 插件 tag 只要有一个未匹配就 WARN 且断言"装不上任何枪"（部分匹配误报）——改为仅全部 tag 均无交集才 WARN；`ItemBindingValidator` 的 "Bound gun not found" 只对照 datapack 键集，指向 Java API 注册枪械的合法绑定每次 reload 误报——已知集合改为 datapack 键 ∪ Java API 注册键（provider 通道不可枚举、不含）。
+- **第一人称后坐方向修正**：`renderByItem` 收到的是相机坐标系（+X=屏幕右、+Y=上、+Z=指向观察者），原 +X 平移 + 绕 +Z 旋转实测表现为**枪口下压**——改为沿 -Z 后收入屏 + 绕 +X（屏幕左右水平轴）正旋转（枪口顶端朝观察者抬起），javadoc/设计文档同步。
 
 ### 改进 / Improved
 
@@ -18,6 +19,7 @@
 - **渲染**：3D 子弹光照改用插值位置（不再滞后一个同步段）。
 - **清理**：删除死代码（`checkGunTextures`、`DegradationTextures`、空 `BLOCKS` DeferredRegister、`AntiCheatState.baselineVersion`、`InstallResult.failure(String)`、不可达 `definition_not_found` 分支、`clearCache()`）与 6 处失实 javadoc（注册表计数、命令线程模型、挥臂 Mixin、standalone 变体、nextLong 计数等）。
 - **测试补强**：出厂数据包 JSON 全量真实 codec 解码断言（9 张表 45 个文件，codec 映射覆盖 10 张注册表）；`BulletS2CPacket` codec 往返测试（8 条：null 哨兵/枚举 ordinal/三桶/forceFullSync）；全量 414 用例。
+- **本地化补强**：tooltip 插件栏的全角括号计数（`（x/y）`）与锁定锚字符 `⚓` 由硬编码改为 lang 键（`modularshoot.tooltip.slot_count` / `locked_anchor`），en_us 下不再显示 CJK 标点。
 
 ## [0.1.4] - 2026-08-10
 
