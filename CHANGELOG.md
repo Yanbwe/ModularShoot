@@ -4,6 +4,7 @@
 
 ### 新增 / Added
 
+- **动态枪械定义提供者**：`GunRegistry` 新增 `registerGunDefinitionProvider` 通道，`getGun` 查询顺序扩展为 Java API 注册 → 提供者 → 数据包注册表；支持 per-player / 运行时生成的动态定义（"玩家即枪"类玩法），框架内所有定义查询点零改动受益。门面 `ModularShootAPI.registerGunDefinitionProvider` 对外暴露；未注册提供者时行为完全一致。
 - **插件定义支持 `adds_slots` 字段**：插件安装后可增加指定槽位数量，甚至创造枪械原本没有的槽位类型（键须为完整命名空间或 `modularshoot:` 裸键，值为任意整数，负数表示占用槽位）。有效容量 = 枪械 slots + 已装插件 adds_slots 聚合；安装匹配、tooltip 插件栏均按有效槽位计算。
 - **卸载超编预检**：非 force 卸载会导致某槽位类型超编的加槽插件将被拒绝（`WOULD_OVERFLOW`）；force 卸载可绕过，超编插件滞留保留但该槽位不可再装；随机卸载自动过滤会触发超编的候选。
 - **reload 校验**：`adds_slots` 键引用 `plugin_types` 注册表存在性检查（WARN）。
