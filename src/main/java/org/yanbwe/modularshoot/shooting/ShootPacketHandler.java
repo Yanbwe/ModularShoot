@@ -99,10 +99,14 @@ public final class ShootPacketHandler {
             // ShootC2SPacket every tick; most are rejected by the fire-rate
             // controller, so an INFO log here would flood the log (W9). Use
             // DEBUG so the rejection is visible only when diagnosing issues.
-            ModularShoot.LOGGER.debug("Shoot rejected by fire-rate controller (player={}, gun={}, fireRate={})",
-                    player.getName().getString(), gunData.gunId(),
-                    AttributeResolver.readFinalValue(player, ModularShootAttributes.FIRE_RATE.getKey().location(),
-                            player.registryAccess()));
+            // 审查优化 P8: isDebugEnabled 守卫——否则参数（getString + 完整属性
+            // 解析链）在 DEBUG 关闭时也每 tick 求值。
+            if (ModularShoot.LOGGER.isDebugEnabled()) {
+                ModularShoot.LOGGER.debug("Shoot rejected by fire-rate controller (player={}, gun={}, fireRate={})",
+                        player.getName().getString(), gunData.gunId(),
+                        AttributeResolver.readFinalValue(player, ModularShootAttributes.FIRE_RATE.getKey().location(),
+                                player.registryAccess()));
+            }
             return;
         }
         delegateToShootEngine(player, gunData);

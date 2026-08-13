@@ -2,11 +2,14 @@ package org.yanbwe.modularshoot.bullet;
 
 import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.WeakHashMap;
 import java.util.stream.Stream;
+import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.Vec3;
@@ -116,6 +119,19 @@ public class VisualCompositionService {
     /** Shared singleton used by both bullet-creation call sites. */
     public static final VisualCompositionService INSTANCE = new VisualCompositionService();
 
+    /**
+     * Per-registry cache of the state definitions that declare at least one
+     * visual modifier (审查优化 P4/P8): {@code collectStateConditions} runs
+     * once per bullet created, and previously stream-filtered the whole
+     * {@code modularshoot:states} registry on every call. The list is keyed
+     * by the <em>actual registry instance</em> (not the {@link RegistryAccess}
+     * wrapper, whose identity may survive a {@code /reload}): a reload builds
+     * a new registry, so the stale index is naturally discarded and rebuilt
+     * on first query; weak keys allow unload GC.
+     */
+    private final Map<Registry<StateDefinition>, List<StateDefinition>> stateVisualDefsCache =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
     // ------------------------------------------------------------------
     // Dependency-injection override points (no-op defaults delegate to real
     // registry lookups; tests override them with stubbed data).
@@ -163,8 +179,19 @@ public class VisualCompositionService {
      * @return a stream of state definitions with non-empty visual modifiers
      */
     protected Stream<StateDefinition> allStateDefsWithVisualModifiers(RegistryAccess ra) {
-        return StateRegistry.getAllStates(ra)
-                .filter(def -> !def.visualModifiers().isEmpty());
+        if (ra == null) {
+            return Stream.empty();
+        }
+        Registry<StateDefinition> registry =
+                ra.registry(ModularShootRegistries.STATES_KEY).orElse(null);
+        if (registry == null) {
+            return Stream.empty();
+        }
+        List<StateDefinition> cached = stateVisualDefsCache.computeIfAbsent(registry,
+                r -> r.stream()
+                        .filter(def -> !def.visualModifiers().isEmpty())
+                        .toList());
+        return cached.stream();
     }
 
     /**

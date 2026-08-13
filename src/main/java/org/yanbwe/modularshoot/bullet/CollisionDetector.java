@@ -350,7 +350,12 @@ public final class CollisionDetector {
             if (!searchAABB.intersects(entity.getBoundingBox())) {
                 continue;
             }
-            Optional<Vec3> hitOpt = entity.getBoundingBox().inflate(bulletSize).clip(prevPos, curPos);
+            // 审查优化 P7: bulletSize == 0（默认值）时直接对未膨胀的 AABB
+            // clip，避免为每个候选实体分配一个 inflate 出的新 AABB。
+            Optional<Vec3> hitOpt = (bulletSize == 0.0
+                    ? entity.getBoundingBox()
+                    : entity.getBoundingBox().inflate(bulletSize))
+                    .clip(prevPos, curPos);
             if (hitOpt.isEmpty()) {
                 continue;
             }

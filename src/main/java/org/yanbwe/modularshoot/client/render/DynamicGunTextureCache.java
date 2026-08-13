@@ -11,8 +11,10 @@ import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.FastColor;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Vector4f;
 import org.slf4j.Logger;
 import org.yanbwe.modularshoot.ModularShoot;
+import org.yanbwe.modularshoot.client.render.CompositeTextureBuilder.OverlayLayer;
 import org.yanbwe.modularshoot.plugin.OutlineSpec;
 
 /**
@@ -79,11 +81,12 @@ public final class DynamicGunTextureCache {
     private static DynamicGunTextureCache instance;
 
     /**
-     * Cache key → registered texture location. A {@link LinkedHashMap}
-     * preserves insertion order so the oldest entries can be evicted first
-     * when the cache exceeds {@link #MAX_ENTRIES}.
+     * Cache key → registered texture location. A {@link LinkedHashMap} in
+     * <em>access order</em> (审查优化 P19: 插入序逐出是 FIFO，会逐出正在使用的
+     * 变体——例如 per_shot 交替访问 base/shoot 双纹理时；accessOrder 才是真
+     * LRU)：命中会刷新条目位置，逐出时淘汰最久未访问的条目。
      */
-    private final Map<Key, TextureHandle> locations = new LinkedHashMap<>();
+    private final Map<Key, TextureHandle> locations = new LinkedHashMap<>(16, 0.75f, true);
     private int nextId;
 
     private DynamicGunTextureCache() {
@@ -105,8 +108,114 @@ public final class DynamicGunTextureCache {
      *                        force a re-composite when plugins change even if
      *                        the overlay list is unchanged
      */
-    public record Key(ResourceLocation texturePath, List<CompositeTextureBuilder.OverlayLayer> overlays,
+    public record Key(ResourceLocation texturePath, List<OverlayLayer> overlays,
                       List<OutlineSpec> gunOutlines, int modifierVersion) {
+
+        /**
+         * 值语义相等性（审查优化 P5）：JOML {@link Vector4f}/{@link Vector3f}
+         * 不覆写 equals/hashCode，朴素 record 相等性会退化为向量对象身份——
+         * 任何重新解码的定义实例都会使缓存 miss 并触发每帧全量 PNG 解码+合成
+         * +GPU 上传。此处对 tint/outline 颜色按 float 位值比较，值相同即相等，
+         * 与实例身份无关。
+         */
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (!(o instanceof Key other)) {
+                return false;
+            }
+            if (modifierVersion != other.modifierVersion || !texturePath.equals(other.texturePath)) {
+                return false;
+            }
+            return listsEqual(overlays, other.overlays, Key::overlayLayerEquals)
+                    && listsEqual(gunOutlines, other.gunOutlines, Key::outlineSpecEquals);
+        }
+
+        @Override
+        public int hashCode() {
+            int result = texturePath.hashCode();
+            result = 31 * result + modifierVersion;
+            for (OverlayLayer layer : overlays) {
+                result = 31 * result + overlayLayerHash(layer);
+            }
+            for (OutlineSpec spec : gunOutlines) {
+                result = 31 * result + outlineSpecHash(spec);
+            }
+            return result;
+        }
+
+        private static <T> boolean listsEqual(
+                List<T> a, List<T> b, java.util.function.BiPredicate<T, T> elementEquals) {
+            if (a.size() != b.size()) {
+                return false;
+            }
+            for (int i = 0; i < a.size(); i++) {
+                if (!elementEquals.test(a.get(i), b.get(i))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static boolean overlayLayerEquals(OverlayLayer a, OverlayLayer b) {
+            if (!a.texture().equals(b.texture())
+                    || a.alignment() != b.alignment()
+                    || a.fit() != b.fit()
+                    || a.blend() != b.blend()) {
+                return false;
+            }
+            if (!floatBitsEqual(a.tint(), b.tint())) {
+                return false;
+            }
+            return a.outline().isEmpty() && b.outline().isEmpty()
+                    || a.outline().isPresent() && b.outline().isPresent()
+                    && outlineSpecEquals(a.outline().get(), b.outline().get());
+        }
+
+        private static int overlayLayerHash(OverlayLayer layer) {
+            int result = layer.texture().hashCode();
+            result = 31 * result + layer.alignment().hashCode();
+            result = 31 * result + layer.fit().hashCode();
+            result = 31 * result + layer.blend().hashCode();
+            result = 31 * result + floatBitsHash(layer.tint());
+            if (layer.outline().isPresent()) {
+                result = 31 * result + outlineSpecHash(layer.outline().get());
+            }
+            return result;
+        }
+
+        private static boolean outlineSpecEquals(OutlineSpec a, OutlineSpec b) {
+            if (a.alpha() != b.alpha() || a.width() != b.width()) {
+                return false;
+            }
+            return Float.floatToIntBits(a.color().x) == Float.floatToIntBits(b.color().x)
+                    && Float.floatToIntBits(a.color().y) == Float.floatToIntBits(b.color().y)
+                    && Float.floatToIntBits(a.color().z) == Float.floatToIntBits(b.color().z);
+        }
+
+        private static int outlineSpecHash(OutlineSpec spec) {
+            int result = Float.floatToIntBits(spec.color().x);
+            result = 31 * result + Float.floatToIntBits(spec.color().y);
+            result = 31 * result + Float.floatToIntBits(spec.color().z);
+            result = 31 * result + Float.floatToIntBits(spec.alpha());
+            return 31 * result + spec.width();
+        }
+
+        private static boolean floatBitsEqual(Vector4f a, Vector4f b) {
+            return Float.floatToIntBits(a.x) == Float.floatToIntBits(b.x)
+                    && Float.floatToIntBits(a.y) == Float.floatToIntBits(b.y)
+                    && Float.floatToIntBits(a.z) == Float.floatToIntBits(b.z)
+                    && Float.floatToIntBits(a.w) == Float.floatToIntBits(b.w);
+        }
+
+        private static int floatBitsHash(Vector4f v) {
+            int result = Float.floatToIntBits(v.x);
+            result = 31 * result + Float.floatToIntBits(v.y);
+            result = 31 * result + Float.floatToIntBits(v.z);
+            return 31 * result + Float.floatToIntBits(v.w);
+        }
     }
 
     /**

@@ -168,6 +168,10 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer imple
     @Override
     public void onResourceManagerReload(ResourceManager resourceManager) {
         DynamicGunTextureCache.getInstance().clear();
+        // 审查修复: F3+T / 世界加载时同步清空 overlay 渲染数据缓存，避免
+        // 旧定义对象在 DynamicGunTextureCache 已重建后仍被命中（缓存失效
+        // 策略不一致）。
+        PluginOverlayCompositor.clearCache();
     }
 
     /**

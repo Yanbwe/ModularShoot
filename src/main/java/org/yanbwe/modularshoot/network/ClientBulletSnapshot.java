@@ -159,7 +159,7 @@ public record ClientBulletSnapshot(
      * @param stats the stats map to serialise
      */
     private static void encodeStatMap(RegistryFriendlyByteBuf buf, Map<ResourceLocation, Double> stats) {
-        buf.writeInt(stats.size());
+        buf.writeVarInt(stats.size());
         for (Map.Entry<ResourceLocation, Double> entry : stats.entrySet()) {
             buf.writeResourceLocation(entry.getKey());
             buf.writeDouble(entry.getValue());
@@ -174,7 +174,7 @@ public record ClientBulletSnapshot(
      *         {@code Map.copyOf} (single defensive copy on the decode path)
      */
     private static Map<ResourceLocation, Double> decodeStatMap(RegistryFriendlyByteBuf buf) {
-        int count = buf.readInt();
+        int count = buf.readVarInt();
         Map<ResourceLocation, Double> map = new HashMap<>(count);
         for (int i = 0; i < count; i++) {
             ResourceLocation key = buf.readResourceLocation();
@@ -192,7 +192,7 @@ public record ClientBulletSnapshot(
      * @param traits the traits map to serialise
      */
     private static void encodeTraitMap(RegistryFriendlyByteBuf buf, Map<ResourceLocation, Boolean> traits) {
-        buf.writeInt(traits.size());
+        buf.writeVarInt(traits.size());
         for (Map.Entry<ResourceLocation, Boolean> entry : traits.entrySet()) {
             buf.writeResourceLocation(entry.getKey());
             buf.writeBoolean(entry.getValue());
@@ -207,7 +207,7 @@ public record ClientBulletSnapshot(
      *         {@code Map.copyOf} (single defensive copy on the decode path)
      */
     private static Map<ResourceLocation, Boolean> decodeTraitMap(RegistryFriendlyByteBuf buf) {
-        int count = buf.readInt();
+        int count = buf.readVarInt();
         Map<ResourceLocation, Boolean> map = new HashMap<>(count);
         for (int i = 0; i < count; i++) {
             ResourceLocation key = buf.readResourceLocation();

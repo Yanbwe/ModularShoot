@@ -99,4 +99,61 @@ class GunItemBindingRegistryTest {
                 RegistryAccess.EMPTY,
                 ResourceLocation.parse("minecraft:netherite_sword")).isEmpty());
     }
+
+    @Test
+    void buildDatapackIndexPicksSmallestKeyPerItem() {
+        // Two datapack entries bind the same item id; the lexicographically
+        // smallest entry key must win (设计规格 物品绑定系统 §3.2).
+        Map<ResourceLocation, GunItemBinding> entries = Map.of(
+                ResourceLocation.parse("mypack:z_binding"),
+                new GunItemBinding(ITEM_DIAMOND_SWORD,
+                        ResourceLocation.parse("mypack:gun_z")),
+                ResourceLocation.parse("mypack:a_binding"),
+                new GunItemBinding(ITEM_DIAMOND_SWORD,
+                        ResourceLocation.parse("mypack:gun_a")));
+        Map<ResourceLocation, GunItemBinding> index =
+                GunItemBindingRegistry.buildDatapackIndex(entries);
+        assertEquals(ResourceLocation.parse("mypack:gun_a"),
+                index.get(ITEM_DIAMOND_SWORD).gunId());
+    }
+
+    @Test
+    void buildDatapackIndexDistinctItems() {
+        Map<ResourceLocation, GunItemBinding> entries = Map.of(
+                ResourceLocation.parse("mypack:sword_binding"),
+                new GunItemBinding(ITEM_DIAMOND_SWORD,
+                        ResourceLocation.parse("mypack:sword_gun")),
+                ResourceLocation.parse("mypack:stick_binding"),
+                new GunItemBinding(ITEM_STICK,
+                        ResourceLocation.parse("mypack:stick_gun")));
+        Map<ResourceLocation, GunItemBinding> index =
+                GunItemBindingRegistry.buildDatapackIndex(entries);
+        assertEquals(2, index.size());
+        assertEquals(ResourceLocation.parse("mypack:sword_gun"),
+                index.get(ITEM_DIAMOND_SWORD).gunId());
+        assertEquals(ResourceLocation.parse("mypack:stick_gun"),
+                index.get(ITEM_STICK).gunId());
+    }
+
+    @Test
+    void buildDatapackIndexEmpty() {
+        assertTrue(GunItemBindingRegistry.buildDatapackIndex(Map.of()).isEmpty());
+    }
+
+    @Test
+    void getBoundGunIdJavaApiConflictPicksLexicographicallySmallestKey() {
+        // Multiple Java-API keys binding the same item resolve deterministically
+        // to the lexicographically smallest key (same rule as the datapack
+        // channel), instead of the previous unspecified scan order.
+        GunItemBindingRegistry.registerBinding(
+                ResourceLocation.parse("mypack:z_conflict_binding"),
+                new GunItemBinding(ITEM_STICK, ResourceLocation.parse("mypack:gun_z")));
+        GunItemBindingRegistry.registerBinding(
+                ResourceLocation.parse("mypack:a_conflict_binding"),
+                new GunItemBinding(ITEM_STICK, ResourceLocation.parse("mypack:gun_a")));
+        Optional<ResourceLocation> bound = GunItemBindingRegistry.getBoundGunId(
+                RegistryAccess.EMPTY, ITEM_STICK);
+        assertTrue(bound.isPresent());
+        assertEquals(ResourceLocation.parse("mypack:gun_a"), bound.get());
+    }
 }

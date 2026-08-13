@@ -211,6 +211,27 @@ class BulletS2CPacketCodecTest {
                 "delta entry carries id plus absolute position/direction");
     }
 
+    @Test
+    void deltaFloatCompressionKeepsSubPixelPrecision() {
+        // 审查优化 P3: delta 条目在线路上以 float 传输（52 → ~26 字节）。
+        // float 不能精确表示 0.1，往返后允许亚像素级偏差（渲染不可见），
+        // 但必须远小于 1 像素（≈0.06 方块，y=1000 处 float 精度）。
+        DeltaBulletEntry delta = new DeltaBulletEntry(
+                1001, 1000.1, 64.7, -200.3, 0.1, 0.2, -0.3);
+
+        BulletS2CPacket decoded = roundTrip(
+                BulletS2CPacket.delta(List.of(), List.of(delta), List.of()));
+
+        DeltaBulletEntry out = decoded.updatedBullets().get(0);
+        assertEquals(1001, out.bulletId());
+        assertEquals(delta.posX(), out.posX(), 1.0e-4);
+        assertEquals(delta.posY(), out.posY(), 1.0e-4);
+        assertEquals(delta.posZ(), out.posZ(), 1.0e-4);
+        assertEquals(delta.dirX(), out.dirX(), 1.0e-4);
+        assertEquals(delta.dirY(), out.dirY(), 1.0e-4);
+        assertEquals(delta.dirZ(), out.dirZ(), 1.0e-4);
+    }
+
     // --- removedBulletIds ---
 
     @Test

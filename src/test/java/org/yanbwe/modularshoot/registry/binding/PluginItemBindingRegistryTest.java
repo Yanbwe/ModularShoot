@@ -100,4 +100,42 @@ class PluginItemBindingRegistryTest {
                 RegistryAccess.EMPTY,
                 ResourceLocation.parse("minecraft:netherite_sword")).isEmpty());
     }
+
+    @Test
+    void buildDatapackIndexPicksSmallestKeyPerItem() {
+        Map<ResourceLocation, PluginItemBinding> entries = Map.of(
+                ResourceLocation.parse("mypack:z_binding"),
+                new PluginItemBinding(ResourceLocation.parse("minecraft:stick"),
+                        ResourceLocation.parse("mypack:plugin_z")),
+                ResourceLocation.parse("mypack:a_binding"),
+                new PluginItemBinding(ResourceLocation.parse("minecraft:stick"),
+                        ResourceLocation.parse("mypack:plugin_a")));
+        Map<ResourceLocation, PluginItemBinding> index =
+                PluginItemBindingRegistry.buildDatapackIndex(entries);
+        assertEquals(ResourceLocation.parse("mypack:plugin_a"),
+                index.get(ResourceLocation.parse("minecraft:stick")).pluginId());
+    }
+
+    @Test
+    void buildDatapackIndexDistinctItems() {
+        Map<ResourceLocation, PluginItemBinding> entries = Map.of(
+                ResourceLocation.parse("mypack:stick_binding"),
+                new PluginItemBinding(ResourceLocation.parse("minecraft:stick"),
+                        ResourceLocation.parse("mypack:stick_plugin")),
+                ResourceLocation.parse("mypack:blaze_binding"),
+                new PluginItemBinding(ResourceLocation.parse("minecraft:blaze_rod"),
+                        ResourceLocation.parse("mypack:blaze_plugin")));
+        Map<ResourceLocation, PluginItemBinding> index =
+                PluginItemBindingRegistry.buildDatapackIndex(entries);
+        assertEquals(2, index.size());
+        assertEquals(ResourceLocation.parse("mypack:stick_plugin"),
+                index.get(ResourceLocation.parse("minecraft:stick")).pluginId());
+        assertEquals(ResourceLocation.parse("mypack:blaze_plugin"),
+                index.get(ResourceLocation.parse("minecraft:blaze_rod")).pluginId());
+    }
+
+    @Test
+    void buildDatapackIndexEmpty() {
+        assertTrue(PluginItemBindingRegistry.buildDatapackIndex(Map.of()).isEmpty());
+    }
 }

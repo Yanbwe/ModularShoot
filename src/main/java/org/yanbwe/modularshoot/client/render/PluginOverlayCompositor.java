@@ -145,6 +145,18 @@ public final class PluginOverlayCompositor {
      */
     @SubscribeEvent
     public static void onPlayerLogout(ClientPlayerNetworkEvent.LoggingOut event) {
+        clearCache();
+    }
+
+    /**
+     * Clears the render-data cache (审查修复: 缓存失效策略).
+     *
+     * <p>Called on logout (as before), on resource reload via
+     * {@code GunItemRenderer.onResourceManagerReload} (F3+T / world join),
+     * so re-decoded definitions never linger in the cache while the dynamic
+     * texture cache they feed has already been rebuilt.</p>
+     */
+    public static void clearCache() {
         RENDER_DATA_CACHE.clear();
     }
 

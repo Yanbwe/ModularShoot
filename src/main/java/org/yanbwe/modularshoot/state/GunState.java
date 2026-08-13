@@ -339,6 +339,10 @@ public final class GunState {
         if (gunData == null) {
             return;
         }
+        // 键不存在 → 无变化，跳过拷贝与组件 set（审查优化 P2 同款短路）。
+        if (!gunData.state().contains(stateId.toString())) {
+            return;
+        }
         final GunData newData = gunData.clearStateValue(stateId);
         gunStack.set(ModularShootDataComponents.GUN_DATA.get(), newData);
     }
@@ -442,6 +446,13 @@ public final class GunState {
         }
         final GunData gunData = currentGunData();
         if (gunData == null) {
+            return;
+        }
+        // 值未变化 → 跳过整次写路径（NBT 深拷贝 + 组件 set + 原版整栈同步 +
+        // 节流标记）。高频写入（heat 累积等）若每 tick 写相同值，此检查将其
+        // 降为零成本；值确实变化时才走完整写路径（审查优化 P2）。
+        final Object previous = gunData.getStateValue(stateId, registryAccess);
+        if (Objects.equals(previous, value)) {
             return;
         }
         try {

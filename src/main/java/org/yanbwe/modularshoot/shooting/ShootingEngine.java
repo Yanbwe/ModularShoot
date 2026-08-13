@@ -411,6 +411,11 @@ public final class ShootingEngine {
             ServerPlayer player, ItemStack gunStack, BulletSnapshot snapshot, GunData gunData,
             GunDefinition gunDefinition) {
         int pellets = resolvePelletCount(snapshot);
+        // 审查优化 P3/P4: 变体池对同一 (gunDef, gunData, registry) 是确定性的，
+        // 每发只构建一次（含 contributor 收集与每插件注册表查找），逐弹丸仅做
+        // 独立 roll —— roll 仍使用独立随机采样，逐弹丸语义（规格 §6.4）不变。
+        VariantPoolService.PoolBuild variantPool =
+                VariantPoolService.buildPool(player.registryAccess(), gunDefinition, gunData);
         List<BulletRecord> records = new ArrayList<>(pellets);
         for (int i = 0; i < pellets; i++) {
             BulletSnapshot copy = snapshot.copy();
@@ -418,15 +423,20 @@ public final class ShootingEngine {
             // 混合出现不同变体；无选中 → 本颗普通弹（静默）。在 copy 之后、效果贡献者
             // 之前执行 → 变体 damage_type 覆盖 ammo 预设（变体优先），效果贡献者可
             // 叠加在变体结果之上。
-            VariantPoolService.rollAndApply(player, copy, gunData, gunDefinition);
+            VariantPoolService.rollFromPool(variantPool, player.level().getRandom())
+                    .ifPresent(id -> VariantPoolService.apply(id, player.registryAccess(), copy));
             // 机制三：效果贡献者按注册顺序改写本颗快照（规格 §5.1：copy 之后、applySpread 之前）。
             ShootEffectRegistry.applyEffects(player, gunStack, copy, i, pellets);
             Vec3 direction = applySpread(player, copy);        // 每颗独立散布采样（纯函数）
             BulletRecord record = registerBullet(player, copy, direction, gunData);
             BulletSyncService.markBulletCreated(player.level(), record);
             records.add(record);
-            ModularShoot.LOGGER.debug("Pellet fired: id={}, gun={}, player={}, pellet={}/{}",
-                    record.getBulletId(), gunData.gunId(), player.getName().getString(), i + 1, pellets);
+            // 审查优化 P8: isDebugEnabled 守卫——参数（含 getString）在 DEBUG
+            // 关闭时也逐弹丸求值。
+            if (ModularShoot.LOGGER.isDebugEnabled()) {
+                ModularShoot.LOGGER.debug("Pellet fired: id={}, gun={}, player={}, pellet={}/{}",
+                        record.getBulletId(), gunData.gunId(), player.getName().getString(), i + 1, pellets);
+            }
         }
         return records;
     }

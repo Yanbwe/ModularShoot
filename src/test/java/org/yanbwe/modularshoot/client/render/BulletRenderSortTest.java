@@ -1,6 +1,7 @@
 package org.yanbwe.modularshoot.client.render;
 
 import java.util.List;
+import java.util.Map;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 
@@ -24,6 +25,17 @@ import static org.junit.jupiter.api.Assertions.*;
  * scale the ordering is meant to resolve.</p>
  */
 class BulletRenderSortTest {
+
+    static {
+        // 类初始化需要 MC 客户端类（RenderLevelStageEvent.Stage），而它依赖
+        // 原版注册表 bootstrap。项目惯例（同 DatapackJsonCodecTest）：
+        // FML shim + 版本 shim + 完整 vanilla registry bootstrap，使本测试
+        // 在任何运行方式（全量/过滤单跑）下都稳定。
+        net.neoforged.fml.loading.LoadingModList.of(
+                List.of(), List.of(), List.of(), List.of(), Map.of());
+        net.minecraft.SharedConstants.setVersion(net.minecraft.DetectedVersion.BUILT_IN);
+        net.minecraft.server.Bootstrap.bootStrap();
+    }
 
     private static BulletRenderObject bullet(int id, double x, double y, double z) {
         return new BulletRenderObject(id, new Vec3(x, y, z), new Vec3(1, 0, 0),

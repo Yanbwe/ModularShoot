@@ -2,6 +2,7 @@ package org.yanbwe.modularshoot.network;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector4f;
@@ -169,13 +170,23 @@ public record BulletS2CPacket(
      * two known modes) map to {@code BILLBOARD} so the wire never carries an
      * out-of-range ordinal.
      */
-    private static byte renderModeOrdinal(String serializedName) {
+    /** serializedName &rarr; ordinal, precomputed once (审查优化 P12: 每次线性扫 → O(1)). */
+    private static final Map<String, Byte> RENDER_MODE_ORDINALS = buildRenderModeOrdinals();
+
+    private static Map<String, Byte> buildRenderModeOrdinals() {
+        Map<String, Byte> map = new java.util.HashMap<>();
         for (BulletStyle.RenderMode mode : BulletStyle.RenderMode.values()) {
-            if (mode.getSerializedName().equals(serializedName)) {
-                return (byte) mode.ordinal();
-            }
+            map.put(mode.getSerializedName(), (byte) mode.ordinal());
         }
-        return (byte) BulletStyle.RenderMode.BILLBOARD.ordinal();
+        return map;
+    }
+
+    private static byte renderModeOrdinal(String serializedName) {
+        Byte ordinal = RENDER_MODE_ORDINALS.get(serializedName);
+        // Unknown names (defensive: the server always writes one of the
+        // two known modes) map to BILLBOARD so the wire never carries an
+        // out-of-range ordinal.
+        return ordinal != null ? ordinal : (byte) BulletStyle.RenderMode.BILLBOARD.ordinal();
     }
 
     // --- FullBulletEntry codec ------------------------------------------
@@ -188,7 +199,7 @@ public record BulletS2CPacket(
      * @param entries the full entries to serialize
      */
     private static void encodeFullEntries(RegistryFriendlyByteBuf buf, List<FullBulletEntry> entries) {
-        buf.writeInt(entries.size());
+        buf.writeVarInt(entries.size());
         for (FullBulletEntry entry : entries) {
             encodeFullEntry(buf, entry);
         }
@@ -203,7 +214,7 @@ public record BulletS2CPacket(
      *         shared or mutated after return)
      */
     private static List<FullBulletEntry> decodeFullEntries(RegistryFriendlyByteBuf buf) {
-        int count = buf.readInt();
+        int count = buf.readVarInt();
         List<FullBulletEntry> entries = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             entries.add(decodeFullEntry(buf));
@@ -219,7 +230,7 @@ public record BulletS2CPacket(
      * @param entry the full entry to serialize
      */
     private static void encodeFullEntry(RegistryFriendlyByteBuf buf, FullBulletEntry entry) {
-        buf.writeInt(entry.bulletId());
+        buf.writeVarInt(entry.bulletId());
         buf.writeDouble(entry.posX());
         buf.writeDouble(entry.posY());
         buf.writeDouble(entry.posZ());
@@ -270,7 +281,7 @@ public record BulletS2CPacket(
      * @return a new {@link FullBulletEntry}
      */
     private static FullBulletEntry decodeFullEntry(RegistryFriendlyByteBuf buf) {
-        int bulletId = buf.readInt();
+        int bulletId = buf.readVarInt();
         double posX = buf.readDouble();
         double posY = buf.readDouble();
         double posZ = buf.readDouble();
@@ -326,7 +337,7 @@ public record BulletS2CPacket(
      * @param entries the delta entries to serialize
      */
     private static void encodeDeltaEntries(RegistryFriendlyByteBuf buf, List<DeltaBulletEntry> entries) {
-        buf.writeInt(entries.size());
+        buf.writeVarInt(entries.size());
         for (DeltaBulletEntry entry : entries) {
             encodeDeltaEntry(buf, entry);
         }
@@ -341,7 +352,7 @@ public record BulletS2CPacket(
      *         shared or mutated after return)
      */
     private static List<DeltaBulletEntry> decodeDeltaEntries(RegistryFriendlyByteBuf buf) {
-        int count = buf.readInt();
+        int count = buf.readVarInt();
         List<DeltaBulletEntry> entries = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             entries.add(decodeDeltaEntry(buf));
@@ -358,13 +369,16 @@ public record BulletS2CPacket(
      * @param entry the delta entry to serialize
      */
     private static void encodeDeltaEntry(RegistryFriendlyByteBuf buf, DeltaBulletEntry entry) {
-        buf.writeInt(entry.bulletId());
-        buf.writeDouble(entry.posX());
-        buf.writeDouble(entry.posY());
-        buf.writeDouble(entry.posZ());
-        buf.writeDouble(entry.dirX());
-        buf.writeDouble(entry.dirY());
-        buf.writeDouble(entry.dirZ());
+        // 审查优化 P3: 每 tick 每玩家每子弹的常驻带宽大头。id 用 varint
+        // （每维度从 1 起，1-2 字节），位置/方向用 float（渲染插值精度足够：
+        // y=1000 处 float 精度 ~6e-5 方块）。52 字节 → ~26 字节/条目。
+        buf.writeVarInt(entry.bulletId());
+        buf.writeFloat((float) entry.posX());
+        buf.writeFloat((float) entry.posY());
+        buf.writeFloat((float) entry.posZ());
+        buf.writeFloat((float) entry.dirX());
+        buf.writeFloat((float) entry.dirY());
+        buf.writeFloat((float) entry.dirZ());
     }
 
     /**
@@ -375,13 +389,13 @@ public record BulletS2CPacket(
      * @return a new {@link DeltaBulletEntry}
      */
     private static DeltaBulletEntry decodeDeltaEntry(RegistryFriendlyByteBuf buf) {
-        int bulletId = buf.readInt();
-        double posX = buf.readDouble();
-        double posY = buf.readDouble();
-        double posZ = buf.readDouble();
-        double dirX = buf.readDouble();
-        double dirY = buf.readDouble();
-        double dirZ = buf.readDouble();
+        int bulletId = buf.readVarInt();
+        double posX = buf.readFloat();
+        double posY = buf.readFloat();
+        double posZ = buf.readFloat();
+        double dirX = buf.readFloat();
+        double dirY = buf.readFloat();
+        double dirZ = buf.readFloat();
         return new DeltaBulletEntry(bulletId, posX, posY, posZ, dirX, dirY, dirZ);
     }
 
@@ -395,9 +409,9 @@ public record BulletS2CPacket(
      * @param ids the removed bullet ids to serialize
      */
     private static void encodeRemovedIds(RegistryFriendlyByteBuf buf, List<Integer> ids) {
-        buf.writeInt(ids.size());
+        buf.writeVarInt(ids.size());
         for (int id : ids) {
-            buf.writeInt(id);
+            buf.writeVarInt(id);
         }
     }
 
@@ -410,10 +424,10 @@ public record BulletS2CPacket(
      *         never shared or mutated after return)
      */
     private static List<Integer> decodeRemovedIds(RegistryFriendlyByteBuf buf) {
-        int count = buf.readInt();
+        int count = buf.readVarInt();
         List<Integer> ids = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
-            ids.add(buf.readInt());
+            ids.add(buf.readVarInt());
         }
         return ids;
     }
@@ -575,6 +589,14 @@ public record BulletS2CPacket(
      * <p>Position and direction are <em>absolute</em> values (not relative
      * deltas) so a dropped packet does not desynchronise subsequent updates;
      * a periodic {@link #forceFullSync()} corrects any residual drift.</p>
+     *
+     * <p><b>Wire compression (审查优化 P3):</b> the id is written as a
+     * varint and the six position/direction components as {@code float}
+     * (≈26 bytes per entry instead of 52). The record fields stay
+     * {@code double} so server-side diffing keeps full precision; the
+     * float wire precision (≈6e-5 blocks at y=1000) is far below render
+     * scale. The in-memory {@code DeltaBulletEntry} values survive the
+     * round trip exactly for float-representable inputs.</p>
      *
      * @param bulletId unique-per-dimension bullet id matching the initial
      *                 {@link FullBulletEntry}

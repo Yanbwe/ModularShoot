@@ -99,12 +99,13 @@ public record BulletHitS2CPacket(
      * @param packet the packet to serialize
      */
     private static void encode(RegistryFriendlyByteBuf buf, BulletHitS2CPacket packet) {
-        buf.writeInt(packet.bulletId);
+        // 审查优化 P12: bullet id 与实体 id 用 varint（命中包高频，省 2-4 字节/包）。
+        buf.writeVarInt(packet.bulletId);
         buf.writeDouble(packet.hitX);
         buf.writeDouble(packet.hitY);
         buf.writeDouble(packet.hitZ);
         buf.writeByte((byte) packet.hitType.ordinal());
-        buf.writeInt(packet.hitEntityId);
+        buf.writeVarInt(packet.hitEntityId);
         encodeNullableResourceLocation(buf, packet.soundId);
     }
 
@@ -116,12 +117,12 @@ public record BulletHitS2CPacket(
      * @return a new {@link BulletHitS2CPacket} read from the buffer
      */
     private static BulletHitS2CPacket decode(RegistryFriendlyByteBuf buf) {
-        int bulletId = buf.readInt();
+        int bulletId = buf.readVarInt();
         double hitX = buf.readDouble();
         double hitY = buf.readDouble();
         double hitZ = buf.readDouble();
         HitType hitType = HitType.values()[buf.readByte()];
-        int hitEntityId = buf.readInt();
+        int hitEntityId = buf.readVarInt();
         ResourceLocation soundId = decodeNullableResourceLocation(buf);
         return new BulletHitS2CPacket(bulletId, hitX, hitY, hitZ, hitType, hitEntityId, soundId);
     }

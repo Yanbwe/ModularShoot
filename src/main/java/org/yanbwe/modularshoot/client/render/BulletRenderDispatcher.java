@@ -87,6 +87,16 @@ public final class BulletRenderDispatcher {
     /** White identity tint (null-wire sentinel replaced at render time). */
     private static final Vector4f WHITE_TINT = new Vector4f(1.0f, 1.0f, 1.0f, 1.0f);
 
+    /**
+     * Reusable per-frame sort buffer (审查优化 P6): the render thread is
+     * single-threaded and the frame loop is strictly sequential, so one
+     * shared list avoids the per-frame stream pipeline + list allocation of
+     * {@code stream().sorted().toList()} while keeping the same stable
+     * TimSort ordering. Callers must not retain the returned list beyond the
+     * current frame.
+     */
+    private static final List<BulletRenderObject> SORT_BUFFER = new java.util.ArrayList<>();
+
     private BulletRenderDispatcher() {
     }
 
@@ -196,10 +206,11 @@ public final class BulletRenderDispatcher {
      */
     static List<BulletRenderObject> sortBackToFront(
             Collection<BulletRenderObject> renderObjects, Vec3 cameraPos) {
-        return renderObjects.stream()
-                .sorted(Comparator.comparingDouble(
-                        (BulletRenderObject obj) -> obj.getPosition().distanceToSqr(cameraPos)).reversed())
-                .toList();
+        SORT_BUFFER.clear();
+        SORT_BUFFER.addAll(renderObjects);
+        SORT_BUFFER.sort(Comparator.comparingDouble(
+                (BulletRenderObject obj) -> obj.getPosition().distanceToSqr(cameraPos)).reversed());
+        return SORT_BUFFER;
     }
 
     /**

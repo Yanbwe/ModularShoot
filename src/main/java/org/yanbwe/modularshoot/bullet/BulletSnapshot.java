@@ -58,6 +58,9 @@ public final class BulletSnapshot {
 
     private final Map<ResourceLocation, Double> stats;
     private final Map<ResourceLocation, Boolean> traits;
+    /** 构造时缓存一次的只读视图（审查优化 P10：getter 不再每次分配包装）。 */
+    private final Map<ResourceLocation, Double> statsView;
+    private final Map<ResourceLocation, Boolean> traitsView;
     private Holder<DamageType> damageType;
     private final UUID shooter;
     private final ResourceLocation gunId;
@@ -93,6 +96,8 @@ public final class BulletSnapshot {
             Map<ResourceLocation, Object> state) {
         this.stats = new HashMap<>(stats);
         this.traits = new HashMap<>(traits);
+        this.statsView = Collections.unmodifiableMap(this.stats);
+        this.traitsView = Collections.unmodifiableMap(this.traits);
         this.damageType = damageType;
         this.shooter = shooter;
         this.gunId = gunId;
@@ -112,7 +117,7 @@ public final class BulletSnapshot {
      * @return an unmodifiable view of the stats map
      */
     public Map<ResourceLocation, Double> getStats() {
-        return Collections.unmodifiableMap(stats);
+        return statsView;
     }
 
     /**
@@ -127,7 +132,7 @@ public final class BulletSnapshot {
      * @return an unmodifiable view of the traits map
      */
     public Map<ResourceLocation, Boolean> getTraits() {
-        return Collections.unmodifiableMap(traits);
+        return traitsView;
     }
 
     /** Returns the stat value for the given attribute id, or {@code 0.0} if absent. */

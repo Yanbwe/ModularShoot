@@ -459,11 +459,14 @@ public final class GunRegistry {
         if (stack.isEmpty()) {
             return;
         }
-        Optional<ResourceLocation> gunId = ModularShootAPI.resolveGunId(stack, access);
-        if (gunId.isEmpty()) {
+        // 已附加组件 → 幂等早退。组件检查必须先于 resolveGunId：后者对
+        // 无组件物品会走绑定表查询（尽管现在是 O(1) 反向索引），背包扫描
+        // 中绝大多数槽位是普通物品，先查组件可完全跳过该路径。
+        if (stack.has(ModularShootDataComponents.GUN_DATA.get())) {
             return;
         }
-        if (stack.has(ModularShootDataComponents.GUN_DATA.get())) {
+        Optional<ResourceLocation> gunId = ModularShootAPI.resolveGunId(stack, access);
+        if (gunId.isEmpty()) {
             return;
         }
         stack.set(ModularShootDataComponents.GUN_DATA.get(),

@@ -183,6 +183,28 @@ public final class BulletSyncService {
         }
     }
 
+    /**
+     * Clears a player's sync state on dimension change (审查修复: 维度切换
+     * 状态残留).
+     *
+     * <p>Bullet ids are per-dimension counters: after a dimension switch the
+     * new dimension's ids can collide with the residue of the old dimension's
+     * state, and the client would treat fresh bullets as already-known
+     * (delta-only) while it has no render object for them — missing them
+     * until the next 5-second force-full-sync. Clearing the state here also
+     * resets the force-full-sync tick, so the very first packet after the
+     * switch is a full sync that rebuilds the client's render-object map.</p>
+     *
+     * @param event the dimension-changed event
+     */
+    @SubscribeEvent
+    public static void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            CLIENT_STATES.remove(player);
+            LAST_FORCE_FULL_SYNC_TICK.remove(player);
+        }
+    }
+
     // --- Short-life bullet guarantee (D-03) -----------------------------
 
     /**

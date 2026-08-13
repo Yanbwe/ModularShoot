@@ -151,6 +151,35 @@ public final class PluginUninstallService {
             boolean returnItems,
             RegistryAccess registryAccess
     ) {
+        return uninstallPlugin(gun, instanceUuid, player, force, returnItems, registryAccess, false);
+    }
+
+    /**
+     * Private overload with an explicit modifier-refresh policy
+     * (审查优化 P4: 批量卸载合并).
+     *
+     * <p>Batch operations ({@link #uninstallByUuids}) pass
+     * {@code deferModifierRefresh = true} so the whole batch refreshes the
+     * {@code ATTRIBUTE_MODIFIERS} component exactly once at the end instead of
+     * once per removed plugin (each refresh iterates the whole
+     * {@code attribute_meta} registry plus every remaining plugin). Single
+     * removals keep the immediate refresh.</p>
+     *
+     * <p>Semantics note: with deferral, listeners observing a
+     * {@link PostPluginUninstallEvent} mid-batch read a stale
+     * {@code ATTRIBUTE_MODIFIERS} component until the batch's final refresh;
+     * the {@code gun_data} component (plugins/version/state) is always
+     * current at each event.</p>
+     */
+    private static UninstallResult uninstallPlugin(
+            ItemStack gun,
+            UUID instanceUuid,
+            @Nullable Player player,
+            boolean force,
+            boolean returnItems,
+            RegistryAccess registryAccess,
+            boolean deferModifierRefresh
+    ) {
         GunData gunData = readGunData(gun, registryAccess);
         if (gunData == null) {
             return new UninstallResult(false, null, instanceUuid, UninstallResult.Reason.NOT_GUN_OR_NO_DATA);
@@ -182,7 +211,9 @@ public final class PluginUninstallService {
                 && !PluginDegradationHandler.isPluginDefinitionMissing(plugin, registryAccess)) {
             returnPluginItem(player, plugin.pluginId());
         }
-        AttributeModifierService.refreshModifiers(gun, registryAccess);
+        if (!deferModifierRefresh) {
+            AttributeModifierService.refreshModifiers(gun, registryAccess);
+        }
         NeoForge.EVENT_BUS.post(new PostPluginUninstallEvent(
                 player, gun, plugin.pluginId(), instanceUuid));
         return new UninstallResult(true, plugin.pluginId(), instanceUuid, UninstallResult.Reason.SUCCESS);
@@ -480,8 +511,17 @@ public final class PluginUninstallService {
             List<UUID> uuids
     ) {
         List<UninstallResult> results = new ArrayList<>(uuids.size());
+        boolean anyRemoved = false;
         for (UUID uuid : uuids) {
-            results.add(uninstallPlugin(gun, uuid, player, force, returnItems, registryAccess));
+            UninstallResult result = uninstallPlugin(
+                    gun, uuid, player, force, returnItems, registryAccess, true);
+            anyRemoved |= result.success();
+            results.add(result);
+        }
+        // 审查优化 P4: 批量卸载只做一次全量修饰符刷新（每插件一次的
+        // refreshModifiers 会迭代整个 attribute_meta 注册表 + 剩余插件）。
+        if (anyRemoved) {
+            AttributeModifierService.refreshModifiers(gun, registryAccess);
         }
         return results;
     }

@@ -1,11 +1,14 @@
 package org.yanbwe.modularshoot.registry.binding;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import org.yanbwe.modularshoot.datapack.RegistrationCoordinator;
@@ -44,9 +47,11 @@ import org.yanbwe.modularshoot.registry.ModularShootRegistries;
  * are resolved by <b>lexicographically smallest entry key</b> (设计规格
  * 物品绑定系统 §3.2).</p>
  *
- * <p>Query results are computed by linear scan of the (small) binding map;
- * no caching is performed. All methods are static utility methods; the
- * class is not instantiable.</p>
+ * <p>Query results are served from O(1) reverse indexes (item id &rarr;
+ * winning binding): the Java-API channel maintains one incrementally, and
+ * the datapack channel builds a per-registry-instance index on first query
+ * (审查优化: 消除每调用重建整表). All methods are static utility methods;
+ * the class is not instantiable.</p>
  */
 public final class PluginItemBindingRegistry {
 
@@ -59,6 +64,25 @@ public final class PluginItemBindingRegistry {
      */
     private static final Map<ResourceLocation, PluginItemBinding> JAVA_API_BINDINGS =
             new ConcurrentHashMap<>();
+
+    /**
+     * Reverse index: bound item id &rarr; entry key of the lexicographically
+     * smallest Java-API binding for that item (审查优化: 反向索引). Kept in
+     * lock-step with {@link #JAVA_API_BINDINGS} by {@link #registerBinding};
+     * querying is O(1) instead of the previous per-call linear scan.
+     */
+    private static final Map<ResourceLocation, ResourceLocation> JAVA_API_ITEM_INDEX =
+            new ConcurrentHashMap<>();
+
+    /**
+     * Per-registry reverse index cache for the datapack channel: registry
+     * instance &rarr; (bound item id &rarr; winning binding). Weak keys let an
+     * unloaded world's registry be garbage-collected; a {@code /reload} swaps
+     * the registry instance, so the stale index is naturally discarded and
+     * rebuilt on first query.
+     */
+    private static final Map<Registry<PluginItemBinding>, Map<ResourceLocation, PluginItemBinding>> DATAPACK_INDEXES =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     private PluginItemBindingRegistry() {
     }
@@ -86,6 +110,10 @@ public final class PluginItemBindingRegistry {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(binding, "binding");
         JAVA_API_BINDINGS.put(key, binding);
+        // Keep the reverse index in lock-step: the lexicographically smallest
+        // entry key wins for a given item id (确定性冲突消解，与 datapack 侧一致).
+        JAVA_API_ITEM_INDEX.compute(binding.itemId(), (itemId, existingKey) ->
+                existingKey == null || key.compareTo(existingKey) < 0 ? key : existingKey);
         RegistrationCoordinator.markJavaApiRegistered(ModularShootRegistries.PLUGIN_ITEMS_KEY, key);
     }
 
@@ -126,16 +154,57 @@ public final class PluginItemBindingRegistry {
      */
     public static Optional<ResourceLocation> getBoundPluginId(
             RegistryAccess access, ResourceLocation itemId) {
-        for (PluginItemBinding binding : JAVA_API_BINDINGS.values()) {
-            if (binding.itemId().equals(itemId)) {
+        // Java-API channel: O(1) reverse-index lookup.
+        ResourceLocation javaKey = JAVA_API_ITEM_INDEX.get(itemId);
+        if (javaKey != null) {
+            PluginItemBinding binding = JAVA_API_BINDINGS.get(javaKey);
+            if (binding != null) {
                 return Optional.of(binding.pluginId());
             }
         }
+        // Datapack channel: per-registry cached reverse index.
         return access.registry(ModularShootRegistries.PLUGIN_ITEMS_KEY)
-                .flatMap(registry -> findByItem(registry.entrySet().stream()
+                .flatMap(registry -> Optional.ofNullable(datapackIndex(registry).get(itemId))
+                        .map(PluginItemBinding::pluginId));
+    }
+
+    /**
+     * Returns the cached reverse index of a datapack binding registry,
+     * building it on first access for that registry instance (审查优化:
+     * 每调用重建整表 → 每注册表一次构建 + O(1) 查询).
+     *
+     * @param registry the datapack binding registry instance
+     * @return an immutable view of item id &rarr; winning binding
+     */
+    private static Map<ResourceLocation, PluginItemBinding> datapackIndex(Registry<PluginItemBinding> registry) {
+        return DATAPACK_INDEXES.computeIfAbsent(registry,
+                r -> Map.copyOf(buildDatapackIndex(r.entrySet().stream()
                         .collect(Collectors.toMap(
-                                e -> e.getKey().location(), Map.Entry::getValue)), itemId))
-                .map(PluginItemBinding::pluginId);
+                                e -> e.getKey().location(), Map.Entry::getValue)))));
+    }
+
+    /**
+     * Builds the reverse index {@code item id &rarr; winning binding} from a
+     * plain entries map (entry key &rarr; binding).
+     *
+     * <p>When multiple entries bind the same item id, the entry with the
+     * <b>lexicographically smallest key</b> wins — the same deterministic
+     * conflict resolution as {@link #findByItem} (设计规格 物品绑定系统 §3.2),
+     * in a single pass with no per-query stream allocation. Package-private
+     * pure function for direct unit testing.</p>
+     *
+     * @param entries the entries to index (entry key &rarr; binding)
+     * @return a mutable map of item id &rarr; winning binding
+     */
+    static Map<ResourceLocation, PluginItemBinding> buildDatapackIndex(
+            Map<ResourceLocation, PluginItemBinding> entries) {
+        Map<ResourceLocation, ResourceLocation> smallestKey = new HashMap<>();
+        entries.forEach((key, binding) ->
+                smallestKey.merge(binding.itemId(), key,
+                        (existing, incoming) -> incoming.compareTo(existing) < 0 ? incoming : existing));
+        Map<ResourceLocation, PluginItemBinding> index = new HashMap<>();
+        smallestKey.forEach((itemId, key) -> index.put(itemId, entries.get(key)));
+        return index;
     }
 
     /**

@@ -131,6 +131,55 @@ public class VariantPoolService {
     }
 
     /**
+     * Assembles the per-shot variant pool (审查优化 P3/P4: 每发一次, 逐弹丸
+     * 复用). The pool is deterministic for a given (gun definition, installed
+     * plugins, contributor set), so the shooting engine builds it once per
+     * shot and rolls per pellet via {@link #rollFromPool} — previously the
+     * whole pool (contributor collection, per-plugin registry lookups,
+     * weight computation) was rebuilt for every pellet of a shot.
+     *
+     * @param ra      the runtime registry view
+     * @param gunDef  the gun definition declaring {@code variants}
+     * @param gunData the gun data carrying the installed plugin list
+     * @return the assembled pool (candidates with positive weights, total
+     *         weight, normal-bullet fallback flag)
+     */
+    public static PoolBuild buildPool(
+            RegistryAccess ra, GunDefinition gunDef, GunData gunData) {
+        return INSTANCE.buildPoolImpl(ra, gunDef, gunData);
+    }
+
+    /**
+     * Rolls a pre-built pool once (逐弹丸语义, 规格 §6.4 — one call = one
+     * pellet's independent election). Entries whose final weight is
+     * non-positive were excluded at build time; a gun that declares no
+     * {@code variants} carries the default normal-bullet fallback
+     * ({@link #NORMAL_FALLBACK_WEIGHT}, 规格 §6.4). An empty candidate list,
+     * a declared pool with total weight &le; 0, or a roll landing on the
+     * fallback interval all yield {@code Optional.empty()} — the pellet
+     * proceeds as a normal bullet (静默).
+     *
+     * @param build  the pool built by {@link #buildPool} for this shot
+     * @param random the per-shot random source (server level random)
+     * @return the rolled variant id, or empty for a normal bullet
+     */
+    public static Optional<ResourceLocation> rollFromPool(
+            PoolBuild build, RandomSource random) {
+        if (build.total() <= 0.0) {
+            return Optional.empty();   // 声明池全非正权重（无兜底）→ 普通弹
+        }
+        double r = random.nextDouble() * build.total();
+        double cumulative = 0.0;
+        for (WeightedCandidate c : build.candidates()) {
+            cumulative += c.weight();
+            if (r < cumulative) {
+                return Optional.of(c.id());
+            }
+        }
+        return Optional.empty();   // 落在普通弹兜底区间（或浮点舍入边界）→ 普通弹
+    }
+
+    /**
      * Assembles the per-shot variant pool and rolls once (逐弹丸语义, 规格
      * §6.4 — one call = one pellet's independent election). Entries
      * whose final weight is non-positive are excluded from the candidates;
@@ -214,19 +263,7 @@ public class VariantPoolService {
      */
     protected Optional<ResourceLocation> rollImpl(
             RegistryAccess ra, RandomSource random, GunDefinition gunDef, GunData gunData) {
-        PoolBuild build = buildPool(ra, gunDef, gunData);
-        if (build.total() <= 0.0) {
-            return Optional.empty();   // 声明池全非正权重（无兜底）→ 普通弹
-        }
-        double r = random.nextDouble() * build.total();
-        double cumulative = 0.0;
-        for (WeightedCandidate c : build.candidates()) {
-            cumulative += c.weight();
-            if (r < cumulative) {
-                return Optional.of(c.id());
-            }
-        }
-        return Optional.empty();   // 落在普通弹兜底区间（或浮点舍入边界）→ 普通弹
+        return rollFromPool(buildPoolImpl(ra, gunDef, gunData), random);
     }
 
     /**
@@ -244,7 +281,7 @@ public class VariantPoolService {
      *         (fallback included when applicable) and whether the fallback
      *         applies
      */
-    private PoolBuild buildPool(RegistryAccess ra, GunDefinition gunDef, GunData gunData) {
+    protected PoolBuild buildPoolImpl(RegistryAccess ra, GunDefinition gunDef, GunData gunData) {
         Map<ResourceLocation, List<AttributeModifier>> contribMods = VariantContributorRegistry.collect();
         Map<ResourceLocation, Double> pool = assemble(ra, gunDef, gunData, contribMods);
         List<WeightedCandidate> candidates = new ArrayList<>(pool.size());
@@ -303,7 +340,7 @@ public class VariantPoolService {
      */
     protected List<PoolEntry> previewPoolImpl(
             RegistryAccess ra, GunDefinition gunDef, GunData gunData) {
-        PoolBuild build = buildPool(ra, gunDef, gunData);
+        PoolBuild build = buildPoolImpl(ra, gunDef, gunData);
         List<PoolEntry> entries = new ArrayList<>(
                 build.candidates().size() + (build.normalFallback() ? 1 : 0));
         for (WeightedCandidate c : build.candidates()) {
@@ -375,8 +412,11 @@ public class VariantPoolService {
         return pool;
     }
 
-    /** 预计算好的 roll 候选：id + 最终权重（非正权重已排除）。 */
-    private record WeightedCandidate(ResourceLocation id, double weight) {
+    /**
+     * 预计算好的 roll 候选：id + 最终权重（非正权重已排除）。包可见以便
+     * {@link PoolBuild}（public record）携带该类型。
+     */
+    record WeightedCandidate(ResourceLocation id, double weight) {
     }
 
     /**
@@ -395,8 +435,19 @@ public class VariantPoolService {
             boolean normalFallback) {
     }
 
-    /** Build result shared by {@link #rollImpl} and {@link #previewPoolImpl}. */
-    private record PoolBuild(
+    /**
+     * The per-shot assembled variant pool (审查优化 P3/P4): the candidate
+     * list with positive final weights, the total weight (normal-bullet
+     * fallback included when applicable) and whether the fallback applies.
+     * Built once per shot by {@link #buildPool} and rolled per pellet by
+     * {@link #rollFromPool}.
+     *
+     * @param candidates     the positive-weight candidates, in declaration order
+     * @param total          the total roll weight (fallback included)
+     * @param normalFallback whether the normal-bullet fallback interval is
+     *                       part of {@code total} (gun declared no variants)
+     */
+    public record PoolBuild(
             List<WeightedCandidate> candidates,
             double total,
             boolean normalFallback) {

@@ -106,7 +106,11 @@ public final class BulletTickHandler {
      */
     private static void tickBullets(Level level) {
         BulletManager manager = BulletManager.get(level);
-        Collection<BulletRecord> bullets = manager.getAllBullets();
+        // 审查优化 P8: live 视图替代每 tick 防御拷贝（getAllBullets 的
+        // new ArrayList）。ConcurrentHashMap 迭代弱一致，迭代中 removeBullet
+        // 不会抛 CME；被移除的子弹若仍被迭代到，processBullet 的 liveness
+        // 复查（onTick 后 getBulletById == null）会跳过它——与原快照行为一致。
+        Collection<BulletRecord> bullets = manager.getActiveBullets();
         // Per-tick entity candidate cache: one chunk query shared by every
         // bullet in the same chunk (设计文档 §空间分区). Discarded with this
         // method's frame; the server tick is single-threaded.

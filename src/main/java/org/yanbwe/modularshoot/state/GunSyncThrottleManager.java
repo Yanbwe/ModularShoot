@@ -94,10 +94,16 @@ public final class GunSyncThrottleManager {
      */
     public void markDirty(UUID gunInstanceUuid) {
         Objects.requireNonNull(gunInstanceUuid, "gunInstanceUuid");
-        throttleStates.compute(gunInstanceUuid, (key, existing) ->
-                existing == null
-                        ? new ThrottleState(true, 0L)
-                        : new ThrottleState(true, existing.lastSyncTick()));
+        throttleStates.compute(gunInstanceUuid, (key, existing) -> {
+            // 已 dirty → 复用现有 record，避免每次写入分配（审查优化 P7）：
+            // 同 tick 内多次状态写入只产生一次分配。
+            if (existing != null && existing.dirty()) {
+                return existing;
+            }
+            return existing == null
+                    ? new ThrottleState(true, 0L)
+                    : new ThrottleState(true, existing.lastSyncTick());
+        });
     }
 
     /**
