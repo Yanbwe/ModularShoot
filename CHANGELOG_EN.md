@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.6] - 2026-08-13
+
+### Performance
+
+- **Faster item recognition and binding lookups**: hot paths like inventory scans no longer rebuild lookup tables on every call — a notable per-tick saving on populated servers.
+- **Deduplicated state writes**: writing an unchanged value no longer triggers data copies or sync traffic, so high-frequency states (heat accumulation, etc.) stop generating pointless packets.
+- **Smaller bullet sync packets**: incremental sync entries are about half the size; bandwidth drops noticeably when many bullets are in flight.
+- **Cheaper shotgun / multi-pellet shots**: the variant pool and bullet visual style are computed once per shot; pellets only roll independently — no more repeated registry lookups per pellet.
+- **Batch uninstall recomputes attributes once**: removing several plugins at once recomputes attributes a single time instead of once per plugin.
+- **More reliable texture caching**: dynamic texture cache keys now compare values, so plugin reloads or resource refreshes never trigger unnecessary texture recomposition.
+- **Leaner rendering**: per-frame / per-tick temporary allocations (bullet sorting, snapshot reads) eliminated.
+
+### Fixed
+
+- **Bullets could briefly disappear after a dimension switch**: sync state is now reset on dimension change instead of relying on the periodic full sync seconds later.
+- **Stale plugin visuals after a resource reload**: F3+T now also clears the overlay cache, keeping visuals consistent with the resource packs.
+
+### Testing
+
+- 13 new tests covering binding indexes, cache-key value semantics and wire-compression precision; all 427 pass.
+
 ## [0.1.5] - 2026-08-11
 
 ### Fixed
