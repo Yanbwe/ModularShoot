@@ -11,6 +11,7 @@ import java.util.Set;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
+import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginInstance;
@@ -113,10 +114,22 @@ public final class PluginMatchingService {
     }
 
     /**
-     * Selects the best category from a list of matching candidates using the
-     * three-level auto-selection algorithm and returns its registry id.
+     * Selects the best category from a list of matching candidates, honouring
+     * an optional preferred-type hint, and returns its registry id.
      *
-     * <p>Ordering (设计文档 lines 481-485):
+     * <p><strong>Preferred-type hint (设计草案 插件安装优先种类).</strong> When
+     * {@code preferredTypeId} is non-null and is present among the candidates
+     * (i.e. the hinted category matches by tag intersection <em>and</em> has a
+     * free slot), it is selected directly and the auto-selection below is
+     * skipped. A miss — the hinted id is not a candidate, has no free slot,
+     * is unregistered, or is not part of the gun's effective slot set — falls
+     * back to the three-level auto-selection. The hint is therefore a
+     * preference, never a bypass: candidates are already filtered by tag
+     * matching and capacity, so at worst an untrusted hint picks another
+     * legitimate category. A {@code null} hint behaves exactly like the
+     * original algorithm.</p>
+     *
+     * <p>Auto-selection ordering (设计文档 lines 481-485):
      * <ol>
      *   <li>tag count ascending — fewer tags is a stricter match;</li>
      *   <li>priority descending — higher category priority wins on tag-count
@@ -129,19 +142,36 @@ public final class PluginMatchingService {
      * ties the first one on both tag count and priority forms the fallback
      * group, and a single member is drawn from it with the supplied
      * {@link Random}. When the best candidate is unique the fallback group has
-     * exactly one element and the random draw is a no-op.</p>
+     * exactly one element and the random draw is a no-op. The random source is
+     * never consulted on the hint-hit path.</p>
      *
-     * @param candidates the matching categories paired with their registry ids
-     *                   (must already be filtered to those with a free slot);
-     *                   may be empty
-     * @param random     the source of randomness for the tertiary fallback;
-     *                   only consulted when a tie exists
+     * @param candidates      the matching categories paired with their registry
+     *                        ids (must already be filtered to those with a free
+     *                        slot); may be empty
+     * @param preferredTypeId the category id the caller prefers, or
+     *                        {@code null} for pure auto-selection; honoured
+     *                        only when present among {@code candidates},
+     *                        otherwise the auto-selection runs
+     * @param random          the source of randomness for the tertiary
+     *                        fallback; only consulted when a tie exists on the
+     *                        auto-selection path
      * @return the registry id of the selected category, or
      *         {@code Optional.empty()} when {@code candidates} is empty
      */
-    public static Optional<ResourceLocation> selectPluginType(List<TypeMatch> candidates, Random random) {
+    public static Optional<ResourceLocation> selectPluginType(
+            List<TypeMatch> candidates, @Nullable ResourceLocation preferredTypeId, Random random) {
         if (candidates.isEmpty()) {
             return Optional.empty();
+        }
+        // Preferred-type hint: pick the hinted category directly when it is a
+        // valid candidate (already tag-matched and with a free slot); a miss
+        // falls through to the three-level auto-selection.
+        if (preferredTypeId != null) {
+            for (TypeMatch candidate : candidates) {
+                if (candidate.id().equals(preferredTypeId)) {
+                    return Optional.of(candidate.id());
+                }
+            }
         }
         List<TypeMatch> sorted = candidates.stream()
                 .sorted(Comparator.comparingInt((TypeMatch t) -> t.definition().tags().size())

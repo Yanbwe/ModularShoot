@@ -134,6 +134,57 @@ public final class PluginInstallService {
      */
     public static InstallResult installPlugin(
             ItemStack gun, ItemStack pluginStack, Player player, RegistryAccess registryAccess) {
+        // 无提示入口：委托带 hint 的重载（hint 为空），行为与旧版完全一致。
+        return installPlugin(gun, pluginStack, player, null, registryAccess);
+    }
+
+    /**
+     * Installs a plugin from a plugin item stack into a gun item stack,
+     * optionally preferring a specific plugin category.
+     *
+     * <p>This overload adds a {@code preferredTypeId} hint (设计草案 插件安装
+     * 优先种类): when the hinted category matches the plugin by tag
+     * intersection and has a free slot, it is selected directly; otherwise
+     * the automatic category selection runs unchanged. The hint is a
+     * preference, not a mandate — it can never bypass any validation gate
+     * (matching, capacity, exclusive groups, custom validators, or the
+     * pre-install event). See {@link PluginMatchingService#selectPluginType}
+     * for the exact selection rules.</p>
+     *
+     * <p>Resolves the {@code pluginId} from the plugin stack's {@link PluginData}
+     * component, falling back to the binding table when the component is
+     * absent (bound plugin, 设计规格 物品绑定系统 §4.1). The target gun may
+     * likewise carry no {@code gun_data} when it is recognized via the binding
+     * channel: a fresh component is lazily attached on the working copy
+     * (设计规格 物品绑定系统 §5.2) before validation. Every validation gate
+     * then runs and &mdash; on success &mdash; the pipeline works on
+     * <strong>copies</strong> of the input stacks so the originals are never
+     * mutated. The caller receives the modified copies via
+     * {@link InstallResult} and is responsible for writing them back to the
+     * appropriate container slots via {@code Slot.set()} / {@code SlotAccess.set()}
+     * (following the Apotheosis pattern).</p>
+     *
+     * @param gun             the gun item stack to inspect (not mutated); may
+     *                        carry no {@code gun_data} when recognized via the
+     *                        binding channel (the component is attached on the
+     *                        working copy)
+     * @param pluginStack     the plugin item stack to inspect (not mutated);
+     *                        may carry no {@link PluginData} when recognized
+     *                        via the binding channel
+     * @param player          the player performing the installation; supplies
+     *                        the random source for category auto-selection
+     * @param preferredTypeId the plugin category id to prefer, or {@code null}
+     *                        for pure auto-selection; honoured only when the
+     *                        hinted category is a valid candidate, otherwise
+     *                        auto-selection runs (see
+     *                        {@link PluginMatchingService#selectPluginType})
+     * @param registryAccess  the runtime registry view (from a loaded world)
+     * @return an {@link InstallResult} carrying the modified copies on success,
+     *         or a failure with a localizable {@link Component} error message
+     */
+    public static InstallResult installPlugin(
+            ItemStack gun, ItemStack pluginStack, Player player,
+            @Nullable ResourceLocation preferredTypeId, RegistryAccess registryAccess) {
         // a. Resolve the plugin id from the plugin stack's component, falling
         //    back to the binding table when the component is absent (bound
         //    plugin, 设计规格 物品绑定系统 §4.1).
@@ -171,7 +222,8 @@ public final class PluginInstallService {
         }
 
         // b-h. Validate every gate and select the target category.
-        SelectionOutcome outcome = validateAndSelect(resultGun, pluginId, player, registryAccess);
+        SelectionOutcome outcome = validateAndSelect(
+                resultGun, pluginId, preferredTypeId, player, registryAccess);
         if (!outcome.result().valid()) {
             return InstallResult.failure(outcome.result().errorMessage()
                     .orElse(Component.translatable("modularshoot.install.error.generic")));
@@ -185,20 +237,25 @@ public final class PluginInstallService {
     /**
      * Runs every validation gate and selects the target category.
      *
-     * <p>Gates (设计文档 lines 466-510): tag matching + free slot, auto-selection,
-     * exclusive-group conflict, custom validators, and the cancelable
-     * {@link PrePluginInstallEvent}. The first failing gate short-circuits the
-     * rest and returns a failing {@link SelectionOutcome}.</p>
+     * <p>Gates (设计文档 lines 466-510): tag matching + free slot, selection
+     * (honouring the optional preferred-type hint), exclusive-group conflict,
+     * custom validators, and the cancelable {@link PrePluginInstallEvent}.
+     * The first failing gate short-circuits the rest and returns a failing
+     * {@link SelectionOutcome}.</p>
      *
-     * @param gun            the target gun item stack (read-only here)
-     * @param pluginId       the candidate plugin definition id
-     * @param player         the player performing the installation
-     * @param registryAccess the runtime registry view
+     * @param gun             the target gun item stack (read-only here)
+     * @param pluginId        the candidate plugin definition id
+     * @param preferredTypeId the plugin category id to prefer, or {@code null};
+     *                        passed through to
+     *                        {@link PluginMatchingService#selectPluginType}
+     * @param player          the player performing the installation
+     * @param registryAccess  the runtime registry view
      * @return a passing {@link SelectionOutcome} with the resolved category id,
      *         or a failing one whose {@code result} carries the error message
      */
     private static SelectionOutcome validateAndSelect(
-            ItemStack gun, ResourceLocation pluginId, Player player, RegistryAccess registryAccess) {
+            ItemStack gun, ResourceLocation pluginId, @Nullable ResourceLocation preferredTypeId,
+            Player player, RegistryAccess registryAccess) {
         // b. Find matching categories that still have a free slot.
         //    Each candidate carries its registry id alongside the definition,
         //    so no reverse-lookup is needed after selection.
@@ -209,10 +266,11 @@ public final class PluginInstallService {
             return new SelectionOutcome(ValidationResult.error(
                     Component.translatable("modularshoot.install.error.no_slot")), null);
         }
-        // d. Auto-select one category from the candidates; the selected id
-        //    is returned directly, eliminating the previous reverse-lookup.
+        // d. Auto-select one category from the candidates (honouring the
+        //    preferred-type hint when present); the selected id is returned
+        //    directly, eliminating the previous reverse-lookup.
         Optional<ResourceLocation> selectedTypeId =
-                PluginMatchingService.selectPluginType(candidates, randomFrom(player));
+                PluginMatchingService.selectPluginType(candidates, preferredTypeId, randomFrom(player));
         if (selectedTypeId.isEmpty()) {
             return new SelectionOutcome(ValidationResult.error(
                     Component.translatable("modularshoot.install.error.no_slot")), null);

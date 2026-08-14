@@ -25,6 +25,7 @@ import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginData;
 import org.yanbwe.modularshoot.component.PluginInstance;
 import org.yanbwe.modularshoot.datapack.RegistrationCoordinator;
+import org.yanbwe.modularshoot.plugin.EffectiveSlotService;
 import org.yanbwe.modularshoot.plugin.PluginDefinition;
 import org.yanbwe.modularshoot.plugin.PluginExtraValueService;
 import org.yanbwe.modularshoot.plugin.PluginInstallService;
@@ -622,11 +623,55 @@ public final class ModularShootAPI {
      */
     public static PluginInstallService.InstallResult installPlugin(
             ItemStack gun, ItemStack pluginStack, Player player) {
+        // 无提示入口：委托带 hint 的重载（hint 为空），行为与旧版完全一致。
+        return installPlugin(gun, pluginStack, player, null);
+    }
+
+    /**
+     * Programmatically installs a plugin, optionally preferring a specific
+     * plugin category (e.g. the category area a UI dragged the plugin onto).
+     *
+     * <p>Identical to
+     * {@link #installPlugin(ItemStack, ItemStack, Player)} except that
+     * {@code preferredTypeId} hints the target category: when the hinted
+     * category matches the plugin by tag intersection and has a free slot, it
+     * is selected directly; otherwise the automatic category selection runs
+     * unchanged. The hint is a preference, not a mandate — it can never bypass
+     * any validation gate, and an untrusted hint at worst installs into
+     * another legitimate category (设计草案 插件安装优先种类-方案 §三).</p>
+     *
+     * <p>Delegates to
+     * {@link PluginInstallService#installPlugin(ItemStack, ItemStack, Player, ResourceLocation, RegistryAccess)};
+     * the player must be non-null (installation needs the random source and
+     * the runtime {@link RegistryAccess}, both derived from
+     * {@code player.level()}). The result carries the modified gun copy and
+     * the consumed plugin copy; the caller is responsible for writing them
+     * back to the container/inventory (following the container-right-click
+     * install path's {@code slot.set} pattern). The input stacks are never
+     * mutated (设计文档 §系统四 安装交互 — Apotheosis 不可变风格).</p>
+     *
+     * @param gun             the target gun item stack (not modified)
+     * @param pluginStack     the plugin item stack carrying {@code PluginData}
+     *                        (not modified)
+     * @param player          the player performing the installation; must not
+     *                        be {@code null}
+     * @param preferredTypeId the plugin category id to prefer, or {@code null}
+     *                        for pure auto-selection; honoured only when the
+     *                        hinted category is a valid candidate
+     * @return an {@link PluginInstallService.InstallResult}; on success it
+     *         carries the modified copies
+     * @throws NullPointerException when any non-null parameter is {@code null}
+     *                              (consistent with the other facade methods)
+     */
+    public static PluginInstallService.InstallResult installPlugin(
+            ItemStack gun, ItemStack pluginStack, Player player,
+            @Nullable ResourceLocation preferredTypeId) {
         Objects.requireNonNull(gun, "gun");
         Objects.requireNonNull(pluginStack, "pluginStack");
         Objects.requireNonNull(player, "player");
         RegistryAccess registryAccess = player.level().registryAccess();
-        return PluginInstallService.installPlugin(gun, pluginStack, player, registryAccess);
+        return PluginInstallService.installPlugin(
+                gun, pluginStack, player, preferredTypeId, registryAccess);
     }
 
     // ---- Lock API -------------------------------------------------------
@@ -809,6 +854,37 @@ public final class ModularShootAPI {
         Objects.requireNonNull(registryAccess, "registryAccess");
         Objects.requireNonNull(pluginTypeId, "pluginTypeId");
         return PluginTypeRegistry.getPluginType(registryAccess, pluginTypeId);
+    }
+
+    /**
+     * Returns the effective slot configuration of a gun: every slot type the
+     * gun can currently hold, mapped to its capacity.
+     *
+     * <p>The effective key set is the union of the gun definition's base
+     * {@code slots} and every installed plugin's {@code adds_slots} keys; a
+     * type's capacity is the gun's base value plus the sum of all installed
+     * plugins' contributions (negative values occupy slots, matching the
+     * {@code adds_slots} semantics). This is the same aggregation the install
+     * matching and uninstall overflow checks use, exposed so UI code (e.g.
+     * the plugin panel) can render per-category capacity and fill state
+     * without re-implementing the aggregation (设计草案 插件安装优先种类-方案
+     * §四).</p>
+     *
+     * <p>Delegates to {@link EffectiveSlotService#effectiveSlots}. Returns an
+     * empty map when the stack carries no {@code gun_data} or the gun
+     * definition is missing.</p>
+     *
+     * @param gun    the item stack to inspect; must not be {@code null}
+     * @param access the runtime registry view (from a loaded world); must not
+     *               be {@code null}
+     * @return an immutable map of slot type → effective capacity; empty when
+     *         the stack is not a resolvable gun
+     */
+    public static Map<ResourceLocation, Integer> getEffectiveSlots(
+            ItemStack gun, RegistryAccess access) {
+        Objects.requireNonNull(gun, "gun");
+        Objects.requireNonNull(access, "access");
+        return EffectiveSlotService.effectiveSlots(gun, access);
     }
 
     /**

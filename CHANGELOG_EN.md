@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.7] - 2026-08-14
+
+### Added
+
+- **Install API supports a preferred plugin category**: `installPlugin` gained an optional preferred-type parameter (e.g. a plugin panel dragging a plugin onto a category area). A matching hint installs directly into that category; a miss falls back to the original auto-selection. Existing callers are unaffected.
+- **Effective-slot query facade**: new `getEffectiveSlots` API returns each category's effective capacity (including installed plugins' `adds_slots`), so UIs can render install areas without re-implementing the aggregation.
+
+### Testing
+
+- 14 new tests cover hint hit / miss / full-slot fallback and full-pipeline conduction (including facade forwarding); all 452 pass.
+
 ## [0.1.6] - 2026-08-13
 
 ### Performance
