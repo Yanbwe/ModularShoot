@@ -354,8 +354,10 @@ public final class BulletManager {
      * <p>Unlike {@link #getAllBullets()} this does <em>not</em> take a
      * defensive copy — the returned collection is unmodifiable (remove/clear
      * throw {@link UnsupportedOperationException}), and iteration remains
-     * weakly consistent across concurrent removal (the underlying
-     * {@link ConcurrentHashMap} iterators are weakly consistent). Intended for
+     * weakly consistent across concurrent modification (the underlying
+     * {@link ConcurrentHashMap} iterators are weakly consistent): removals
+     * during iteration never throw, and entries <em>added</em> during
+     * iteration may or may not be observed by the same pass. Intended for
      * read-only passes such as the per-tick sync broadcast, which never
      * removes bullets while iterating.</p>
      *

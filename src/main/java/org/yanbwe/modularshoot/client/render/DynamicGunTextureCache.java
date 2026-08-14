@@ -3,9 +3,12 @@ package org.yanbwe.modularshoot.client.render;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.logging.LogUtils;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.ResourceLocation;
@@ -72,24 +75,102 @@ public final class DynamicGunTextureCache {
 
     /**
      * Upper bound on cached texture entries. Plugin installs/uninstalls
-     * produce new cache keys (modifier version), so the cache is bounded by
-     * evicting everything once it grows past this size — releasing the GPU
-     * textures of long-forgotten gun/plugin configurations.
+     * produce new cache keys (modifier version), so the cache is bounded:
+     * each insert over the limit evicts the least-recently-used entry,
+     * releasing the GPU textures of long-forgotten gun/plugin configurations.
      */
     private static final int MAX_ENTRIES = 64;
 
     private static DynamicGunTextureCache instance;
 
     /**
-     * Cache key → registered texture location. A {@link LinkedHashMap} in
-     * <em>access order</em> (审查优化 P19: 插入序逐出是 FIFO，会逐出正在使用的
-     * 变体——例如 per_shot 交替访问 base/shoot 双纹理时；accessOrder 才是真
-     * LRU)：命中会刷新条目位置，逐出时淘汰最久未访问的条目。
+     * Cache key → registered texture location, in <em>true LRU</em> order
+     * (审查优化 P19: 插入序逐出是 FIFO，会逐出正在使用的变体——例如 per_shot
+     * 交替访问 base/shoot 双纹理时；accessOrder 才是真 LRU)：命中会刷新条目
+     * 位置，逐出时淘汰最久未访问的条目。逐出策略封装在 {@link LruStore}，
+     * 便于单元测试。
      */
-    private final Map<Key, TextureHandle> locations = new LinkedHashMap<>(16, 0.75f, true);
+    private final LruStore<Key, TextureHandle> locations =
+            new LruStore<>(MAX_ENTRIES, DynamicGunTextureCache::releaseHandle);
     private int nextId;
 
     private DynamicGunTextureCache() {
+    }
+
+    /**
+     * Bounded LRU store backing the texture cache (审查优化 P19 配套：逐出
+     * 策略提取为纯容器，可直接单元测试).
+     *
+     * <p>An access-order {@link LinkedHashMap}: a {@link #get} hit or a
+     * {@link #put} replacing an existing key refreshes that entry to
+     * most-recently-used. When {@link #put} would insert a new entry beyond
+     * {@code maxEntries}, the least-recently-used entry is evicted first via
+     * {@code onEvict} (GPU texture release in production). Not thread-safe —
+     * the texture cache is only touched on the render thread.</p>
+     */
+    static final class LruStore<K, V> {
+
+        private final int maxEntries;
+        private final Map<K, V> map = new LinkedHashMap<>(16, 0.75f, true);
+        private final Consumer<V> onEvict;
+
+        LruStore(int maxEntries, Consumer<V> onEvict) {
+            this.maxEntries = maxEntries;
+            this.onEvict = onEvict;
+        }
+
+        /**
+         * Returns the value for a key, refreshing its recency when present.
+         *
+         * @param key the key to look up
+         * @return the stored value, or {@code null} when absent
+         */
+        @Nullable
+        V get(K key) {
+            return map.get(key);
+        }
+
+        /**
+         * Inserts or replaces a value. Replacing an existing key refreshes
+         * its recency without evicting anything; inserting a new key evicts
+         * the least-recently-used entry first when at capacity.
+         *
+         * @param key   the key to insert
+         * @param value the value to store
+         */
+        void put(K key, V value) {
+            if (map.containsKey(key)) {
+                // Replacement refreshes recency; size does not grow, so no
+                // eviction may run (a naive evict-then-put would wrongly
+                // drop the oldest entry for a same-size replace).
+                map.put(key, value);
+                return;
+            }
+            while (map.size() >= maxEntries) {
+                Iterator<Map.Entry<K, V>> it = map.entrySet().iterator();
+                Map.Entry<K, V> oldest = it.next();
+                it.remove();
+                onEvict.accept(oldest.getValue());
+            }
+            map.put(key, value);
+        }
+
+        int size() {
+            return map.size();
+        }
+
+        boolean isEmpty() {
+            return map.isEmpty();
+        }
+
+        /** Live view of the stored values (iteration order = recency order). */
+        Collection<V> values() {
+            return map.values();
+        }
+
+        void clear() {
+            map.clear();
+        }
     }
 
     /**
@@ -287,14 +368,9 @@ public final class DynamicGunTextureCache {
             return existing;
         }
 
-        // Bound the cache: evict the oldest entries (insertion order) until
-        // under the limit, releasing the GPU textures of stale configurations.
-        while (locations.size() >= MAX_ENTRIES) {
-            var first = locations.entrySet().iterator().next();
-            releaseHandle(first.getValue());
-            locations.remove(first.getKey());
-        }
-
+        // LRU bound enforcement lives inside LruStore.put: inserting a new
+        // entry over the limit evicts the least-recently-used one, releasing
+        // the GPU textures of stale configurations.
         ResourceLocation location =
                 ResourceLocation.fromNamespaceAndPath(ModularShoot.MODID, "dynamic/gun_" + nextId++);
 

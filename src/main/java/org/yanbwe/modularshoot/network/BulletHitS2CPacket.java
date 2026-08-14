@@ -20,12 +20,16 @@ import org.jetbrains.annotations.Nullable;
  *
  * <p><b>Wire format</b> (order matters — decode reverses encode):</p>
  * <ol>
- *   <li>{@code int} — bullet id</li>
+ *   <li>{@code varint} — bullet id（每维度从 1 起，恒正，1-2 字节）</li>
  *   <li>{@code double} — hit x</li>
  *   <li>{@code double} — hit y</li>
  *   <li>{@code double} — hit z</li>
  *   <li>{@code byte} — {@link HitType} enum ordinal</li>
- *   <li>{@code int} — hit entity id ({@code -1} when not an entity hit)</li>
+ *   <li>{@code boolean} has-entity flag + conditional {@code varint} — 实体命中
+ *       时为 {@code true} 后跟实体网络 id；非实体命中时仅写 {@code false}（
+ *       {@code -1} 哨兵不写线——负数 varint 需 5 字节，比原 {@code int} 还大，
+ *       拆成标志后非实体命中 1 字节、实体命中 2-4 字节，两种情形都不劣于
+ *       {@code int}）</li>
  *   <li>{@code boolean} presence + {@code ResourceLocation} — 命中音效 ID（未配置时 presence 为 false）</li>
  * </ol>
  *
@@ -99,13 +103,20 @@ public record BulletHitS2CPacket(
      * @param packet the packet to serialize
      */
     private static void encode(RegistryFriendlyByteBuf buf, BulletHitS2CPacket packet) {
-        // 审查优化 P12: bullet id 与实体 id 用 varint（命中包高频，省 2-4 字节/包）。
+        // 审查修复: bullet id 恒正（每维度从 1 起）→ varint 1-2 字节；实体 id
+        // 用布尔标志 + 条件 varint——负数哨兵（NO_ENTITY = -1）的 varint 编码
+        // 是 5 字节（比原 int 还多 1 字节），拆成标志后非实体命中仅 1 字节、
+        // 实体命中 2-4 字节，两种情形都不劣于原 int。
         buf.writeVarInt(packet.bulletId);
         buf.writeDouble(packet.hitX);
         buf.writeDouble(packet.hitY);
         buf.writeDouble(packet.hitZ);
         buf.writeByte((byte) packet.hitType.ordinal());
-        buf.writeVarInt(packet.hitEntityId);
+        boolean hasEntity = packet.hitEntityId != NO_ENTITY;
+        buf.writeBoolean(hasEntity);
+        if (hasEntity) {
+            buf.writeVarInt(packet.hitEntityId);
+        }
         encodeNullableResourceLocation(buf, packet.soundId);
     }
 
@@ -122,7 +133,7 @@ public record BulletHitS2CPacket(
         double hitY = buf.readDouble();
         double hitZ = buf.readDouble();
         HitType hitType = HitType.values()[buf.readByte()];
-        int hitEntityId = buf.readVarInt();
+        int hitEntityId = buf.readBoolean() ? buf.readVarInt() : NO_ENTITY;
         ResourceLocation soundId = decodeNullableResourceLocation(buf);
         return new BulletHitS2CPacket(bulletId, hitX, hitY, hitZ, hitType, hitEntityId, soundId);
     }

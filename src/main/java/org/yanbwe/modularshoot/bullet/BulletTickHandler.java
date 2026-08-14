@@ -44,11 +44,16 @@ import org.yanbwe.modularshoot.trait.RemoveReason;
  * {@code LevelTickEvent} handlers.</p>
  *
  * <h2>Iteration safety</h2>
- * <p>{@link BulletManager#getAllBullets()} returns a defensive unmodifiable
- * snapshot, so the tick loop may call {@code removeBullet} mid-iteration
- * without {@code ConcurrentModificationException}. After a removal the bullet
- * is skipped for the remainder of this tick via an early return from
- * {@link #processBullet}.</p>
+ * <p>The tick loop iterates {@link BulletManager#getActiveBullets()}, a live
+ * read-only view over the {@code ConcurrentHashMap} id index. Its iterators
+ * are weakly consistent, so the loop may call {@code removeBullet}
+ * mid-iteration without {@code ConcurrentModificationException}; a bullet
+ * removed by its own {@code onTick} hook is skipped via the liveness
+ * re-check in {@link #processBullet}. One semantic note vs. the old
+ * defensive snapshot: the live view may also observe bullets <em>added</em>
+ * during the iteration (a same-tick creation then advances one tick early,
+ * a 50 ms shift); in practice the loop is instant and creations arrive via
+ * packet handling outside the level tick, so this path does not occur.</p>
  *
  * <h2>Position advance</h2>
  * <p>Each tick the bullet advances {@code bullet_speed / 20} blocks along its
@@ -99,17 +104,26 @@ public final class BulletTickHandler {
      * Iterates every active bullet in the dimension and advances its flight
      * by one tick (设计文档 §子弹飞行与碰撞检测).
      *
-     * <p>The collection returned by {@link BulletManager#getAllBullets()} is a
-     * defensive snapshot, so removals during iteration are safe.</p>
+     * <p>Iterates the live weakly-consistent view
+     * ({@link BulletManager#getActiveBullets()}) instead of a per-tick
+     * defensive copy: removals during iteration are safe (no
+     * {@code ConcurrentModificationException}), and a record removed before
+     * the loop reaches it is skipped by the liveness re-check in
+     * {@link #processBullet} — the same stale-record behaviour the old
+     * snapshot had. The one difference from a snapshot is that a bullet
+     * <em>added</em> mid-iteration may be observed and advanced in the same
+     * tick (see the class-level Iteration safety note).</p>
      *
      * @param level the server level whose bullets are being ticked
      */
     private static void tickBullets(Level level) {
         BulletManager manager = BulletManager.get(level);
         // 审查优化 P8: live 视图替代每 tick 防御拷贝（getAllBullets 的
-        // new ArrayList）。ConcurrentHashMap 迭代弱一致，迭代中 removeBullet
-        // 不会抛 CME；被移除的子弹若仍被迭代到，processBullet 的 liveness
-        // 复查（onTick 后 getBulletById == null）会跳过它——与原快照行为一致。
+        // new ArrayList）。ConcurrentHashMap 迭代弱一致：迭代中 removeBullet
+        // 不抛 CME；被移除的子弹若仍被迭代到，processBullet 的 liveness
+        // 复查（onTick 后 getBulletById == null）会跳过它。与快照的唯一差异：
+        // 迭代期间新注册的子弹可能被同 tick 观察并推进（50ms 级，实际路径
+        // 不会发生——见类 javadoc）。
         Collection<BulletRecord> bullets = manager.getActiveBullets();
         // Per-tick entity candidate cache: one chunk query shared by every
         // bullet in the same chunk (设计文档 §空间分区). Discarded with this

@@ -7,7 +7,7 @@
 - **Faster item recognition and binding lookups**: hot paths like inventory scans no longer rebuild lookup tables on every call — a notable per-tick saving on populated servers.
 - **Deduplicated state writes**: writing an unchanged value no longer triggers data copies or sync traffic, so high-frequency states (heat accumulation, etc.) stop generating pointless packets.
 - **Smaller bullet sync packets**: incremental sync entries are about half the size; bandwidth drops noticeably when many bullets are in flight.
-- **Cheaper shotgun / multi-pellet shots**: the variant pool and bullet visual style are computed once per shot; pellets only roll independently — no more repeated registry lookups per pellet.
+- **Cheaper shotgun / multi-pellet shots**: the variant pool is built once per shot; pellets only roll independently — no more repeated registry lookups per pellet (the bullet-visual registry scan is also cached per registry instance).
 - **Batch uninstall recomputes attributes once**: removing several plugins at once recomputes attributes a single time instead of once per plugin.
 - **More reliable texture caching**: dynamic texture cache keys now compare values, so plugin reloads or resource refreshes never trigger unnecessary texture recomposition.
 - **Leaner rendering**: per-frame / per-tick temporary allocations (bullet sorting, snapshot reads) eliminated.
@@ -16,10 +16,12 @@
 
 - **Bullets could briefly disappear after a dimension switch**: sync state is now reset on dimension change instead of relying on the periodic full sync seconds later.
 - **Stale plugin visuals after a resource reload**: F3+T now also clears the overlay cache, keeping visuals consistent with the resource packs.
+- **Deterministic binding resolution**: when several Java-API bindings register the same item, the lexicographically smallest entry key now wins — the same rule as the datapack channel — instead of an unspecified scan order.
+- **Hit-packet encoding fix**: non-entity hits no longer write the -1 sentinel as a varint (a negative varint is actually larger); a presence flag plus conditional varint keeps both entity and non-entity hits at or below the old fixed-width size.
 
 ### Testing
 
-- 13 new tests covering binding indexes, cache-key value semantics and wire-compression precision; all 427 pass.
+- 18 new tests covering binding indexes, cache-key value semantics, wire-compression precision, LRU eviction policy and the single-refresh batch uninstall; all 438 pass.
 
 ## [0.1.5] - 2026-08-11
 
