@@ -512,11 +512,19 @@ public final class ShootingEngine {
      * {@code playSound} is {@code null} so that every nearby player hears
      * the shot (the shooter is not excluded).</p>
      *
+     * <p>The sound is played <b>bound to the shooting player</b>
+     * ({@code Level.playSound(Player, Entity, ...)} sends the
+     * {@code ClientboundSoundEntityPacket}, which the client renders as an
+     * entity-following sound instance). The audible source therefore tracks
+     * the shooter's position every tick: a fast-moving player keeps hearing
+     * their own shot instead of outrunning a fixed-coordinate sound.</p>
+     *
      * <p>When the gun definition declares a {@code sound_range} (audible
      * radius in blocks), the event is wrapped with
      * {@link SoundEvent#createFixedRangeEvent(ResourceLocation, float)} so
      * datapack authors can tune how far the shot is heard; absent → the
-     * sound event's own range (default 16) applies.</p>
+     * sound event's own range (default 16) applies. The broadcast radius is
+     * evaluated at fire time from the shooter's position, unchanged.</p>
      *
      * @param player         the shooting player (position and level)
      * @param gunDefinition  the gun definition (carries the sound bindings)
@@ -537,12 +545,9 @@ public final class ShootingEngine {
         SoundEvent effective = GunSounds.getRange(gunDefinition)
                 .map(range -> SoundEvent.createFixedRangeEvent(soundId, range))
                 .orElse(soundEvent);
-        Vec3 eye = player.getEyePosition();
         player.level().playSound(
                 null,
-                eye.x,
-                eye.y,
-                eye.z,
+                player,
                 effective,
                 SoundSource.PLAYERS,
                 SHOOT_VOLUME,

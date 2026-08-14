@@ -8,6 +8,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.SlotAccess;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ClickAction;
@@ -292,7 +293,11 @@ public final class PluginInstallEventHandler {
      * 可监听 {@code PostPluginInstallEvent}。</p>
      *
      * <p>枪械定义声明 {@code sound_range} 时按固定可闻半径播放（与
-     * {@code ShootingEngine.playShootSound} 一致），缺省用音效事件自带 range。</p>
+     * {@code ShootingEngine.playShootSound} 一致），缺省用音效事件自带 range。
+     * 音效以玩家实体为声源播放（跟随玩家移动），高速移动时不会因离开固定坐标
+     * 的播放点而迅速听不到。真实容器内走服务端广播（{@code null} 排除位，安装者
+     * 也在可闻范围内）；创造菜单内事件仅在客户端触发，需把本地玩家作为排除位传入
+     * 才能通过 {@code ClientLevel} 的本地播放守卫。</p>
      *
      * @param player 执行安装的玩家
      * @param gun    被安装插件的枪械 ItemStack
@@ -311,6 +316,16 @@ public final class PluginInstallEventHandler {
                                 .map(range -> SoundEvent.createFixedRangeEvent(
                                         soundEvent.getLocation(), range))
                                 .orElse(soundEvent)))
-                .ifPresent(sound -> player.playSound(sound, 1.0F, pitch));
+                .ifPresent(sound -> {
+                    if (player.level().isClientSide()) {
+                        // 创造菜单：事件仅客户端触发，排除位传本地玩家以通过守卫。
+                        player.level()
+                                .playSound(player, player, sound, SoundSource.PLAYERS, 1.0F, pitch);
+                    } else {
+                        // 真实容器：服务端广播，排除位 null（含安装者在内全可闻）。
+                        player.level()
+                                .playSound(null, player, sound, SoundSource.PLAYERS, 1.0F, pitch);
+                    }
+                });
     }
 }

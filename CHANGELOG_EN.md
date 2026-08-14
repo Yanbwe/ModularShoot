@@ -18,6 +18,7 @@
 - **Stale plugin visuals after a resource reload**: F3+T now also clears the overlay cache, keeping visuals consistent with the resource packs.
 - **Deterministic binding resolution**: when several Java-API bindings register the same item, the lexicographically smallest entry key now wins — the same rule as the datapack channel — instead of an unspecified scan order.
 - **Hit-packet encoding fix**: non-entity hits no longer write the -1 sentinel as a varint (a negative varint is actually larger); a presence flag plus conditional varint keeps both entity and non-entity hits at or below the old fixed-width size.
+- **Shoot sounds fade out too early at high speed**: shoot and plugin-install sounds now follow the player, so fast movement no longer leaves them behind at the trigger point.
 
 ### Testing
 
