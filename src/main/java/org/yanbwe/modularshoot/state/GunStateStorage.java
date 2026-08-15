@@ -24,9 +24,10 @@ import org.jetbrains.annotations.Nullable;
  * stored as a child {@link CompoundTag} keyed by the state id's string
  * form, containing a {@code "type"} field (the
  * {@link StateValueType} serializedName) and an optional {@code "value"}
- * field (omitted for {@code null} UUID values). The {@code TYPE_KEY} and
- * {@code VALUE_KEY} constants here must stay in sync with
- * {@link StateValueCodecs}.</p>
+ * field (omitted for {@code null} UUID values). The entry keys stay in
+ * sync with {@link StateValueCodecs}; the strong-typed fast read/write
+ * branch lives in {@link StateValueCodecs#encodeEntryFast} and
+ * {@link StateValueCodecs#decodeEntryFast} (审查任务 3.2).</p>
  *
  * <p>All methods are pure: they never mutate their input tags. Mutating
  * methods return a <em>new</em> {@link CompoundTag} instance, except for the
@@ -41,11 +42,6 @@ import org.jetbrains.annotations.Nullable;
  * @see org.yanbwe.modularshoot.component.GunData
  */
 public final class GunStateStorage {
-    /** NBT key storing the {@link StateValueType} serializedName. Must match {@link StateValueCodecs}. */
-    private static final String TYPE_KEY = "type";
-
-    /** NBT key storing the encoded value tag. Must match {@link StateValueCodecs}. */
-    private static final String VALUE_KEY = "value";
 
     private GunStateStorage() {
     }
@@ -86,8 +82,10 @@ public final class GunStateStorage {
         }
         final CompoundTag entryTag = stateTag.getCompound(key);
         final StateValueType type = def.valueType();
-        final Tag valueTag = entryTag.contains(VALUE_KEY) ? entryTag.get(VALUE_KEY) : null;
-        return StateValueCodecs.decodeValue(type, valueTag, registryAccess);
+        // Fast strong-typed read branch (审查任务 3.2): decodes directly from
+        // the entry compound, avoiding the per-read DataFixerUpper codec stack.
+        // Handles a missing "value" field as the type's zero value.
+        return StateValueCodecs.decodeEntryFast(type, entryTag);
     }
 
     /**
@@ -155,12 +153,11 @@ public final class GunStateStorage {
      */
     private static CompoundTag encodeEntry(
             StateValueType type, @Nullable Object value, RegistryAccess registryAccess) {
-        final Tag encoded = StateValueCodecs.encodeValue(type, value, registryAccess);
+        // Fast strong-typed write branch (审查任务 3.2): writes directly into
+        // the entry compound with putInt/putLong/..., avoiding the per-write
+        // DataFixerUpper codec stack. Produces the same {type, value} format.
         final CompoundTag entryTag = new CompoundTag();
-        entryTag.putString(TYPE_KEY, type.getSerializedName());
-        if (encoded != null) {
-            entryTag.put(VALUE_KEY, encoded);
-        }
+        StateValueCodecs.encodeEntryFast(entryTag, type, value);
         return entryTag;
     }
 

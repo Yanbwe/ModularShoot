@@ -9,6 +9,7 @@ import java.util.UUID;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.IntArrayTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
@@ -119,6 +120,160 @@ public final class StateValueCodecs {
         final DataResult<Object> result = codec.parse(
                 provider.createSerializationContext(NbtOps.INSTANCE), tag);
         return result.getOrThrow(msg -> decodeException(type, msg));
+    }
+
+    /**
+     * Encodes a single state value directly into a per-entry
+     * {@link CompoundTag}, bypassing the DataFixerUpper codec stack (审查任务
+     * 3.2 — 快速 NBT 分支).
+     *
+     * <p>For the common {@link StateValueType}s this uses the strong-typed
+     * {@link CompoundTag} {@code putInt}/{@code putLong}/{@code putDouble}/
+     * {@code putFloat}/{@code putBoolean}/{@code putString}/{@code putUUID}
+     * so the hot single-key read/write path (per-gun / per-player state) does
+     * not construct a serialisation context and drive the full codec each
+     * time. The {@code "type"} field is always written (same as
+     * {@link #encodeStateMap}). For {@code null} UUID values the
+     * {@code "value"} field is omitted, exactly as the codec path does.</p>
+     *
+     * <p>The produced entry is byte-identical to the codec path built with
+     * {@link #encodeValue} + {@code {"type", "value"}} keys, so the
+     * {@code {type, value}} storage format is unchanged for well-typed
+     * values. Before writing, the value's runtime type is validated with
+     * {@link #isTypeMatch}; a mismatch throws
+     * {@link IllegalArgumentException} rather than corrupting the entry with
+     * a silent cast.</p>
+     *
+     * @param entryTag the destination per-entry compound (writes into it)
+     * @param type     the declared value type
+     * @param value    the value to encode; {@code null} only valid for UUID
+     * @throws IllegalArgumentException if the value's runtime type does not
+     *         match the declared type
+     */
+    public static void encodeEntryFast(
+            CompoundTag entryTag, StateValueType type, @Nullable Object value) {
+        if (!isTypeMatch(type, value)) {
+            throw new IllegalArgumentException(
+                    "Cannot encode state value of type " + type.getSerializedName()
+                            + " with runtime value type "
+                            + (value == null ? "null" : value.getClass().getName()));
+        }
+        entryTag.putString(TYPE_KEY, type.getSerializedName());
+        switch (type) {
+            case INT -> entryTag.putInt(VALUE_KEY, (Integer) value);
+            case LONG -> entryTag.putLong(VALUE_KEY, (Long) value);
+            case DOUBLE -> entryTag.putDouble(VALUE_KEY, (Double) value);
+            case FLOAT -> entryTag.putFloat(VALUE_KEY, (Float) value);
+            case BOOLEAN -> entryTag.putBoolean(VALUE_KEY, (Boolean) value);
+            case STRING -> entryTag.putString(VALUE_KEY, (String) value);
+            case UUID -> {
+                if (value != null) {
+                    entryTag.putUUID(VALUE_KEY, (UUID) value);
+                }
+            }
+        }
+    }
+
+    /**
+     * Decodes a single state value directly from a per-entry
+     * {@link CompoundTag}, bypassing the DataFixerUpper codec stack (审查任务
+     * 3.2 — 快速 NBT 分支).
+     *
+     * <p>For the common {@link StateValueType}s this uses the strong-typed
+     * {@link CompoundTag} {@code getInt}/{@code getLong}/{@code getDouble}/
+     * {@code getFloat}/{@code getBoolean}/{@code getString}/{@code getUUID}
+     * and ignores the {@code "type"} field (authoritative type comes from the
+     * registry), matching {@link #decodeStateMap} semantics. When the
+     * {@code "value"} field is absent the type's zero value is returned
+     * (used for {@code null} UUID).</p>
+     *
+     * <p>When the {@code "value"} field is present but its NBT tag type does
+     * not match the declared type (or is not a valid UUID
+     * {@link IntArrayTag} of length 4), an {@link IllegalStateException} is
+     * thrown — the same contract as the codec path
+     * ({@link #decodeValue} / {@link #decodeStateMap}) — instead of silently
+     * coercing the value to a zero / default. Only a <em>missing</em>
+     * {@code "value"} field returns the type's zero value.</p>
+     *
+     * @param type     the declared value type
+     * @param entryTag the per-entry compound to read from
+     * @return the decoded value, or the type's zero value when the
+     *         {@code "value"} field is absent
+     * @throws IllegalStateException if the {@code "value"} field is present
+     *         but its tag type does not match the declared type
+     */
+    @Nullable
+    public static Object decodeEntryFast(StateValueType type, CompoundTag entryTag) {
+        if (!entryTag.contains(VALUE_KEY)) {
+            return type.zeroValue();
+        }
+        final Tag value = entryTag.get(VALUE_KEY);
+        switch (type) {
+            case INT -> requireTagType(value, Tag.TAG_INT, type);
+            case LONG -> requireTagType(value, Tag.TAG_LONG, type);
+            case DOUBLE -> requireTagType(value, Tag.TAG_DOUBLE, type);
+            case FLOAT -> requireTagType(value, Tag.TAG_FLOAT, type);
+            case BOOLEAN -> requireTagType(value, Tag.TAG_BYTE, type);
+            case STRING -> requireTagType(value, Tag.TAG_STRING, type);
+            case UUID -> {
+                // UUID zero value is null and is stored by omitting the
+                // "value" field, so any present value must be a real UUID: a
+                // 4-int IntArrayTag (UUIDUtil wire format).
+                if (value.getId() != Tag.TAG_INT_ARRAY
+                        || ((IntArrayTag) value).getAsIntArray().length != 4) {
+                    throw decodeException(type,
+                            "expected a UUID IntArrayTag of length 4 but got "
+                                    + tagTypeName(value));
+                }
+            }
+        }
+        return switch (type) {
+            case INT -> entryTag.getInt(VALUE_KEY);
+            case LONG -> entryTag.getLong(VALUE_KEY);
+            case DOUBLE -> entryTag.getDouble(VALUE_KEY);
+            case FLOAT -> entryTag.getFloat(VALUE_KEY);
+            case BOOLEAN -> entryTag.getBoolean(VALUE_KEY);
+            case STRING -> entryTag.getString(VALUE_KEY);
+            case UUID -> entryTag.getUUID(VALUE_KEY);
+        };
+    }
+
+    /**
+     * Throws an {@link IllegalStateException} when the tag's type does not
+     * match the expected NBT type for the declared state value type.
+     *
+     * @param value    the stored value tag
+     * @param expected the expected NBT type id (see {@link Tag})
+     * @param type     the declared state value type, used only for messaging
+     */
+    private static void requireTagType(Tag value, int expected, StateValueType type) {
+        if (value.getId() != expected) {
+            throw decodeException(type,
+                    "expected " + tagTypeName(expected) + " but got " + tagTypeName(value));
+        }
+    }
+
+    private static String tagTypeName(Tag value) {
+        return tagTypeName(value.getId());
+    }
+
+    private static String tagTypeName(int tagId) {
+        return switch (tagId) {
+            case Tag.TAG_BYTE -> "ByteTag";
+            case Tag.TAG_SHORT -> "ShortTag";
+            case Tag.TAG_INT -> "IntTag";
+            case Tag.TAG_LONG -> "LongTag";
+            case Tag.TAG_FLOAT -> "FloatTag";
+            case Tag.TAG_DOUBLE -> "DoubleTag";
+            case Tag.TAG_STRING -> "StringTag";
+            case Tag.TAG_COMPOUND -> "CompoundTag";
+            case Tag.TAG_INT_ARRAY -> "IntArrayTag";
+            case Tag.TAG_LONG_ARRAY -> "LongArrayTag";
+            case Tag.TAG_BYTE_ARRAY -> "ByteArrayTag";
+            case Tag.TAG_LIST -> "ListTag";
+            case Tag.TAG_END -> "EndTag";
+            default -> "Tag(" + tagId + ")";
+        };
     }
 
     /**
