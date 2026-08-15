@@ -9,7 +9,6 @@ import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.damagesource.DamageType;
 import org.yanbwe.modularshoot.ModularShoot;
@@ -73,14 +72,26 @@ public final class CrossReferenceValidator {
      */
     public static void validateGuns(
             RegistryAccess access, Map<ResourceLocation, GunDefinition> guns) {
+        validateGuns(new ReloadSharedEntries(access), guns);
+    }
+
+    /**
+     * Shared-registry variant of {@link #validateGuns(RegistryAccess, Map)}:
+     * reuses the reload's single {@link ReloadSharedEntries} collection so the
+     * referenced tables' keysets are not re-traversed per reload phase.
+     *
+     * @param shared the reload's shared registry snapshot
+     * @param guns   the loaded gun id to {@link GunDefinition} entries
+     */
+    public static void validateGuns(
+            ReloadSharedEntries shared, Map<ResourceLocation, GunDefinition> guns) {
         if (guns.isEmpty()) {
             return;  // 注册表缺失时静默
         }
-        Set<ResourceLocation> metaKeys =
-                registryKeys(access, ModularShootRegistries.ATTRIBUTE_META_KEY);
-        Set<ResourceLocation> traitKeys = registryKeys(access, ModularShootRegistries.TRAITS_KEY);
-        Set<ResourceLocation> typeKeys = registryKeys(access, ModularShootRegistries.PLUGIN_TYPES_KEY);
-        Set<ResourceLocation> variantKeys = registryKeys(access, ModularShootRegistries.VARIANTS_KEY);
+        Set<ResourceLocation> metaKeys = shared.keys(ModularShootRegistries.ATTRIBUTE_META_KEY);
+        Set<ResourceLocation> traitKeys = shared.keys(ModularShootRegistries.TRAITS_KEY);
+        Set<ResourceLocation> typeKeys = shared.keys(ModularShootRegistries.PLUGIN_TYPES_KEY);
+        Set<ResourceLocation> variantKeys = shared.keys(ModularShootRegistries.VARIANTS_KEY);
         for (Map.Entry<ResourceLocation, GunDefinition> entry : guns.entrySet()) {
             ResourceLocation gunId = entry.getKey();
             GunDefinition gun = entry.getValue();
@@ -113,13 +124,29 @@ public final class CrossReferenceValidator {
      */
     public static void validatePlugins(
             RegistryAccess access, Map<ResourceLocation, PluginDefinition> plugins) {
+        validatePlugins(new ReloadSharedEntries(access), plugins);
+    }
+
+    /**
+     * Shared-registry variant of
+     * {@link #validatePlugins(RegistryAccess, Map)}: reuses the reload's
+     * single {@link ReloadSharedEntries} collection and flattens the
+     * {@code plugin_types} tag union exactly once (via
+     * {@link ReloadSharedEntries#allPluginTypeTags()}) instead of rebuilding
+     * it for every plugin.
+     *
+     * @param shared  the reload's shared registry snapshot
+     * @param plugins the loaded plugin id to {@link PluginDefinition} entries
+     */
+    public static void validatePlugins(
+            ReloadSharedEntries shared, Map<ResourceLocation, PluginDefinition> plugins) {
         if (plugins.isEmpty()) {
             return;
         }
-        Set<ResourceLocation> traitKeys = registryKeys(access, ModularShootRegistries.TRAITS_KEY);
-        Set<ResourceLocation> variantKeys = registryKeys(access, ModularShootRegistries.VARIANTS_KEY);
-        Set<ResourceLocation> typeKeys = registryKeys(access, ModularShootRegistries.PLUGIN_TYPES_KEY);
-        Map<ResourceLocation, Set<String>> typeTagSets = collectTypeTagSets(access);
+        Set<ResourceLocation> traitKeys = shared.keys(ModularShootRegistries.TRAITS_KEY);
+        Set<ResourceLocation> variantKeys = shared.keys(ModularShootRegistries.VARIANTS_KEY);
+        Set<ResourceLocation> typeKeys = shared.keys(ModularShootRegistries.PLUGIN_TYPES_KEY);
+        Set<String> allTypeTags = shared.allPluginTypeTags();
         for (Map.Entry<ResourceLocation, PluginDefinition> entry : plugins.entrySet()) {
             ResourceLocation pluginId = entry.getKey();
             PluginDefinition plugin = entry.getValue();
@@ -129,7 +156,7 @@ public final class CrossReferenceValidator {
                     plugin.addsVariants().keySet(), variantKeys);
             checkTableKeys(pluginId, "adds_slots", "plugin_types",
                     plugin.addsSlots().keySet(), typeKeys);
-            checkPluginTags(pluginId, plugin, typeTagSets);
+            checkPluginTags(pluginId, plugin, allTypeTags);
         }
     }
 
@@ -149,13 +176,24 @@ public final class CrossReferenceValidator {
      */
     public static void validateVariants(
             RegistryAccess access, Map<ResourceLocation, VariantDefinition> variants) {
+        validateVariants(new ReloadSharedEntries(access), variants);
+    }
+
+    /**
+     * Shared-registry variant of
+     * {@link #validateVariants(RegistryAccess, Map)}.
+     *
+     * @param shared   the reload's shared registry snapshot
+     * @param variants the loaded variant id to {@link VariantDefinition} entries
+     */
+    public static void validateVariants(
+            ReloadSharedEntries shared, Map<ResourceLocation, VariantDefinition> variants) {
         if (variants.isEmpty()) {
             return;
         }
-        Set<ResourceLocation> traitKeys = registryKeys(access, ModularShootRegistries.TRAITS_KEY);
-        Set<ResourceLocation> metaKeys =
-                registryKeys(access, ModularShootRegistries.ATTRIBUTE_META_KEY);
-        Registry<DamageType> damageTypes = access.registryOrThrow(Registries.DAMAGE_TYPE);
+        Set<ResourceLocation> traitKeys = shared.keys(ModularShootRegistries.TRAITS_KEY);
+        Set<ResourceLocation> metaKeys = shared.keys(ModularShootRegistries.ATTRIBUTE_META_KEY);
+        Registry<DamageType> damageTypes = shared.access().registryOrThrow(Registries.DAMAGE_TYPE);
         for (Map.Entry<ResourceLocation, VariantDefinition> entry : variants.entrySet()) {
             ResourceLocation variantId = entry.getKey();
             VariantDefinition variant = entry.getValue();
@@ -188,11 +226,23 @@ public final class CrossReferenceValidator {
      */
     public static void validateShooters(
             RegistryAccess access, Map<ResourceLocation, ShooterDefinition> shooters) {
+        validateShooters(new ReloadSharedEntries(access), shooters);
+    }
+
+    /**
+     * Shared-registry variant of
+     * {@link #validateShooters(RegistryAccess, Map)}.
+     *
+     * @param shared   the reload's shared registry snapshot
+     * @param shooters the loaded shooter id to {@link ShooterDefinition}
+     *                 entries
+     */
+    public static void validateShooters(
+            ReloadSharedEntries shared, Map<ResourceLocation, ShooterDefinition> shooters) {
         if (shooters.isEmpty()) {
             return;  // 注册表缺失时静默
         }
-        Set<ResourceLocation> metaKeys =
-                registryKeys(access, ModularShootRegistries.ATTRIBUTE_META_KEY);
+        Set<ResourceLocation> metaKeys = shared.keys(ModularShootRegistries.ATTRIBUTE_META_KEY);
         for (Map.Entry<ResourceLocation, ShooterDefinition> entry : shooters.entrySet()) {
             ResourceLocation shooterId = entry.getKey();
             ShooterDefinition shooter = entry.getValue();
@@ -247,20 +297,6 @@ public final class CrossReferenceValidator {
         }
         List<String> unmatched = findUnmatchedTags(pluginTags, typeTagSets);
         return unmatched.size() == pluginTags.size();
-    }
-
-    /**
-     * Collects the key set of a framework registry; empty when the registry
-     * is absent.
-     *
-     * @param access the registry access
-     * @param key    the registry key
-     * @param <T>    the registry value type
-     * @return the registry's id set, or {@link Set#of()} when absent
-     */
-    private static <T> Set<ResourceLocation> registryKeys(
-            RegistryAccess access, ResourceKey<Registry<T>> key) {
-        return access.registry(key).map(Registry::keySet).orElse(Set.of());
     }
 
     /**
@@ -338,37 +374,25 @@ public final class CrossReferenceValidator {
      * Emits a {@code WARN} when the plugin's tags intersect no plugin type's
      * tag set (the plugin can never be installed on any gun).
      *
+     * <p>The flattened {@code allTypeTags} union is computed once per reload
+     * by {@link ReloadSharedEntries#allPluginTypeTags()} and reused across all
+     * plugins, so the type-tag set is not rebuilt per plugin.</p>
+     *
      * @param pluginId    the plugin id carrying the tags
      * @param plugin      the plugin definition to check
-     * @param typeTagSets plugin type id to tag set (string form)
+     * @param allTypeTags the flattened union of every plugin type's tag set
+     *                    (string form)
      */
     private static void checkPluginTags(
             ResourceLocation pluginId, PluginDefinition plugin,
-            Map<ResourceLocation, Set<String>> typeTagSets) {
+            Set<String> allTypeTags) {
         Set<String> pluginTags = plugin.tags().stream()
                 .map(ResourceLocation::toString)
                 .collect(Collectors.toSet());
-        if (matchesNoType(pluginTags, typeTagSets)) {
+        if (!pluginTags.isEmpty() && pluginTags.stream().noneMatch(allTypeTags::contains)) {
             DatapackErrorHandler.logReferenceWarning(pluginId,
                     "tags " + pluginTags + " match no plugin type's tags; "
                             + "the plugin cannot be installed on any gun");
         }
-    }
-
-    /**
-     * Collects every plugin type's tag set as strings, keyed by type id.
-     *
-     * @param access the registry access
-     * @return type id to tag-set map; empty when the table is absent
-     */
-    private static Map<ResourceLocation, Set<String>> collectTypeTagSets(RegistryAccess access) {
-        return access.registry(ModularShootRegistries.PLUGIN_TYPES_KEY)
-                .map(reg -> reg.entrySet().stream()
-                        .collect(Collectors.toMap(
-                                e -> e.getKey().location(),
-                                e -> e.getValue().tags().stream()
-                                        .map(ResourceLocation::toString)
-                                        .collect(Collectors.toSet()))))
-                .orElse(Map.of());
     }
 }

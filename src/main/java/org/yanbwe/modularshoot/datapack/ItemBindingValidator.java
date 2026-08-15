@@ -8,10 +8,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
 import org.yanbwe.modularshoot.registry.binding.GunItemBinding;
@@ -93,13 +91,28 @@ public final class ItemBindingValidator {
      */
     public static void validateGunBindings(
             RegistryAccess access, Map<ResourceLocation, GunItemBinding> entries) {
+        validateGunBindings(new ReloadSharedEntries(access), entries);
+    }
+
+    /**
+     * Shared-registry variant of {@link #validateGunBindings(RegistryAccess,
+     * Map)}: derives the known gun id set from the reload's single
+     * {@link ReloadSharedEntries} collection, so the {@code guns} registry's
+     * keyset is not re-traversed per reload phase.
+     *
+     * @param shared  the reload's shared registry snapshot
+     * @param entries the loaded binding-table key to {@link GunItemBinding}
+     *                entries
+     */
+    public static void validateGunBindings(
+            ReloadSharedEntries shared, Map<ResourceLocation, GunItemBinding> entries) {
         if (entries.isEmpty()) {
             return;  // 注册表缺失时静默
         }
         // 已知枪械 id = datapack guns 注册表键 ∪ Java API 注册键（审查修复 M5）：
         // 仅对照 datapack 键集会误报 Java API 注册枪械（运行时绑定实际生效）
         Set<ResourceLocation> gunKeys = new HashSet<>(
-                registryKeys(access, ModularShootRegistries.GUNS_KEY));
+                shared.keys(ModularShootRegistries.GUNS_KEY));
         gunKeys.addAll(GunRegistry.getJavaApiRegisteredGuns().keySet());
         Set<ResourceLocation> javaApiItemIds = GunItemBindingRegistry.getJavaApiBindings()
                 .values().stream().map(GunItemBinding::itemId).collect(Collectors.toSet());
@@ -135,11 +148,27 @@ public final class ItemBindingValidator {
      */
     public static void validatePluginBindings(
             RegistryAccess access, Map<ResourceLocation, PluginItemBinding> entries) {
+        validatePluginBindings(new ReloadSharedEntries(access), entries);
+    }
+
+    /**
+     * Shared-registry variant of
+     * {@link #validatePluginBindings(RegistryAccess, Map)}: derives the known
+     * plugin id set from the reload's single {@link ReloadSharedEntries}
+     * collection, so the {@code plugins} registry's keyset is not re-traversed
+     * per reload phase.
+     *
+     * @param shared  the reload's shared registry snapshot
+     * @param entries the loaded binding-table key to {@link PluginItemBinding}
+     *                entries
+     */
+    public static void validatePluginBindings(
+            ReloadSharedEntries shared, Map<ResourceLocation, PluginItemBinding> entries) {
         if (entries.isEmpty()) {
             return;  // 注册表缺失时静默
         }
         Set<ResourceLocation> pluginKeys =
-                registryKeys(access, ModularShootRegistries.PLUGINS_KEY);
+                shared.keys(ModularShootRegistries.PLUGINS_KEY);
         Set<ResourceLocation> javaApiItemIds = PluginItemBindingRegistry.getJavaApiBindings()
                 .values().stream().map(PluginItemBinding::itemId).collect(Collectors.toSet());
         for (Map.Entry<ResourceLocation, PluginItemBinding> entry : entries.entrySet()) {
@@ -288,19 +317,5 @@ public final class ItemBindingValidator {
                     "Duplicate binding for item id: " + itemId
                             + " (lexicographically smallest entry key wins; this binding is ignored)");
         }
-    }
-
-    /**
-     * Collects the key set of a framework registry; empty when the registry
-     * is absent.
-     *
-     * @param access the registry access
-     * @param key    the registry key
-     * @param <T>    the registry value type
-     * @return the registry's id set, or {@link Set#of()} when absent
-     */
-    private static <T> Set<ResourceLocation> registryKeys(
-            RegistryAccess access, ResourceKey<Registry<T>> key) {
-        return access.registry(key).map(Registry::keySet).orElse(Set.of());
     }
 }

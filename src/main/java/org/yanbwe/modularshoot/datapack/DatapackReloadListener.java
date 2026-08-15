@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
@@ -29,6 +28,7 @@ import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.shooter.ShooterDefinition;
 import org.yanbwe.modularshoot.registry.shooter.ShooterRegistry;
 import org.yanbwe.modularshoot.registry.variant.VariantDefinition;
+import org.yanbwe.modularshoot.state.StateDefinition;
 
 /**
  * NeoForge reload listener for framework-specific post-reload logic
@@ -133,14 +133,18 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
      *
      * @param access the reloaded registry access (all registries loaded and frozen)
      */
-    private static void handleReloadComplete(RegistryAccess access) {
+    static void handleReloadComplete(RegistryAccess access) {
+        // Collect each registry's entries/keyset exactly once and share that
+        // single view across the summary, cross-reference and conflict-check
+        // phases (阶段 5 任务 5.1: 同一次 reload 中同一注册表只 collect 一次).
+        ReloadSharedEntries shared = new ReloadSharedEntries(access);
         ModularShoot.LOGGER.info(
                 "ModularShoot datapack reload complete — running post-reload validation.");
         LoadOrderManager.enterPhase(LoadOrderManager.LoadPhase.DATAPACK);
-        List<DatapackLoadSummary> summaries = collectValidationSummaries(access);
+        List<DatapackLoadSummary> summaries = collectValidationSummaries(shared);
         ModularShoot.LOGGER.info(DatapackLoadSummary.formatAllSummaries(summaries));
-        validateCrossReferences(access);
-        checkRegistrationConflicts(access);
+        validateCrossReferences(shared);
+        checkRegistrationConflicts(shared);
         LoadOrderManager.completePhase(LoadOrderManager.LoadPhase.DATAPACK);
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
         if (server != null) {
@@ -155,19 +159,19 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
      * Builds a per-registry validation summary for all eight framework
      * registries.
      *
-     * @param access the reloaded registry access
+     * @param shared the reload's shared registry snapshot
      * @return a list of summaries, one per registry
      */
-    private static List<DatapackLoadSummary> collectValidationSummaries(RegistryAccess access) {
+    private static List<DatapackLoadSummary> collectValidationSummaries(ReloadSharedEntries shared) {
         List<DatapackLoadSummary> summaries = new ArrayList<>();
-        summaries.add(summarizeGuns(access));
-        summaries.add(summarizePlugins(access));
-        summaries.add(summarizePluginTypes(access));
-        summaries.add(summarizeTraits(access));
-        summaries.add(summarizeStates(access));
-        summaries.add(summarizeAttributeMeta(access));
-        summaries.add(summarizeVariants(access));
-        summaries.add(summarizeShooters(access));
+        summaries.add(summarizeGuns(shared));
+        summaries.add(summarizePlugins(shared));
+        summaries.add(summarizePluginTypes(shared));
+        summaries.add(summarizeTraits(shared));
+        summaries.add(summarizeStates(shared));
+        summaries.add(summarizeAttributeMeta(shared));
+        summaries.add(summarizeVariants(shared));
+        summaries.add(summarizeShooters(shared));
         return summaries;
     }
 
@@ -198,43 +202,19 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
      * are validated inside {@link #summarizeVariants} so the summary and its
      * reference warnings share the same entries map.</p>
      *
-     * @param access the reloaded registry access
+     * @param shared the reload's shared registry snapshot
      */
-    private static void validateCrossReferences(RegistryAccess access) {
-        CrossReferenceValidator.validateGuns(access,
-                collectEntries(access, ModularShootRegistries.GUNS_KEY));
-        CrossReferenceValidator.validatePlugins(access,
-                collectEntries(access, ModularShootRegistries.PLUGINS_KEY));
-        CrossReferenceValidator.validateShooters(access,
-                collectEntries(access, ModularShootRegistries.SHOOTERS_KEY));
-        ItemBindingValidator.validateGunBindings(access,
-                collectEntries(access, ModularShootRegistries.GUN_ITEMS_KEY));
-        ItemBindingValidator.validatePluginBindings(access,
-                collectEntries(access, ModularShootRegistries.PLUGIN_ITEMS_KEY));
-    }
-
-    /**
-     * Extracts all entries from a dynamic registry into an unmodifiable
-     * map keyed by id.
-     *
-     * <p>Used for the three loaders that do not offer a
-     * {@code RegistryAccess}-based convenience method
-     * ({@link GunDatapackLoader}, {@link TraitDatapackLoader},
-     * {@link AttributeMetaDatapackLoader}).</p>
-     *
-     * @param access the registry access
-     * @param key    the registry key
-     * @param <T>    the registry value type
-     * @return an unmodifiable map of id to entry; empty when the registry is absent
-     */
-    private static <T> Map<ResourceLocation, T> collectEntries(
-            RegistryAccess access, ResourceKey<Registry<T>> key) {
-        return access.registry(key)
-                .map(reg -> reg.entrySet().stream()
-                        .collect(Collectors.toUnmodifiableMap(
-                                e -> e.getKey().location(),
-                                e -> e.getValue())))
-                .orElse(Map.of());
+    private static void validateCrossReferences(ReloadSharedEntries shared) {
+        CrossReferenceValidator.validateGuns(shared,
+                shared.entries(ModularShootRegistries.GUNS_KEY));
+        CrossReferenceValidator.validatePlugins(shared,
+                shared.entries(ModularShootRegistries.PLUGINS_KEY));
+        CrossReferenceValidator.validateShooters(shared,
+                shared.entries(ModularShootRegistries.SHOOTERS_KEY));
+        ItemBindingValidator.validateGunBindings(shared,
+                shared.entries(ModularShootRegistries.GUN_ITEMS_KEY));
+        ItemBindingValidator.validatePluginBindings(shared,
+                shared.entries(ModularShootRegistries.PLUGIN_ITEMS_KEY));
     }
 
     /**
@@ -270,59 +250,63 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
 
     // ──────────────── Per-registry summary helpers ────────────────
 
-    private static DatapackLoadSummary summarizeGuns(RegistryAccess access) {
+    private static DatapackLoadSummary summarizeGuns(ReloadSharedEntries shared) {
         Map<ResourceLocation, GunDefinition> entries =
-                collectEntries(access, ModularShootRegistries.GUNS_KEY);
+                shared.entries(ModularShootRegistries.GUNS_KEY);
         Map<ResourceLocation, GunDatapackLoader.GunValidation> results =
                 GunDatapackLoader.validateGuns(entries);
         return summarize("gun definitions", entries.size(), results.values(),
                 GunDatapackLoader.GunValidation::valid);
     }
 
-    private static DatapackLoadSummary summarizePlugins(RegistryAccess access) {
+    private static DatapackLoadSummary summarizePlugins(ReloadSharedEntries shared) {
         Map<ResourceLocation, PluginValidationResult> results =
-                PluginDatapackLoader.validateLoadedPlugins(access);
+                PluginDatapackLoader.validateEntries(shared.entries(ModularShootRegistries.PLUGINS_KEY));
         results.forEach(DatapackReloadListener::logPluginValidation);
         return summarize("plugin definitions", results.size(), results.values(),
                 r -> r.valid() && r.warnings().isEmpty());
     }
 
-    private static DatapackLoadSummary summarizePluginTypes(RegistryAccess access) {
+    private static DatapackLoadSummary summarizePluginTypes(ReloadSharedEntries shared) {
         Map<ResourceLocation, PluginTypeDatapackLoader.TypeValidation> results =
-                PluginTypeDatapackLoader.validateLoadedTypes(access);
+                PluginTypeDatapackLoader.validateEntries(
+                        shared.entries(ModularShootRegistries.PLUGIN_TYPES_KEY));
         return summarize("plugin type definitions", results.size(), results.values(),
                 PluginTypeDatapackLoader.TypeValidation::tagsPresent);
     }
 
-    private static DatapackLoadSummary summarizeTraits(RegistryAccess access) {
+    private static DatapackLoadSummary summarizeTraits(ReloadSharedEntries shared) {
         Map<ResourceLocation, Trait> entries =
-                collectEntries(access, ModularShootRegistries.TRAITS_KEY);
+                shared.entries(ModularShootRegistries.TRAITS_KEY);
         Map<ResourceLocation, TraitDatapackLoader.TraitValidation> results =
                 TraitDatapackLoader.validateTraits(entries);
         return summarize("trait definitions", entries.size(), results.values(),
                 TraitDatapackLoader.TraitValidation::valid);
     }
 
-    private static DatapackLoadSummary summarizeStates(RegistryAccess access) {
-        List<StateDatapackLoader.StateValidation> results =
-                StateDatapackLoader.validateAllStates(access);
+    private static DatapackLoadSummary summarizeStates(ReloadSharedEntries shared) {
+        Map<ResourceLocation, StateDefinition> entries =
+                shared.entries(ModularShootRegistries.STATES_KEY);
+        List<StateDatapackLoader.StateValidation> results = entries.entrySet().stream()
+                .map(e -> StateDatapackLoader.validateState(e.getKey(), e.getValue()))
+                .toList();
         return summarize("state definitions", results.size(), results,
                 StateDatapackLoader.StateValidation::valid);
     }
 
-    private static DatapackLoadSummary summarizeAttributeMeta(RegistryAccess access) {
+    private static DatapackLoadSummary summarizeAttributeMeta(ReloadSharedEntries shared) {
         Map<ResourceLocation, AttributeMeta> entries =
-                collectEntries(access, ModularShootRegistries.ATTRIBUTE_META_KEY);
+                shared.entries(ModularShootRegistries.ATTRIBUTE_META_KEY);
         Map<ResourceLocation, AttributeMetaDatapackLoader.BindingValidation> results =
                 AttributeMetaDatapackLoader.validateBindings(entries);
         return summarize("attribute metadata", entries.size(), results.values(),
                 AttributeMetaDatapackLoader.BindingValidation::bindsRegistered);
     }
 
-    private static DatapackLoadSummary summarizeVariants(RegistryAccess access) {
+    private static DatapackLoadSummary summarizeVariants(ReloadSharedEntries shared) {
         Map<ResourceLocation, VariantDefinition> entries =
-                collectEntries(access, ModularShootRegistries.VARIANTS_KEY);
-        CrossReferenceValidator.validateVariants(access, entries);
+                shared.entries(ModularShootRegistries.VARIANTS_KEY);
+        CrossReferenceValidator.validateVariants(shared, entries);
         logNonFiniteWeights(entries);
         return summarize("variant definitions", entries.size(), entries.values(),
                 v -> Double.isFinite(v.baseWeight()));
@@ -339,12 +323,12 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
      * counts as clean here (warnings surface through the cross-reference
      * channel instead).</p>
      *
-     * @param access the reloaded registry access
+     * @param shared the reload's shared registry snapshot
      * @return the shooter summary
      */
-    private static DatapackLoadSummary summarizeShooters(RegistryAccess access) {
+    private static DatapackLoadSummary summarizeShooters(ReloadSharedEntries shared) {
         Map<ResourceLocation, ShooterDefinition> entries =
-                collectEntries(access, ModularShootRegistries.SHOOTERS_KEY);
+                shared.entries(ModularShootRegistries.SHOOTERS_KEY);
         return summarize("shooter definitions", entries.size(), entries.values(), s -> true);
     }
 
@@ -393,19 +377,19 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
      * omitting them would leave the javadoc-promised {@code WARN} dead
      * (稳健性修复).</p>
      *
-     * @param access the reloaded registry access
+     * @param shared the reload's shared registry snapshot
      */
-    private static void checkRegistrationConflicts(RegistryAccess access) {
-        checkConflictsForRegistry(access, ModularShootRegistries.GUNS_KEY);
-        checkConflictsForRegistry(access, ModularShootRegistries.PLUGINS_KEY);
-        checkConflictsForRegistry(access, ModularShootRegistries.PLUGIN_TYPES_KEY);
-        checkConflictsForRegistry(access, ModularShootRegistries.TRAITS_KEY);
-        checkConflictsForRegistry(access, ModularShootRegistries.STATES_KEY);
-        checkConflictsForRegistry(access, ModularShootRegistries.ATTRIBUTE_META_KEY);
-        checkConflictsForRegistry(access, ModularShootRegistries.VARIANTS_KEY);
-        checkConflictsForRegistry(access, ModularShootRegistries.SHOOTERS_KEY);
-        checkConflictsForRegistry(access, ModularShootRegistries.GUN_ITEMS_KEY);
-        checkConflictsForRegistry(access, ModularShootRegistries.PLUGIN_ITEMS_KEY);
+    private static void checkRegistrationConflicts(ReloadSharedEntries shared) {
+        checkConflictsForRegistry(shared, ModularShootRegistries.GUNS_KEY);
+        checkConflictsForRegistry(shared, ModularShootRegistries.PLUGINS_KEY);
+        checkConflictsForRegistry(shared, ModularShootRegistries.PLUGIN_TYPES_KEY);
+        checkConflictsForRegistry(shared, ModularShootRegistries.TRAITS_KEY);
+        checkConflictsForRegistry(shared, ModularShootRegistries.STATES_KEY);
+        checkConflictsForRegistry(shared, ModularShootRegistries.ATTRIBUTE_META_KEY);
+        checkConflictsForRegistry(shared, ModularShootRegistries.VARIANTS_KEY);
+        checkConflictsForRegistry(shared, ModularShootRegistries.SHOOTERS_KEY);
+        checkConflictsForRegistry(shared, ModularShootRegistries.GUN_ITEMS_KEY);
+        checkConflictsForRegistry(shared, ModularShootRegistries.PLUGIN_ITEMS_KEY);
     }
 
     /**
@@ -445,13 +429,13 @@ public final class DatapackReloadListener extends SimplePreparableReloadListener
      *       shadowing already enforces the priority rule.</li>
      * </ul>
      *
-     * @param access      the reloaded registry access
+     * @param shared      the reload's shared registry snapshot
      * @param registryKey the registry to check
      * @param <T>         the registry value type
      */
     private static <T> void checkConflictsForRegistry(
-            RegistryAccess access, ResourceKey<Registry<T>> registryKey) {
-        Set<ResourceLocation> datapackIds = collectEntries(access, registryKey).keySet();
+            ReloadSharedEntries shared, ResourceKey<Registry<T>> registryKey) {
+        Set<ResourceLocation> datapackIds = shared.keys(registryKey);
         Set<ResourceLocation> conflicts =
                 RegistrationCoordinator.findConflicts(registryKey, datapackIds);
         for (ResourceLocation conflictId : conflicts) {
