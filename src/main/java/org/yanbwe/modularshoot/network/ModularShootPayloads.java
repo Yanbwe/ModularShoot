@@ -92,6 +92,7 @@ public final class ModularShootPayloads {
         // S → C (server-to-client)
         registerBulletS2C(registrar);
         registerBulletHitS2C(registrar);
+        registerBulletHitBatchS2C(registrar);
         registerGunSyncS2C(registrar);
         registerShootAnimS2C(registrar);
     }
@@ -186,6 +187,16 @@ public final class ModularShootPayloads {
     }
 
     /**
+     * Registers {@link BulletHitBatchS2CPacket} as a play-phase, client-bound
+     * payload (S→C direction) and binds its handler.
+     *
+     * @param registrar the payload registrar to register through
+     */
+    private static void registerBulletHitBatchS2C(PayloadRegistrar registrar) {
+        registrar.playToClient(BulletHitBatchS2CPacket.TYPE, BulletHitBatchS2CPacket.STREAM_CODEC, handleBulletHitBatchS2C());
+    }
+
+    /**
      * Registers {@link GunSyncS2CPacket} as a play-phase, client-bound payload
      * (S→C direction) and binds its handler stub.
      *
@@ -263,6 +274,35 @@ public final class ModularShootPayloads {
                 ClientHitEffectHandler.playHitEffect(
                         mc.level, hitPos, payload.hitType(), payload.hitEntityId(),
                         payload.soundId());
+            });
+        };
+    }
+
+    /**
+     * Builds the handler for {@link BulletHitBatchS2CPacket}.
+     *
+     * <p>Runs on the main client thread via
+     * {@link IPayloadContext#enqueueWork(Runnable)} and dispatches each
+     * contained hit through the exact same {@link ClientHitEffectHandler}
+     * effect pipeline as the single-hit {@link BulletHitS2CPacket}, so the
+     * batched path is fully behaviour-compatible with the unbatched one — the
+     * only difference is that several same-tick hits arrive in one payload
+     * (阶段 2 / 任务 2.4 命中广播聚合).</p>
+     *
+     * @return the payload handler
+     */
+    private static IPayloadHandler<BulletHitBatchS2CPacket> handleBulletHitBatchS2C() {
+        return (payload, context) -> {
+            context.enqueueWork(() -> {
+                Minecraft mc = Minecraft.getInstance();
+                if (mc.level == null) {
+                    return;
+                }
+                for (BulletHitS2CPacket hit : payload.hits()) {
+                    Vec3 hitPos = new Vec3(hit.hitX(), hit.hitY(), hit.hitZ());
+                    ClientHitEffectHandler.playHitEffect(
+                            mc.level, hitPos, hit.hitType(), hit.hitEntityId(), hit.soundId());
+                }
             });
         };
     }
