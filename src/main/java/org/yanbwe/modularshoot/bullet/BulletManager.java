@@ -7,23 +7,17 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.core.SectionPos;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.client.render.BulletRenderManager;
-import org.yanbwe.modularshoot.component.GunData;
-import org.yanbwe.modularshoot.component.ModularShootDataComponents;
-import org.yanbwe.modularshoot.network.BulletSyncService;
 import org.yanbwe.modularshoot.trait.RemoveReason;
-import org.yanbwe.modularshoot.util.GunResolver;
 
 /**
  * Per-dimension manager for all active bullets (设计文档 §子弹管理器).
@@ -251,73 +245,6 @@ public final class BulletManager {
         // consistent, then index the bullet at its initial position.
         bullet.setPositionListener(this::onBulletPositionChanged);
         addToSpatialIndex(bullet, chunkKeyOf(bullet.getPosition()));
-    }
-
-    /**
-     * Independently fires a bullet from a custom source (turret, trap, boss
-     * attack, etc.) without going through the player shooting engine
-     * (设计文档 §独立发射).
-     *
-     * <p>Unlike the player shoot path, this method performs no fire-rate
-     * control, no ShootPredicate check, no PreShootEvent/PostShootEvent and
-     * no sound playback. The bullet enters the normal tick loop (flight,
-     * collision, damage, hooks) once registered.</p>
-     *
-     * <p><b>Snapshot field conventions for independent firing</b>
-     * (设计文档 §独立发射的快照字段约定): the caller is responsible for
-     * constructing the snapshot with {@code gunId = null} and
-     * {@code gunInstanceUuid = null}. The {@code shooter} field depends on the
-     * caller-supplied uuid (null for ownerless sources such as traps).</p>
-     *
-     * <p>The {@code level} parameter is retained for API consistency with the
-     * design document; the manager is already bound to a dimension, so it is
-     * not used in the registration logic. It is, however, passed to
-     * {@link BulletSyncService#markBulletCreated} so the tick-end sync
-     * includes this bullet even if it is removed by collision in the same
-     * Pre step (设计文档 §短寿命子弹保证). Callers must ensure the passed
-     * level matches this manager's dimension.</p>
-     *
-     * @param level     the dimension to fire into (must match this manager's dimension)
-     * @param position  the launch position
-     * @param direction the initial flight direction (normalized)
-     * @param snapshot  the bullet snapshot (caller-constructed; gunId/gunInstanceUuid should be null)
-     * @param shooter   the shooter uuid, or {@code null} for ownerless sources
-     * @return the newly created and registered BulletRecord
-     */
-    public BulletRecord fireBullet(
-            Level level,
-            Vec3 position,
-            Vec3 direction,
-            BulletSnapshot snapshot,
-            @Nullable UUID shooter) {
-        int bulletId = nextBulletId();
-        // Compose the visual style exactly once at creation (设计规格 §2.1
-        // "创建瞬间冻结"). For the public API entry point, gunData is
-        // reverse-looked-up from the snapshot's gun instance uuid (spec §4.1:
-        // "gunData 通过 snapshot.gunInstanceUuid 反查取得, state 初值从
-        // BulletSnapshot.state map 取"). When no firing gun is resolvable
-        // (e.g. independent turret/trap firing with a null gun instance uuid),
-        // gunData stays null and the composition degrades gracefully to the
-        // framework FALLBACK_BASE / white tint / empty layers.
-        @Nullable GunData gunData = null;
-        ItemStack gunStack = GunResolver.resolveGunFromSnapshot(snapshot, level);
-        if (gunStack != null) {
-            gunData = gunStack.get(ModularShootDataComponents.GUN_DATA.get());
-        }
-        ComposedBulletStyle composed = VisualCompositionService.INSTANCE.compose(
-                level.registryAccess(), snapshot, gunData);
-        BulletRecord bullet = new BulletRecord(snapshot, shooter, position, direction, bulletId, composed);
-        addBullet(bullet);
-        // Mark the new bullet as created this tick so that the tick-end sync
-        // includes it in the newBullets bucket — even if the bullet is removed
-        // by collision before the Post tick event fires (设计文档 §短寿命子弹保证).
-        // Server-only guard: BulletSyncService is server-side and the
-        // created-this-tick list is only drained from the server's
-        // LevelTickEvent.Post handler, so marking on the client would leak.
-        if (!level.isClientSide()) {
-            BulletSyncService.markBulletCreated(level, bullet);
-        }
-        return bullet;
     }
 
     /**

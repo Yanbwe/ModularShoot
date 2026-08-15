@@ -25,15 +25,12 @@ import net.neoforged.neoforge.common.NeoForge;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.attribute.AttributeResolver;
 import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
-import org.yanbwe.modularshoot.bullet.BulletManager;
 import org.yanbwe.modularshoot.bullet.BulletRecord;
 import org.yanbwe.modularshoot.bullet.BulletSnapshot;
-import org.yanbwe.modularshoot.bullet.ComposedBulletStyle;
-import org.yanbwe.modularshoot.bullet.VisualCompositionService;
+import org.yanbwe.modularshoot.bullet.CreationCoordinator;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.damage.ModularShootDamageTypes;
 import org.yanbwe.modularshoot.degradation.GunDegradationHandler;
-import org.yanbwe.modularshoot.network.BulletSyncService;
 import org.yanbwe.modularshoot.plugin.TraitMergeService;
 import org.yanbwe.modularshoot.network.ShootAnimSyncService;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
@@ -441,8 +438,8 @@ public final class ShootingEngine {
     /**
      * 注册单发全部弹丸（规格 §3.2 步骤七改造）。每颗深拷贝快照、逐弹丸独立变体 roll
      * （机制四 §6.4 逐弹丸语义）、逐颗执行效果贡献者（机制三）、独立散布采样、独立
-     * ID 与视觉组合，并逐颗调用 BulletSyncService.markBulletCreated（短寿命子弹
-     * 保证为逐子弹语义）。音效与第三人称动画由调用方在循环外保持一次。
+     * ID 与视觉组合，并逐颗完成注册与网络标记（CreationCoordinator，
+     * 短寿命子弹保证为逐子弹语义）。音效与第三人称动画由调用方在循环外保持一次。
      *
      * @param player        the shooting player
      * @param gunStack      the gun item stack being fired
@@ -474,7 +471,6 @@ public final class ShootingEngine {
             ShootEffectRegistry.applyEffects(player, gunStack, copy, i, pellets);
             Vec3 direction = applySpread(player, copy);        // 每颗独立散布采样（纯函数）
             BulletRecord record = registerBullet(player, copy, direction, gunData);
-            BulletSyncService.markBulletCreated(player.level(), record);
             records.add(record);
             // 审查优化 P8: isDebugEnabled 守卫——参数（含 getString）在 DEBUG
             // 关闭时也逐弹丸求值。
@@ -508,17 +504,17 @@ public final class ShootingEngine {
 
     /**
      * Creates and registers a {@link BulletRecord} with the per-dimension
-     * {@link BulletManager} (设计文档 §步骤七).
+     * {@code BulletManager} (设计文档 §步骤七).
      *
      * <p>The bullet spawns at the player's eye position to avoid the body
-     * collision box blocking the first tick. A unique bullet id is allocated
-     * by the manager before the record is constructed and added.</p>
+     * collision box blocking the first tick. Creation, id allocation, visual
+     * composition and registration are delegated to
+     * {@link CreationCoordinator}, which also performs the short-life network
+     * marking (D-03) — so {@code BulletManager} stays storage-only.</p>
      *
-     * <p>As of the modifier-stacking redesign, this method also composes the
-     * bullet's visual style exactly once at creation (设计规格 §2.1) via
-     * {@link VisualCompositionService#compose}, supplying the in-scope
-     * {@code gunData} directly so no reverse lookup is needed on the
-     * player-firing path.</p>
+     * <p>The player-firing path supplies the in-scope {@code gunData} directly
+     * (already resolved in {@link #fire}'s scope), so no reverse inventory
+     * lookup is needed.</p>
      *
      * @param player     the shooting player (eye position and level)
      * @param snapshot   the frozen bullet snapshot
@@ -532,17 +528,8 @@ public final class ShootingEngine {
             ServerPlayer player, BulletSnapshot snapshot, Vec3 direction,
             GunData gunData) {
         Vec3 position = player.getEyePosition();
-        BulletManager manager = BulletManager.get(player.level());
-        int bulletId = manager.nextBulletId();
-        // Compose the visual style once at creation (spec §2.1 / §4.1). The
-        // player-firing path holds gunData in its own scope, so no reverse
-        // lookup is required (contrast with BulletManager.fireBullet).
-        ComposedBulletStyle composed = VisualCompositionService.INSTANCE.compose(
-                player.registryAccess(), snapshot, gunData);
-        BulletRecord bulletRecord =
-                new BulletRecord(snapshot, player.getUUID(), position, direction, bulletId, composed);
-        manager.addBullet(bulletRecord);
-        return bulletRecord;
+        return CreationCoordinator.INSTANCE.fireBullet(
+                player.level(), position, direction, snapshot, player.getUUID(), gunData);
     }
 
     // --- Step 8: Sound ---------------------------------------------------

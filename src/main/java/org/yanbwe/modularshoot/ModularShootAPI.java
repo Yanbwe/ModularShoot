@@ -16,10 +16,10 @@ import net.minecraft.world.level.ItemLike;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
-import org.yanbwe.modularshoot.bullet.BulletManager;
 import org.yanbwe.modularshoot.bullet.BulletRecord;
 import org.yanbwe.modularshoot.bullet.BulletSnapshot;
 import org.yanbwe.modularshoot.bullet.BulletSnapshotBuilder;
+import org.yanbwe.modularshoot.bullet.CreationCoordinator;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginData;
@@ -1204,7 +1204,7 @@ public final class ModularShootAPI {
      * the player shooting engine (设计文档 §独立发射).
      *
      * <p>Delegates to
-     * {@link BulletManager#fireBullet(Level, Vec3, Vec3, BulletSnapshot, UUID)}.
+     * {@link org.yanbwe.modularshoot.bullet.CreationCoordinator#fireBullet}.
      * Unlike the player shoot path this performs <b>no fire-rate control, no
      * ShootPredicate check, no PreShootEvent/PostShootEvent and no sound
      * playback</b> — the bullet enters the normal tick loop (flight,
@@ -1253,6 +1253,9 @@ public final class ModularShootAPI {
         if (snapshot.getDamageType() == null) {
             snapshot.setDamageType(ModularShootDamageTypes.holderOrThrow(level.registryAccess()));
         }
-        return BulletManager.get(level).fireBullet(level, position, direction, snapshot, shooter);
+        // 独立发弹路径：gunData 由 BulletFactory 从 snapshot 反查（无则降级），
+        // 网络标记由 CreationCoordinator 负责（D-03 短寿命子弹保证）。
+        return CreationCoordinator.INSTANCE.fireBullet(
+                level, position, direction, snapshot, shooter, null);
     }
 }
