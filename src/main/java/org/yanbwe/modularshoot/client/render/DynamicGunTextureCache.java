@@ -174,7 +174,12 @@ public final class DynamicGunTextureCache {
     }
 
     /**
-     * Cache key identifying a unique composited texture.
+     * Cache key identifying a unique composited texture. A regular (non-record)
+     * value class so the hash can be computed once at construction and cached —
+     * a record cannot hold per-instance fields, which is exactly what the
+     * per-frame re-hash optimisation (审查优化 P41) needs. The public surface
+     * mirrors the previous record: same constructor and accessor methods, same
+     * value-semantics {@link #equals}/{@link #hashCode}.
      *
      * @param texturePath     the resolved base (or shoot) texture path
      * @param overlays        the sorted overlay layers, bottom-to-top, each
@@ -189,8 +194,58 @@ public final class DynamicGunTextureCache {
      *                        force a re-composite when plugins change even if
      *                        the overlay list is unchanged
      */
-    public record Key(ResourceLocation texturePath, List<OverlayLayer> overlays,
-                      List<OutlineSpec> gunOutlines, int modifierVersion) {
+    public static final class Key {
+
+        private final ResourceLocation texturePath;
+        private final List<OverlayLayer> overlays;
+        private final List<OutlineSpec> gunOutlines;
+        private final int modifierVersion;
+
+        /**
+         * Cached hash code (审查优化 P41: Key 的 hashCode 每次渲染都重新遍历
+         * overlays/gunOutlines 列表；此处构造时一次性计算并缓存，避免每帧重复
+         * 散列)。与 {@link #equals} 完全一致：值相同则缓存值相同，相等对象必然
+         * 同构。字段命名为 {@code cachedHashCode} 以避开 {@code hashCode()}
+         * 方法名，避免遮蔽。
+         */
+        private final int cachedHashCode;
+
+        public Key(ResourceLocation texturePath, List<OverlayLayer> overlays,
+                   List<OutlineSpec> gunOutlines, int modifierVersion) {
+            this.texturePath = texturePath;
+            this.overlays = overlays;
+            this.gunOutlines = gunOutlines;
+            this.modifierVersion = modifierVersion;
+            int result = texturePath.hashCode();
+            result = 31 * result + modifierVersion;
+            for (OverlayLayer layer : overlays) {
+                result = 31 * result + overlayLayerHash(layer);
+            }
+            for (OutlineSpec spec : gunOutlines) {
+                result = 31 * result + outlineSpecHash(spec);
+            }
+            this.cachedHashCode = result;
+        }
+
+        /** The resolved base (or shoot) texture path. */
+        public ResourceLocation texturePath() {
+            return texturePath;
+        }
+
+        /** Sorted overlay layers, bottom-to-top. */
+        public List<OverlayLayer> overlays() {
+            return overlays;
+        }
+
+        /** Whole-gun outline specs, in installation order. */
+        public List<OutlineSpec> gunOutlines() {
+            return gunOutlines;
+        }
+
+        /** The gun's anti-cheat modifier version. */
+        public int modifierVersion() {
+            return modifierVersion;
+        }
 
         /**
          * 值语义相等性（审查优化 P5）：JOML {@link Vector4f}/{@link Vector3f}
@@ -216,15 +271,7 @@ public final class DynamicGunTextureCache {
 
         @Override
         public int hashCode() {
-            int result = texturePath.hashCode();
-            result = 31 * result + modifierVersion;
-            for (OverlayLayer layer : overlays) {
-                result = 31 * result + overlayLayerHash(layer);
-            }
-            for (OutlineSpec spec : gunOutlines) {
-                result = 31 * result + outlineSpecHash(spec);
-            }
-            return result;
+            return cachedHashCode;
         }
 
         private static <T> boolean listsEqual(

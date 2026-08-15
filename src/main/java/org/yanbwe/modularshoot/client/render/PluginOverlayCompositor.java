@@ -138,6 +138,24 @@ public final class PluginOverlayCompositor {
             });
 
     /**
+     * Canonical immutable plugin-id lists (review P41 companion): memoises the
+     * {@code List.copyOf} of a caller's plugin-id list per distinct content, so
+     * repeated renders reuse ONE immutable list instead of re-copying it every
+     * frame. The canonical list is what backs {@link RenderDataKey}, so a warm
+     * cache hit performs no {@code List.copyOf} allocation at all. Bounded by
+     * the same LRU discipline as {@link #RENDER_DATA_CACHE} and cleared with it
+     * on logout / resource reload.
+     */
+    private static final Map<List<ResourceLocation>, List<ResourceLocation>> CANONICAL_PLUGIN_IDS =
+            Collections.synchronizedMap(new LinkedHashMap<>(16, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(
+                        Map.Entry<List<ResourceLocation>, List<ResourceLocation>> eldest) {
+                    return size() > MAX_CACHE_ENTRIES;
+                }
+            });
+
+    /**
      * Clears the render-data cache on client logout, releasing the strong
      * references to the world's {@link RegistryAccess} held by cache keys.
      *
@@ -158,6 +176,7 @@ public final class PluginOverlayCompositor {
      */
     public static void clearCache() {
         RENDER_DATA_CACHE.clear();
+        CANONICAL_PLUGIN_IDS.clear();
     }
 
     /**
@@ -303,7 +322,10 @@ public final class PluginOverlayCompositor {
     private static OverlayRenderData collectRenderDataByIds(
             List<ResourceLocation> pluginIds,
             RegistryAccess registryAccess) {
-        RenderDataKey key = new RenderDataKey(List.copyOf(pluginIds), registryAccess);
+        // Reuse the cached immutable plugin-id list: on a warm cache the key
+        // is built from that list directly, so no per-frame List.copyOf runs.
+        List<ResourceLocation> canonical = canonicalPluginIds(pluginIds);
+        RenderDataKey key = new RenderDataKey(canonical, registryAccess);
         OverlayRenderData cached = RENDER_DATA_CACHE.get(key);
         if (cached != null) {
             return cached;
@@ -345,5 +367,30 @@ public final class PluginOverlayCompositor {
                 List.copyOf(gunOutlinePluginIds));
         RENDER_DATA_CACHE.put(key, renderData);
         return renderData;
+    }
+
+    /**
+     * Returns the canonical immutable plugin-id list for the given content,
+     * reusing the cached instance when that content has already been seen.
+     *
+     * <p>This is the memoisation behind the hot path: building a
+     * {@link RenderDataKey} from a {@code canonicalPluginIds} result never
+     * re-runs {@code List.copyOf} on a cache hit. Package-private so the unit
+     * test can pin the identity-reuse invariant directly.</p>
+     *
+     * @param pluginIds the caller's plugin-id list (may be mutable; never
+     *                  retained)
+     * @return an immutable canonical list whose content equals
+     *         {@code pluginIds}; the same instance is returned for the same
+     *         content across calls
+     */
+    static List<ResourceLocation> canonicalPluginIds(List<ResourceLocation> pluginIds) {
+        List<ResourceLocation> existing = CANONICAL_PLUGIN_IDS.get(pluginIds);
+        if (existing != null) {
+            return existing;
+        }
+        List<ResourceLocation> canonical = List.copyOf(pluginIds);
+        CANONICAL_PLUGIN_IDS.put(canonical, canonical);
+        return canonical;
     }
 }
