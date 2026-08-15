@@ -48,6 +48,17 @@ public final class BulletRecord {
     private final Set<BlockPos> penetratedBlocksView = Collections.unmodifiableSet(penetratedBlocks);
 
     /**
+     * Optional spatial-index position listener, attached by the owning
+     * {@link BulletManager} when the bullet is registered. {@link #setPosition}
+     * fires this listener whenever the bullet's position actually changes so
+     * the manager can move the bullet between chunk buckets when it crosses a
+     * chunk boundary. Any mutation path — the tick driver or a third-party
+     * trait hook calling {@link #setPosition} — automatically keeps the index
+     * consistent. {@code volatile} so cross-thread visibility is safe.
+     */
+    private volatile PositionChangeListener positionListener;
+
+    /**
      * @param snapshot      the frozen attribute/trait snapshot
      * @param shooter       shooter uuid (may differ from snapshot for independent firing), or {@code null}
      * @param position      initial world position
@@ -98,8 +109,45 @@ public final class BulletRecord {
         return position;
     }
 
+    /**
+     * Sets the bullet's world position, notifying the owning spatial index
+     * (via {@link PositionChangeListener}) when the position actually changes
+     * so that cross-chunk movement re-buckets the bullet. The listener is
+     * attached by {@link BulletManager#addBullet}; when absent (a bullet not
+     * yet registered with a manager) this is a plain field write.
+     *
+     * @param position the new world position; its chunk coordinate is derived
+     *                 from the x/z components
+     */
     public void setPosition(Vec3 position) {
+        Vec3 oldPos = this.position;
         this.position = position;
+        PositionChangeListener listener = this.positionListener;
+        if (listener != null && !oldPos.equals(position)) {
+            listener.onPositionChanged(this, oldPos, position);
+        }
+    }
+
+    /**
+     * Returns the spatial-index position listener currently attached, or
+     * {@code null} when the bullet is not registered with a manager.
+     *
+     * @return the current listener, or {@code null}
+     */
+    @Nullable
+    PositionChangeListener getPositionListener() {
+        return positionListener;
+    }
+
+    /**
+     * Replaces the spatial-index position listener. Called by
+     * {@link BulletManager} when registering (attach) and removing (detach) a
+     * bullet. Package-private: only the manager owns this wiring.
+     *
+     * @param listener the new listener, or {@code null} to detach
+     */
+    void setPositionListener(@Nullable PositionChangeListener listener) {
+        this.positionListener = listener;
     }
 
     public Vec3 getDirection() {
@@ -210,5 +258,24 @@ public final class BulletRecord {
      */
     public void addPenetratedBlock(BlockPos pos) {
         penetratedBlocks.add(pos);
+    }
+
+    /**
+     * Callback notified by {@link BulletRecord#setPosition} whenever the
+     * bullet's position changes, so the owning {@link BulletManager} can keep
+     * the per-chunk spatial index consistent across chunk boundaries
+     * (阶段 2 / 任务 2.1). Package-private: only {@link BulletManager} wires
+     * and consumes it.
+     */
+    @FunctionalInterface
+    interface PositionChangeListener {
+        /**
+         * Invoked after a bullet's position has been updated.
+         *
+         * @param bullet the bullet whose position changed
+         * @param oldPos the previous position
+         * @param newPos the new position
+         */
+        void onPositionChanged(BulletRecord bullet, Vec3 oldPos, Vec3 newPos);
     }
 }

@@ -3,13 +3,17 @@ package org.yanbwe.modularshoot.bullet;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
+import net.minecraft.core.SectionPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
@@ -50,8 +54,26 @@ import org.yanbwe.modularshoot.util.GunResolver;
  * {@code BulletTickHandler} maintains a per-tick, per-chunk entity
  * candidate cache (query box + candidate list) and every bullet in a chunk
  * shares one {@code Level.getEntitiesOfClass} query whose box contains its
- * step search box (设计文档 §空间分区). No bullet-to-chunk index is kept on
- * the manager.</p>
+ * step search box (设计文档 §空间分区).</p>
+ *
+ * <p>As of 阶段 2 / 任务 2.1 the manager additionally keeps a per-chunk
+ * spatial index ({@code long chunk-key → Set<BulletRecord>}, see
+ * {@link ChunkPos#asLong(int, int)}) so the network sync path
+ * ({@link org.yanbwe.modularshoot.network.BulletSyncService}) can query
+ * only the bullets near a player instead of scanning every active bullet each
+ * tick (eliminating the {@code O(子弹数 × 玩家数)} scan). The index is kept
+ * consistent as bullets move across chunk boundaries via a position listener
+ * attached to each registered {@link BulletRecord} (see
+ * {@link BulletRecord#setPosition}) and as bullets are removed (see
+ * {@link #removeBullet}).
+ *
+ * <p><b>Concurrency:</b> every index mutation ({@link #addBullet},
+ * {@link #removeBullet}, cross-chunk re-bucketing via the position listener)
+ * happens on the server's main thread. The {@code ConcurrentHashMap} bucket
+ * map plus concurrent inner sets are therefore primarily there so the
+ * per-tick <em>read-only</em> sync pass is weakly consistent while the single
+ * main-thread tick mutates the index — concurrent <em>writes</em> are not
+ * supported.</p>
  *
  * <h2>Bullet id strategy</h2>
  * <p>Ids are {@code int}, per-dimension, monotonically increasing from 1 and
@@ -72,13 +94,36 @@ public final class BulletManager {
     /** All active bullets indexed by id (thread-safe). */
     private final Map<Integer, BulletRecord> bulletsById = new ConcurrentHashMap<>();
 
+    /**
+     * Per-chunk spatial index of active bullets: a bullet is present in the
+     * bucket of the chunk containing its current position. Buckets are keyed by
+     * the packed chunk-coordinate long ({@link ChunkPos#asLong(int, int)}) so
+     * the per-tick range query never allocates a {@link ChunkPos} per candidate
+     * bucket (阶段 2 / 任务 2.1). Kept consistent by {@link #addBullet},
+     * {@link #removeBullet} and the position-change listener attached to each
+     * registered {@link BulletRecord}.
+     *
+     * <p><b>Concurrency:</b> every index mutation ({@link #addBullet},
+     * {@link #removeBullet}, cross-chunk re-bucketing) happens on the server's
+     * main thread, so the {@code ConcurrentHashMap} + concurrent inner sets are
+     * primarily there to make the per-tick <em>read</em> pass (which only
+     * iterates the live index and never mutates it) weakly consistent rather
+     * than to support concurrent writers.</p>
+     */
+    private final Map<Long, Set<BulletRecord>> bulletsByChunk =
+            new ConcurrentHashMap<>();
+
     /** Monotonic per-dimension id counter; starts at 1, guarded by synchronization in {@link #nextBulletId}. */
     private int nextId = 1;
 
     /** Dimension key retained for logging only (never holds a {@link Level} reference). */
     private final ResourceKey<Level> dimensionKey;
 
-    private BulletManager(ResourceKey<Level> dimensionKey) {
+    /**
+     * Package-private: constructed only via {@link #get(Level)} (production)
+     * and directly by the headless unit tests in this package.
+     */
+    BulletManager(ResourceKey<Level> dimensionKey) {
         this.dimensionKey = dimensionKey;
     }
 
@@ -193,10 +238,19 @@ public final class BulletManager {
      * <p>The bullet must already carry a unique id assigned via
      * {@link #nextBulletId()} (or equivalent).</p>
      *
+     * <p>Registers the bullet in both the id index and the per-chunk spatial
+     * index, and attaches a position listener so cross-chunk movement stays
+     * indexed (阶段 2 / 任务 2.1).</p>
+     *
      * @param bullet the bullet record to register
      */
     public void addBullet(BulletRecord bullet) {
         bulletsById.put(bullet.getBulletId(), bullet);
+        // Attach this manager as the spatial-index listener so any later
+        // setPosition (tick advance or a trait hook) keeps the chunk buckets
+        // consistent, then index the bullet at its initial position.
+        bullet.setPositionListener(this::onBulletPositionChanged);
+        addToSpatialIndex(bullet, chunkKeyOf(bullet.getPosition()));
     }
 
     /**
@@ -288,6 +342,11 @@ public final class BulletManager {
         if (bullet == null) {
             return;
         }
+        // Detach the spatial listener and evict from the chunk index before
+        // firing ON_REMOVE hooks: a hook may mutate the bullet's position, and
+        // we must not re-index an already-removed record.
+        bullet.setPositionListener(null);
+        removeFromSpatialIndex(bullet, chunkKeyOf(bullet.getPosition()));
         BulletHookInvoker.fireOnRemove(bullet, reason);
     }
 
@@ -378,6 +437,121 @@ public final class BulletManager {
      */
     public Collection<BulletRecord> getAllBullets() {
         return Collections.unmodifiableList(new ArrayList<>(bulletsById.values()));
+    }
+
+    // --- Spatial index (阶段 2 / 任务 2.1) --------------------------------
+
+    /**
+     * Returns every active bullet whose current position lies within the given
+     * radius of {@code center}, using Chebyshev (chessboard) distance in the
+     * horizontal plane — {@code max(|dx|, |dz|)} — matching the square shape of
+     * a player's chunk tracking view (the same metric
+     * {@link org.yanbwe.modularshoot.network.BulletSyncService} uses to cull
+     * per player). The vertical axis is intentionally excluded, matching the
+     * sync service's convention.
+     *
+     * <p>The query scans only the chunk buckets that could intersect the radius
+     * (rather than every active bullet), then filters each candidate by the
+     * exact Chebyshev distance. The result is a point-in-time, weakly-consistent
+     * snapshot safe for the per-tick read-only sync pass.
+     *
+     * <p>Buckets are addressed by packed chunk long keys
+     * ({@link ChunkPos#asLong(int, int)}) computed inline, so this per-tick,
+     * per-player hot path allocates no {@link ChunkPos} objects for candidate
+     * buckets (阶段 2 / 任务 2.1 optimised range query).
+     *
+     * @param center the query center, typically the player's position
+     * @param radius the cull radius in blocks (Chebyshev, horizontal)
+     * @return an unmodifiable collection of bullets within the radius
+     */
+    public Collection<BulletRecord> getActiveBulletsInRange(Vec3 center, double radius) {
+        int centerChunkX = SectionPos.blockToSectionCoord(center.x);
+        int centerChunkZ = SectionPos.blockToSectionCoord(center.z);
+        // Floor the radius to chunks and widen by one guaranteed margin so the
+        // scan always covers the boundary chunk; exact Chebyshev filtering
+        // below discards any extra candidates.
+        int chunkRadius = (int) Math.floor(radius / 16.0) + 2;
+        Set<BulletRecord> result = new LinkedHashSet<>();
+        for (int dx = -chunkRadius; dx <= chunkRadius; dx++) {
+            for (int dz = -chunkRadius; dz <= chunkRadius; dz++) {
+                Set<BulletRecord> bucket = bulletsByChunk.get(
+                        ChunkPos.asLong(centerChunkX + dx, centerChunkZ + dz));
+                if (bucket == null) {
+                    continue;
+                }
+                for (BulletRecord bullet : bucket) {
+                    if (isWithinChebyshevRadius(bullet.getPosition(), center, radius)) {
+                        result.add(bullet);
+                    }
+                }
+            }
+        }
+        return Collections.unmodifiableCollection(result);
+    }
+
+    /**
+     * Position-change callback attached to each registered {@link BulletRecord}.
+     * When a bullet crosses a chunk boundary its bucket is updated so the
+     * spatial index stays consistent regardless of which caller moved it.
+     *
+     * @param bullet the bullet whose position changed
+     * @param oldPos the previous position
+     * @param newPos the new position
+     */
+    private void onBulletPositionChanged(BulletRecord bullet, Vec3 oldPos, Vec3 newPos) {
+        long oldKey = chunkKeyOf(oldPos);
+        long newKey = chunkKeyOf(newPos);
+        if (oldKey != newKey) {
+            removeFromSpatialIndex(bullet, oldKey);
+            addToSpatialIndex(bullet, newKey);
+        }
+    }
+
+    /** Inserts a bullet into the bucket for the given chunk key. */
+    private void addToSpatialIndex(BulletRecord bullet, long chunkKey) {
+        bulletsByChunk.computeIfAbsent(chunkKey, k -> ConcurrentHashMap.newKeySet()).add(bullet);
+    }
+
+    /** Evicts a bullet from the bucket for the given chunk key, pruning empty buckets. */
+    private void removeFromSpatialIndex(BulletRecord bullet, long chunkKey) {
+        Set<BulletRecord> bucket = bulletsByChunk.get(chunkKey);
+        if (bucket != null) {
+            bucket.remove(bullet);
+            if (bucket.isEmpty()) {
+                bulletsByChunk.remove(chunkKey, bucket);
+            }
+        }
+    }
+
+    /**
+     * Packed chunk-coordinate long key for a world position (same conversion
+     * as the tick handler): {@link ChunkPos#asLong(int, int)} of the section
+     * coordinates of the x/z components. The long is used as the internal
+     * bucket key instead of allocating a {@link ChunkPos} per access.
+     */
+    private static long chunkKeyOf(Vec3 pos) {
+        return ChunkPos.asLong(
+                SectionPos.blockToSectionCoord(pos.x),
+                SectionPos.blockToSectionCoord(pos.z));
+    }
+
+    /** Chebyshev horizontal-distance test matching the sync service's culling metric. */
+    private static boolean isWithinChebyshevRadius(Vec3 pos, Vec3 center, double radius) {
+        double dx = Math.abs(center.x - pos.x);
+        double dz = Math.abs(center.z - pos.z);
+        return Math.max(dx, dz) <= radius;
+    }
+
+    // --- Test support (package-private) ---------------------------------
+
+    /**
+     * Package-private read-only view of the per-chunk spatial index (packed
+     * chunk key → bullet bucket). Exposed only so the headless unit tests can
+     * verify the index invariant "each live bullet appears in exactly one
+     * bucket" directly against the internal structure.
+     */
+    Map<Long, Set<BulletRecord>> getSpatialIndex() {
+        return Collections.unmodifiableMap(bulletsByChunk);
     }
 
 }

@@ -98,6 +98,17 @@ import org.jetbrains.annotations.Nullable;
  * radius of the player's position. When the tracking view is not a
  * {@link ChunkTrackingView.Positioned} (e.g. during dimension transition),
  * the server's view distance is used as a fallback.</p>
+ *
+ * <p>The per-player candidate set is produced once per tick by the spatial
+ * index ({@link BulletManager#getActiveBulletsInRange}) and is the
+ * <em>visible subset</em> of bullets passed down as {@code visibleBullets}
+ * to the diff builders. Because the broadcast diffs against this subset,
+ * a bullet that falls outside it is indistinguishable from a removed bullet:
+ * it is dropped from the player's sync state and listed in
+ * {@code removedBulletIds}. This is intentional — bullets that leave a
+ * player's render radius should disappear on the client just like removed
+ * ones — and matches the authoritative "outside visible subset = removed"
+ * semantics.</p>
  */
 @EventBusSubscriber(modid = ModularShoot.MODID)
 public final class BulletSyncService {
@@ -227,19 +238,14 @@ public final class BulletSyncService {
     // --- Core sync logic ------------------------------------------------
 
     /**
-     * Collects all active bullets, drains the created-this-tick list, and
-     * dispatches a per-player {@link BulletS2CPacket} to each player in the
-     * dimension.
+     * Collects the spatial-index-filtered visible bullets per player, drains
+     * the created-this-tick list, and dispatches a per-player
+     * {@link BulletS2CPacket} to each player in the dimension.
      *
      * @param level the server level whose bullets are being synced
      */
     private static void syncBulletsToPlayers(Level level) {
         BulletManager manager = BulletManager.get(level);
-        // Read-only pass over the live index view — the sync loop never
-        // removes bullets, so the defensive copy of getAllBullets() is
-        // unnecessary here (每 tick 省一次 O(子弹数) 拷贝).
-        Collection<BulletRecord> allBullets = manager.getActiveBullets();
-
         ServerLevel serverLevel = (ServerLevel) level;
         List<ServerPlayer> players = serverLevel.players();
         // Drain created-this-tick regardless of player count so the list
@@ -253,7 +259,15 @@ public final class BulletSyncService {
         // bullet is shared by every player instead of being rebuilt per player.
         Map<Integer, BulletS2CPacket.FullBulletEntry> fullEntryCache = new HashMap<>();
         for (ServerPlayer player : players) {
-            syncPlayerBullets(player, allBullets, createdThisTick, serverLevel, fullEntryCache);
+            // Spatial range query: only inspect bullets within this player's
+            // sync radius instead of scanning every bullet in the dimension
+            // (eliminates the O(子弹数 × 玩家数) per-tick scan — 阶段 2 /
+            // 任务 2.1). The query uses the same Chebyshev horizontal metric as
+            // the per-bullet culling checks below, so they remain consistent.
+            double syncRadius = getSyncRadius(player);
+            Collection<BulletRecord> visibleBullets =
+                    manager.getActiveBulletsInRange(player.position(), syncRadius);
+            syncPlayerBullets(player, visibleBullets, createdThisTick, serverLevel, fullEntryCache);
         }
     }
 
@@ -262,14 +276,16 @@ public final class BulletSyncService {
      * force-full-sync (drift recovery / initial) or an incremental delta.
      *
      * @param player         the player to sync to
-     * @param allBullets     every active bullet in the dimension
+     * @param visibleBullets the spatial-index-filtered bullets visible to this
+     *                       player (candidate subset); anything outside this
+     *                       subset is treated as removed for this player
      * @param createdThisTick bullets created this tick (short-life guarantee), or {@code null}
      * @param serverLevel    the server level (for gun-registry lookups and tick time)
      * @param fullEntryCache the per-tick full-entry conversion cache shared by all players
      */
     private static void syncPlayerBullets(
             ServerPlayer player,
-            Collection<BulletRecord> allBullets,
+            Collection<BulletRecord> visibleBullets,
             List<BulletRecord> createdThisTick,
             ServerLevel serverLevel,
             Map<Integer, BulletS2CPacket.FullBulletEntry> fullEntryCache) {
@@ -277,10 +293,10 @@ public final class BulletSyncService {
                 CLIENT_STATES.computeIfAbsent(player, k -> new HashMap<>());
         long currentTick = serverLevel.getGameTime();
         if (shouldForceFullSync(player, currentTick)) {
-            sendForceFullSync(player, allBullets, createdThisTick, playerStates, serverLevel, fullEntryCache);
+            sendForceFullSync(player, visibleBullets, createdThisTick, playerStates, serverLevel, fullEntryCache);
             return;
         }
-        sendDeltaSync(player, allBullets, createdThisTick, playerStates, serverLevel, fullEntryCache);
+        sendDeltaSync(player, visibleBullets, createdThisTick, playerStates, serverLevel, fullEntryCache);
     }
 
     /**
@@ -310,7 +326,9 @@ public final class BulletSyncService {
      * even when a force-full-sync happens to fall on the same tick.</p>
      *
      * @param player         the player to sync to
-     * @param allBullets     every active bullet in the dimension
+     * @param visibleBullets the spatial-index-filtered bullets visible to this
+     *                       player (candidate subset); anything outside this
+     *                       subset is treated as removed for this player
      * @param createdThisTick bullets created this tick (short-life guarantee), or {@code null}
      * @param playerStates   the player's per-bullet sync state (cleared and rebuilt)
      * @param serverLevel    the server level (for gun-registry lookups)
@@ -318,7 +336,7 @@ public final class BulletSyncService {
      */
     private static void sendForceFullSync(
             ServerPlayer player,
-            Collection<BulletRecord> allBullets,
+            Collection<BulletRecord> visibleBullets,
             List<BulletRecord> createdThisTick,
             Map<Integer, BulletState> playerStates,
             ServerLevel serverLevel,
@@ -329,7 +347,7 @@ public final class BulletSyncService {
         playerStates.clear();
         collectCreatedThisTick(createdThisTick, player, syncRadius, serverLevel,
                 entries, playerStates, seenIds, fullEntryCache);
-        collectActiveFullEntries(allBullets, player, syncRadius, serverLevel,
+        collectActiveFullEntries(visibleBullets, player, syncRadius, serverLevel,
                 entries, playerStates, seenIds, fullEntryCache);
         PacketDistributor.sendToPlayer(player, BulletS2CPacket.fullSync(entries));
     }
@@ -338,7 +356,8 @@ public final class BulletSyncService {
      * Adds all visible active bullets as full entries to the list, skipping
      * ids already present in {@code seenIds} (e.g. from created-this-tick).
      *
-     * @param allBullets   every active bullet in the dimension
+     * @param visibleBullets   the spatial-index-filtered bullets visible to
+     *                         this player (candidate subset)
      * @param player       the player to sync to
      * @param syncRadius   the cull radius in blocks
      * @param serverLevel  the server level (for gun-registry lookups)
@@ -348,7 +367,7 @@ public final class BulletSyncService {
      * @param fullEntryCache the per-tick full-entry conversion cache shared by all players
      */
     private static void collectActiveFullEntries(
-            Collection<BulletRecord> allBullets,
+            Collection<BulletRecord> visibleBullets,
             ServerPlayer player,
             double syncRadius,
             ServerLevel serverLevel,
@@ -356,7 +375,7 @@ public final class BulletSyncService {
             Map<Integer, BulletState> playerStates,
             Set<Integer> seenIds,
             Map<Integer, BulletS2CPacket.FullBulletEntry> fullEntryCache) {
-        for (BulletRecord bullet : allBullets) {
+        for (BulletRecord bullet : visibleBullets) {
             int bulletId = bullet.getBulletId();
             if (seenIds.contains(bulletId) || !isInRenderDistance(bullet, player, syncRadius)) {
                 continue;
@@ -372,7 +391,9 @@ public final class BulletSyncService {
      * short-life creations), updated bullets, and removed bullet ids.
      *
      * @param player         the player to sync to
-     * @param allBullets     every active bullet in the dimension
+     * @param visibleBullets the spatial-index-filtered bullets visible to this
+     *                       player (candidate subset); anything outside this
+     *                       subset is treated as removed for this player
      * @param createdThisTick bullets created this tick (short-life guarantee), or {@code null}
      * @param playerStates   the player's per-bullet sync state (updated in place)
      * @param serverLevel    the server level (for gun-registry lookups)
@@ -380,7 +401,7 @@ public final class BulletSyncService {
      */
     private static void sendDeltaSync(
             ServerPlayer player,
-            Collection<BulletRecord> allBullets,
+            Collection<BulletRecord> visibleBullets,
             List<BulletRecord> createdThisTick,
             Map<Integer, BulletState> playerStates,
             ServerLevel serverLevel,
@@ -390,7 +411,7 @@ public final class BulletSyncService {
         // Nothing to diff and no client state to clean up — skip the
         // per-player collection allocations entirely (no bullets, no
         // created-this-tick, and the player has no tracked bullet state).
-        if (allBullets.isEmpty()
+        if (visibleBullets.isEmpty()
                 && (createdThisTick == null || createdThisTick.isEmpty())
                 && playerStates.isEmpty()) {
             return;
@@ -407,7 +428,7 @@ public final class BulletSyncService {
 
         // 2. Diff active bullets against client state.
         Set<Integer> activeIds = collectActiveBulletDeltas(
-                allBullets, player, syncRadius, serverLevel,
+                visibleBullets, player, syncRadius, serverLevel,
                 newBullets, updatedBullets, playerStates, createdIds, fullEntryCache);
 
         // 3. Removed bullets: in client state but no longer active and not
@@ -463,7 +484,8 @@ public final class BulletSyncService {
      * bullets (full entry) and changed bullets (delta entry) to the
      * appropriate buckets.
      *
-     * @param allBullets    every active bullet in the dimension
+     * @param visibleBullets    the spatial-index-filtered bullets visible to
+     *                          this player (candidate subset)
      * @param player        the player to sync to
      * @param syncRadius    the cull radius in blocks
      * @param serverLevel   the server level (for gun-registry lookups)
@@ -475,7 +497,7 @@ public final class BulletSyncService {
      * @return the set of active bullet ids visible to the player
      */
     private static Set<Integer> collectActiveBulletDeltas(
-            Collection<BulletRecord> allBullets,
+            Collection<BulletRecord> visibleBullets,
             ServerPlayer player,
             double syncRadius,
             ServerLevel serverLevel,
@@ -485,7 +507,7 @@ public final class BulletSyncService {
             Set<Integer> createdIds,
             Map<Integer, BulletS2CPacket.FullBulletEntry> fullEntryCache) {
         Set<Integer> activeIds = new HashSet<>();
-        for (BulletRecord bullet : allBullets) {
+        for (BulletRecord bullet : visibleBullets) {
             int bulletId = bullet.getBulletId();
             if (createdIds.contains(bulletId)) {
                 continue; // handled (and state-recorded) by collectCreatedThisTick
@@ -511,11 +533,14 @@ public final class BulletSyncService {
 
     /**
      * Collects bullet ids that are in the player's client state but no
-     * longer active (and not just created this tick) into the removed-bullets
-     * bucket, and removes them from the client state.
+     * longer in the player's <em>visible subset</em> (and not just created
+     * this tick) into the removed-bullets bucket, and removes them from the
+     * client state. A bullet outside the visible subset — whether because it
+     * was actually removed or because it left the player's render radius — is
+     * treated identically as removed: the client destroys its render object.
      *
      * @param playerStates     the player's per-bullet sync state (pruned)
-     * @param activeIds        ids of bullets still active this tick
+     * @param activeIds        ids of bullets still in this player's visible subset
      * @param createdIds       ids created this tick (excluded from removal)
      * @param removedBulletIds the removed-bullets bucket to populate
      */
