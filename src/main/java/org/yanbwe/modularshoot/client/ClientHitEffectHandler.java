@@ -27,7 +27,7 @@ import org.yanbwe.modularshoot.network.BulletHitS2CPacket.HitType;
  * cancelling it skips the default sound entirely.</p>
  *
  * <p><b>Client-only.</b> Referenced solely from the S→C payload handler in
- * {@link org.yanbwe.modularshoot.network.ModularShootPayloads}, invoked only
+ * {@link org.yanbwe.modularshoot.client.ClientPayloadHandlers}, invoked only
  * on the physical client via {@code enqueueWork}. Uses only vanilla sound
  * resources as placeholders (设计文档 §客户端资源).</p>
  *

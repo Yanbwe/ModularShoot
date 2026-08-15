@@ -91,7 +91,7 @@ public final class ClientGunDataStore {
      * </ul>
      *
      * <p>Called on the main client thread via {@code enqueueWork} from
-     * {@link org.yanbwe.modularshoot.network.ModularShootPayloads#handleGunSyncS2C},
+     * {@link org.yanbwe.modularshoot.client.ClientPayloadHandlers#handleGunSyncS2C},
      * which only forwards snapshots whose {@code gunInstanceUuid} matches the
      * local main-hand gun (see
      * {@link org.yanbwe.modularshoot.client.ClientGunSyncHandler#isForMainHand}).</p>

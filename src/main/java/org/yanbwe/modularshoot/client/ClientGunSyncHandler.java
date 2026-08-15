@@ -32,13 +32,13 @@ import org.yanbwe.modularshoot.network.GunSyncS2CPacket;
  * plugins, {@code modifierVersion} and {@code state}) are overwritten from
  * the packet.</p>
  *
- * <p><b>Client-only.</b> Referenced solely from the S→C payload handler lambda
- * in {@link org.yanbwe.modularshoot.network.ModularShootPayloads}, which is
+ * <p><b>Client-only.</b> Referenced solely from the S→C payload handler
+ * in {@link org.yanbwe.modularshoot.client.ClientPayloadHandlers}, which is
  * invoked only on the physical client. The class is never loaded on a
  * dedicated server, matching the pattern of
- * {@link org.yanbwe.modularshoot.client.render.PluginOverlayCompositor} and
- * {@link org.yanbwe.modularshoot.client.render.ShootTextureResolver} (client
- * classes without an event-bus subscription).</p>
+ * {@link org.yanbwe.modularshoot.client.ClientGunDataStore} and the other
+ * client handler classes ({@code ClientHitEffectHandler},
+ * {@code PlayerShootStateManager}).</p>
  *
  * @see GunSyncS2CPacket
  * @see GunData

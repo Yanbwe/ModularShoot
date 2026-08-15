@@ -3,21 +3,11 @@ package org.yanbwe.modularshoot.network;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.api.event.ActionEvent;
-import org.yanbwe.modularshoot.bullet.BulletManager;
-import org.yanbwe.modularshoot.client.ClientGunDataStore;
-import org.yanbwe.modularshoot.client.ClientGunSyncHandler;
-import org.yanbwe.modularshoot.client.ClientHitEffectHandler;
-import org.yanbwe.modularshoot.client.event.ClientBulletHitEvent;
-import org.yanbwe.modularshoot.client.PlayerShootStateManager;
-import org.yanbwe.modularshoot.client.render.BulletRenderManager;
+import org.yanbwe.modularshoot.client.ClientPayloadHandlers;
 import org.yanbwe.modularshoot.shooting.ShootPacketHandler;
-import org.yanbwe.modularshoot.state.ModularShootAttachmentTypes;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.common.NeoForge;
@@ -46,6 +36,23 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
  * <p><b>Threading:</b> {@link PayloadRegistrar} wraps every handler so it
  * executes on the main game thread by default, so handlers below may safely
  * touch world/player state without {@link IPayloadContext#enqueueWork(Runnable)}.</p>
+ *
+ * <p><b>Client handler bundling — intentional deviation from 计划步骤 2
+ * (任务 6.2):</b> this common class directly imports
+ * {@link org.yanbwe.modularshoot.client.ClientPayloadHandlers}, the client-side
+ * home of the S→C handler implementations. This is a deliberate deviation from
+ * the original plan that would have bound those handlers purely on the client
+ * dist: NeoForge requires the <em>server</em> side to also register every
+ * {@code playToClient} payload in order to send it, so the registrations must
+ * live where both sides run. Dedicated-server safety is preserved by
+ * <em>lazy class loading</em>: each binding below forwards through a
+ * lazily-invoked lambda body, so {@code ClientPayloadHandlers} (and thus
+ * {@code net.minecraft.client} classes) is only ever loaded when an S→C payload
+ * is actually handled on the physical client — never during registration on a
+ * dedicated server. Should this ever change to a client-only binding, the guard
+ * must be switched to {@code FMLEnvironment.dist} (see the architecture-guard
+ * test in {@code network}), which is why this deviation is recorded explicitly
+ * rather than silently mirrored.</p>
  */
 @EventBusSubscriber(modid = ModularShoot.MODID)
 public final class ModularShootPayloads {
@@ -229,173 +236,79 @@ public final class ModularShootPayloads {
     }
 
     // ------------------------------------------------------------------
-    //  S → C  handler stubs (filled in by later M4 subtasks)
+    //  S → C  handler binding
     // ------------------------------------------------------------------
 
     /**
-     * Builds the handler for {@link BulletS2CPacket}.
-     *
-     * <p>Delegates to {@link BulletRenderManager#handlePacket(BulletS2CPacket)}
-     * on the main client thread via
-     * {@link IPayloadContext#enqueueWork(Runnable)}. The manager is obtained
-     * through {@link BulletManager#getClientLevel(Level)} (设计文档
-     * §渲染对象与渲染管理器, line 1260) using the client {@code Level} from
-     * {@link Minecraft#level}, keeping a single entry point for bullet-manager
-     * lookups. The manager reconciles its render-object map with the packet:
-     * creating new
-     * {@link org.yanbwe.modularshoot.client.render.BulletRenderObject}s,
-     * updating existing ones, and removing those whose bullets have
-     * expired.</p>
+     * <p><b>Dist-split note (任务 6.2 — 客户端 payload handler 移出 common):</b>
+     * the S→C handler <em>implementations</em> live in the client-side
+     * {@link ClientPayloadHandlers} class, which references Minecraft client
+     * classes. Each binding below forwards to that class through a
+     * <em>lazily-invoked lambda body</em> rather than calling it directly, so
+     * {@link ClientPayloadHandlers} is only loaded when the handler actually
+     * executes on the physical client — never during registration on a
+     * dedicated server. This preserves the behavioural parity of the previous
+     * inline handlers while keeping the common network class free of client
+     * imports.</p>
+     */
+
+    /**
+     * Builds the handler for {@link BulletS2CPacket} (see
+     * {@link ClientPayloadHandlers#handleBulletS2C(BulletS2CPacket, IPayloadContext)}).
      *
      * @return the payload handler
      */
     private static IPayloadHandler<BulletS2CPacket> handleBulletS2C() {
-        return (payload, context) -> {
-            context.enqueueWork(() -> {
-                Level level = Minecraft.getInstance().level;
-                if (level != null) {
-                    BulletManager.getClientLevel(level).handlePacket(payload);
-                }
-            });
-        };
+        return (payload, context) -> ClientPayloadHandlers.handleBulletS2C(payload, context);
     }
 
     /**
-     * Builds the handler for {@link BulletHitS2CPacket}.
-     *
-     * <p>Delegates to {@link ClientHitEffectHandler#playHitEffect} on the
-     * main client thread via {@link IPayloadContext#enqueueWork(Runnable)}.
-     * The handler posts a {@link ClientBulletHitEvent} (extensions may
-     * cancel it to take over hit effects entirely) and plays a data-driven
-     * sound resolved by the server from the gun definition's {@code sounds}
-     * slots ({@code payload.soundId()}; {@code null} means silent) — no
-     * particles are spawned by the framework — without mutating any game
-     * state: the server has already resolved damage authoritatively
-     * (设计文档 §BulletHitS2CPacket 客户端处理, lines 2033-2035).</p>
+     * Builds the handler for {@link BulletHitS2CPacket} (see
+     * {@link ClientPayloadHandlers#handleBulletHitS2C(BulletHitS2CPacket, IPayloadContext)}).
      *
      * @return the payload handler
      */
     private static IPayloadHandler<BulletHitS2CPacket> handleBulletHitS2C() {
-        return (payload, context) -> {
-            context.enqueueWork(() -> {
-                Minecraft mc = Minecraft.getInstance();
-                if (mc.level == null) {
-                    return;
-                }
-                Vec3 hitPos = new Vec3(payload.hitX(), payload.hitY(), payload.hitZ());
-                ClientHitEffectHandler.playHitEffect(
-                        mc.level, hitPos, payload.hitType(), payload.hitEntityId(),
-                        payload.soundId());
-            });
-        };
+        return (payload, context) -> ClientPayloadHandlers.handleBulletHitS2C(payload, context);
     }
 
     /**
-     * Builds the handler for {@link BulletHitBatchS2CPacket}.
-     *
-     * <p>Runs on the main client thread via
-     * {@link IPayloadContext#enqueueWork(Runnable)} and dispatches each
-     * contained hit through the exact same {@link ClientHitEffectHandler}
-     * effect pipeline as the single-hit {@link BulletHitS2CPacket}, so the
-     * batched path is fully behaviour-compatible with the unbatched one — the
-     * only difference is that several same-tick hits arrive in one payload
-     * (阶段 2 / 任务 2.4 命中广播聚合).</p>
+     * Builds the handler for {@link BulletHitBatchS2CPacket} (see
+     * {@link ClientPayloadHandlers#handleBulletHitBatchS2C(BulletHitBatchS2CPacket, IPayloadContext)}).
      *
      * @return the payload handler
      */
     private static IPayloadHandler<BulletHitBatchS2CPacket> handleBulletHitBatchS2C() {
-        return (payload, context) -> {
-            context.enqueueWork(() -> {
-                Minecraft mc = Minecraft.getInstance();
-                if (mc.level == null) {
-                    return;
-                }
-                for (BulletHitS2CPacket hit : payload.hits()) {
-                    Vec3 hitPos = new Vec3(hit.hitX(), hit.hitY(), hit.hitZ());
-                    ClientHitEffectHandler.playHitEffect(
-                            mc.level, hitPos, hit.hitType(), hit.hitEntityId(), hit.soundId());
-                }
-            });
-        };
+        return (payload, context) -> ClientPayloadHandlers.handleBulletHitBatchS2C(payload, context);
     }
 
     /**
-     * Builds the handler for {@link GunSyncS2CPacket}.
-     *
-     * <p>Delegates to two client-side consumers on the main client thread
-     * via {@link IPayloadContext#enqueueWork(Runnable)}:</p>
-     * <ol>
-     *   <li>{@link ClientGunSyncHandler#handlePacket} rebuilds the local
-     *       player's main-hand
-     *       {@link org.yanbwe.modularshoot.component.GunData} from the
-     *       packet's plugin list, {@code modifierVersion} and per-gun
-     *       {@code state} map, keeping the client's gun model aligned with
-     *       the server (and serving as a fallback data source for
-     *       consumers).</li>
-     *   <li>{@link ClientGunDataStore#handleSync} stores the same snapshot
-     *       in a dedicated singleton so the plugin overlay compositor and
-     *       state tooltip builder can read from an explicit sync channel
-     *       (设计文档 §GunSyncS2CPacket 客户端用途, lines 2054-2056).</li>
-     * </ol>
-     *
-     * <p>Both consumers are gated behind
-     * {@link ClientGunSyncHandler#isForMainHand}: a snapshot whose
-     * {@code gunInstanceUuid} no longer matches the current main-hand gun
-     * (stale sync arriving after a weapon switch) is dropped wholesale so
-     * neither the stack component nor the store is contaminated with the
-     * previous gun's data (描边污染修复).</p>
+     * Builds the handler for {@link GunSyncS2CPacket} (see
+     * {@link ClientPayloadHandlers#handleGunSyncS2C(GunSyncS2CPacket, IPayloadContext)}).
      *
      * @return the payload handler
      */
     private static IPayloadHandler<GunSyncS2CPacket> handleGunSyncS2C() {
-        return (payload, context) -> {
-            context.enqueueWork(() -> {
-                if (ClientGunSyncHandler.isForMainHand(payload)) {
-                    ClientGunSyncHandler.handlePacket(payload);
-                    ClientGunDataStore.getInstance().handleSync(payload);
-                }
-            });
-        };
+        return (payload, context) -> ClientPayloadHandlers.handleGunSyncS2C(payload, context);
     }
 
     /**
-     * Builds the handler for {@link ShootAnimS2CPacket}.
-     *
-     * <p>Delegates to {@link PlayerShootStateManager#handlePacket} on the main
-     * client thread via {@link IPayloadContext#enqueueWork}, which updates the
-     * per-player animation state for the remote player identified by the
-     * packet. The local player's own state is maintained with zero delay by
-     * the manager itself and is ignored by {@code handlePacket}.</p>
+     * Builds the handler for {@link ShootAnimS2CPacket} (see
+     * {@link ClientPayloadHandlers#handleShootAnimS2C(ShootAnimS2CPacket, IPayloadContext)}).
      *
      * @return the payload handler
      */
     private static IPayloadHandler<ShootAnimS2CPacket> handleShootAnimS2C() {
-        return (payload, context) -> {
-            context.enqueueWork(() -> PlayerShootStateManager.getInstance().handlePacket(payload));
-        };
+        return (payload, context) -> ClientPayloadHandlers.handleShootAnimS2C(payload, context);
     }
 
     /**
-     * Builds the handler for {@link PlayerStateS2CPacket}.
-     *
-     * <p>Applies the throttled per-player state sync on the main client thread
-     * via {@link IPayloadContext#enqueueWork(Runnable)}: the received
-     * {@link org.yanbwe.modularshoot.state.PlayerStateData} is installed onto
-     * the local player through {@code setData}, so subsequent
-     * {@code PlayerState.of(player)} reads reflect the server's
-     * eventually-consistent state (任务 3.3 — PlayerState 同步节流).</p>
+     * Builds the handler for {@link PlayerStateS2CPacket} (see
+     * {@link ClientPayloadHandlers#handlePlayerStateS2C(PlayerStateS2CPacket, IPayloadContext)}).
      *
      * @return the payload handler
      */
     private static IPayloadHandler<PlayerStateS2CPacket> handlePlayerStateS2C() {
-        return (payload, context) -> {
-            context.enqueueWork(() -> {
-                Minecraft mc = Minecraft.getInstance();
-                if (mc.player != null) {
-                    mc.player.setData(
-                            ModularShootAttachmentTypes.PLAYER_STATE.get(), payload.data());
-                }
-            });
-        };
+        return (payload, context) -> ClientPayloadHandlers.handlePlayerStateS2C(payload, context);
     }
 }
