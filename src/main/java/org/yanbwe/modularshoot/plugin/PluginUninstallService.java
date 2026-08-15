@@ -11,7 +11,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.common.NeoForge;
 import org.jetbrains.annotations.Nullable;
-import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.attribute.AttributeModifierService;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
@@ -19,6 +18,7 @@ import org.yanbwe.modularshoot.component.PluginInstance;
 import org.yanbwe.modularshoot.degradation.PluginDegradationHandler;
 import org.yanbwe.modularshoot.plugin.event.PostPluginUninstallEvent;
 import org.yanbwe.modularshoot.plugin.event.PrePluginUninstallEvent;
+import org.yanbwe.modularshoot.util.GunRecognition;
 
 /**
  * Uninstall API for removing plugins from a gun stack.
@@ -430,7 +430,7 @@ public final class PluginUninstallService {
      */
     @Nullable
     private static GunData readGunData(ItemStack gun, RegistryAccess registryAccess) {
-        if (!ModularShootAPI.isGun(gun, registryAccess)) {
+        if (!GunRecognition.isGun(gun, registryAccess)) {
             return null;
         }
         return gun.get(ModularShootDataComponents.GUN_DATA.get());

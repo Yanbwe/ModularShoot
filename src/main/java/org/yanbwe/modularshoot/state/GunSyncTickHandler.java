@@ -13,10 +13,10 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShoot;
-import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.network.GunSyncService;
+import org.yanbwe.modularshoot.util.GunRecognition;
 
 /**
  * Server-side tick handler that flushes throttled per-gun state syncs
@@ -181,7 +181,7 @@ public final class GunSyncTickHandler {
      */
     private static @Nullable UUID readMainHandGunUuid(Player player) {
         ItemStack mainHand = player.getMainHandItem();
-        if (!ModularShootAPI.isGun(mainHand, player.registryAccess())) {
+        if (!GunRecognition.isGun(mainHand, player.registryAccess())) {
             return null;
         }
         GunData gunData = mainHand.get(ModularShootDataComponents.GUN_DATA.get());

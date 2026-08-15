@@ -16,7 +16,6 @@ import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShoot;
-import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.attribute.AttributeModifierService;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
@@ -25,6 +24,7 @@ import org.yanbwe.modularshoot.plugin.event.PostPluginInstallEvent;
 import org.yanbwe.modularshoot.plugin.event.PostPluginUninstallEvent;
 import org.yanbwe.modularshoot.shooting.FireRateController;
 import org.yanbwe.modularshoot.shooting.ModifierVersionAntiCheat;
+import org.yanbwe.modularshoot.util.GunRecognition;
 
 /**
  * Server-side gun-data sync orchestrator (设计文档 §GunSyncS2CPacket 触发时机,
@@ -273,7 +273,7 @@ public final class GunSyncService {
     public static void syncToPlayer(ServerPlayer player) {
         Objects.requireNonNull(player, "player");
         ItemStack mainHand = player.getMainHandItem();
-        if (!ModularShootAPI.isGun(mainHand, player.registryAccess())) {
+        if (!GunRecognition.isGun(mainHand, player.registryAccess())) {
             return;
         }
         @Nullable GunData gunData = mainHand.get(ModularShootDataComponents.GUN_DATA.get());
@@ -302,7 +302,7 @@ public final class GunSyncService {
     public static void syncStateToPlayer(ServerPlayer player) {
         Objects.requireNonNull(player, "player");
         ItemStack mainHand = player.getMainHandItem();
-        if (!ModularShootAPI.isGun(mainHand, player.registryAccess())) {
+        if (!GunRecognition.isGun(mainHand, player.registryAccess())) {
             return;
         }
         @Nullable GunData gunData = mainHand.get(ModularShootDataComponents.GUN_DATA.get());
@@ -449,7 +449,7 @@ public final class GunSyncService {
      */
     private static @Nullable UUID readMainHandGunUuid(ServerPlayer player) {
         ItemStack mainHand = player.getMainHandItem();
-        if (!ModularShootAPI.isGun(mainHand, player.registryAccess())) {
+        if (!GunRecognition.isGun(mainHand, player.registryAccess())) {
             return null;
         }
         @Nullable GunData gunData = mainHand.get(ModularShootDataComponents.GUN_DATA.get());

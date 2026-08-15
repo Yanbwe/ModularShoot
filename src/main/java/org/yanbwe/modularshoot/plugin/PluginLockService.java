@@ -5,11 +5,11 @@ import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.world.item.ItemStack;
-import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.attribute.AttributeModifierService;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginInstance;
+import org.yanbwe.modularshoot.util.GunRecognition;
 
 /**
  * Runtime lock API for installed plugins on a gun stack.
@@ -143,7 +143,7 @@ public final class PluginLockService {
      */
     private static boolean applyLockState(
             ItemStack gun, UUID instanceUuid, boolean locked, RegistryAccess registryAccess) {
-        if (!ModularShootAPI.isGun(gun, registryAccess)) {
+        if (!GunRecognition.isGun(gun, registryAccess)) {
             return false;
         }
         GunData gunData = gun.get(ModularShootDataComponents.GUN_DATA.get());
@@ -184,7 +184,7 @@ public final class PluginLockService {
      *         the plugin is absent, or the plugin is unlocked
      */
     public static boolean isPluginLocked(ItemStack gun, UUID instanceUuid) {
-        if (!ModularShootAPI.isGun(gun)) {
+        if (!GunRecognition.isGun(gun)) {
             return false;
         }
         GunData gunData = gun.get(ModularShootDataComponents.GUN_DATA.get());

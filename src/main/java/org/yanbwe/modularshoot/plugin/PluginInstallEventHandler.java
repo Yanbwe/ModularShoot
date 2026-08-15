@@ -16,11 +16,11 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.ItemStackedOnOtherEvent;
-import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 import org.yanbwe.modularshoot.registry.gun.GunSounds;
+import org.yanbwe.modularshoot.util.GunRecognition;
 
 /**
  * Container-GUI right-click handler that triggers plugin installation,
@@ -177,7 +177,7 @@ public final class PluginInstallEventHandler {
             return false;
         }
         // Slot item must be a binding-aware gun.
-        if (!ModularShootAPI.isGun(event.getStackedOnItem(), player.registryAccess())) {
+        if (!GunRecognition.isGun(event.getStackedOnItem(), player.registryAccess())) {
             return false;
         }
         // Slot must allow modification (Apotheosis guard).
@@ -280,7 +280,7 @@ public final class PluginInstallEventHandler {
      * @return {@code true} when the stack is a plugin via either channel
      */
     private static boolean isPluginStack(ItemStack stack, RegistryAccess access) {
-        return ModularShootAPI.resolvePluginId(stack, access).isPresent();
+        return GunRecognition.resolvePluginId(stack, access).isPresent();
     }
 
     /**

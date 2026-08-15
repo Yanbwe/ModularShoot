@@ -9,7 +9,7 @@ import net.neoforged.neoforge.event.entity.player.AttackEntityEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 
 import org.yanbwe.modularshoot.ModularShoot;
-import org.yanbwe.modularshoot.ModularShootAPI;
+import org.yanbwe.modularshoot.util.GunRecognition;
 
 /**
  * Intercepts vanilla left-click attacks when the main-hand item is a gun,
@@ -21,7 +21,7 @@ import org.yanbwe.modularshoot.ModularShootAPI;
  * gate those actions — {@link AttackEntityEvent} (attacking an entity) and
  * {@link PlayerInteractEvent.LeftClickBlock} (breaking a block) — whenever the
  * player's main hand holds a gun, as determined by
- * {@link ModularShootAPI#isGun(ItemStack, RegistryAccess)}.</p>
+ * {@link GunRecognition#isGun(ItemStack, RegistryAccess)}.</p>
  *
  * <p>Both listeners are registered on the NeoForge game event bus
  * ({@code NeoForge.EVENT_BUS}) via {@link EventBusSubscriber} with no
@@ -36,7 +36,7 @@ import org.yanbwe.modularshoot.ModularShootAPI;
  * {@code ClientShootSender} and adjudicated server-side by the shooting
  * engine, keeping this class free of rate-limiting or state.</p>
  *
- * @see ModularShootAPI#isGun(ItemStack, RegistryAccess)
+ * @see GunRecognition#isGun(ItemStack, RegistryAccess)
  */
 @EventBusSubscriber(modid = ModularShoot.MODID)
 public final class LeftClickInterceptHandler {
@@ -86,7 +86,7 @@ public final class LeftClickInterceptHandler {
     /**
      * Checks whether the player's main-hand item is a framework gun.
      *
-     * <p>Delegates to {@link ModularShootAPI#isGun(ItemStack, RegistryAccess)}
+     * <p>Delegates to {@link GunRecognition#isGun(ItemStack, RegistryAccess)}
      * after reading the main-hand stack, passing the player's runtime
      * {@link RegistryAccess} so datapack-bound guns are recognized. Extracted
      * as a helper so both intercept handlers share a single source of truth
@@ -97,6 +97,6 @@ public final class LeftClickInterceptHandler {
      */
     private static boolean isMainHandGun(Player player) {
         ItemStack mainHand = player.getMainHandItem();
-        return ModularShootAPI.isGun(mainHand, player.registryAccess());
+        return GunRecognition.isGun(mainHand, player.registryAccess());
     }
 }

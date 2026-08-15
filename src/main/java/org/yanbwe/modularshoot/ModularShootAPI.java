@@ -58,6 +58,7 @@ import org.yanbwe.modularshoot.state.PlayerState;
 import org.yanbwe.modularshoot.trait.TraitCallbacks;
 import org.yanbwe.modularshoot.trait.TraitHookRegistry;
 import org.yanbwe.modularshoot.trait.TraitHookType;
+import org.yanbwe.modularshoot.util.GunRecognition;
 import org.yanbwe.modularshoot.util.GunResolver;
 import org.yanbwe.modularshoot.variant.VariantContributor;
 import org.yanbwe.modularshoot.variant.VariantContributorRegistry;
@@ -121,7 +122,7 @@ public final class ModularShootAPI {
      * @return {@code true} when the stack is a plugin via either channel
      */
     public static boolean isPlugin(ItemStack stack) {
-        return isPlugin(stack, RegistryAccess.EMPTY, false);
+        return GunRecognition.isPlugin(stack);
     }
 
     /**
@@ -141,7 +142,7 @@ public final class ModularShootAPI {
      * @return {@code true} when the stack is a plugin via either channel
      */
     public static boolean isPlugin(ItemStack stack, RegistryAccess access) {
-        return isPlugin(stack, access, true);
+        return GunRecognition.isPlugin(stack, access);
     }
 
     /**
@@ -165,11 +166,7 @@ public final class ModularShootAPI {
             ItemStack stack, RegistryAccess access) {
         Objects.requireNonNull(stack, "stack");
         Objects.requireNonNull(access, "access");
-        PluginData pluginData = stack.get(ModularShootDataComponents.PLUGIN_DATA.get());
-        if (pluginData != null) {
-            return Optional.of(pluginData.pluginId());
-        }
-        return findBoundPluginId(stack, access, true);
+        return GunRecognition.resolvePluginId(stack, access);
     }
 
     /**
@@ -334,48 +331,6 @@ public final class ModularShootAPI {
     }
 
     /**
-     * Removes a single plugin identified by its instance uuid from a gun stack,
-     * with an explicit {@link RegistryAccess}.
-     *
-     * <p>This overload is retained for callers that already hold a
-     * {@link RegistryAccess} or need a {@code null} player context (e.g. the
-     * gun is in a chest or processed by automation). New callers should prefer
-     * {@link #uninstallPlugin(ItemStack, UUID, Player, boolean, boolean)}
-     * which derives the registry view from the player and matches the design
-     * document signature (设计文档 §API 签名).</p>
-     *
-     * @param gun            the gun item stack to modify (mutated on success);
-     *                       must not be {@code null}
-     * @param instanceUuid   the instance uuid of the plugin to remove; must not
-     *                       be {@code null}
-     * @param player         the player context for item return, or {@code null}
-     *                       when triggered by a non-player source
-     * @param force          {@code true} to ignore the {@code locked} flag
-     * @param returnItems    {@code true} to return the removed plugin as an item
-     *                       stack to {@code player} (when non-null)
-     * @param registryAccess the runtime registry view (for modifier refresh);
-     *                       must not be {@code null}
-     * @return an {@link UninstallResult} describing the outcome
-     * @deprecated Use {@link #uninstallPlugin(ItemStack, UUID, Player, boolean, boolean)}
-     *             instead; this overload will be removed in a future release.
-     */
-    @Deprecated
-    public static UninstallResult uninstallPlugin(
-            ItemStack gun,
-            UUID instanceUuid,
-            @Nullable Player player,
-            boolean force,
-            boolean returnItems,
-            RegistryAccess registryAccess
-    ) {
-        Objects.requireNonNull(gun, "gun");
-        Objects.requireNonNull(instanceUuid, "instanceUuid");
-        Objects.requireNonNull(registryAccess, "registryAccess");
-        return PluginUninstallService.uninstallPlugin(
-                gun, instanceUuid, player, force, returnItems, registryAccess);
-    }
-
-    /**
      * Removes one randomly chosen uninstallable plugin from a gun stack.
      *
      * <p>Delegates to
@@ -406,40 +361,6 @@ public final class ModularShootAPI {
         Objects.requireNonNull(gun, "gun");
         Objects.requireNonNull(player, "player");
         RegistryAccess registryAccess = player.level().registryAccess();
-        return PluginUninstallService.uninstallRandomPlugin(
-                gun, player, force, returnItems, registryAccess);
-    }
-
-    /**
-     * Removes one randomly chosen uninstallable plugin from a gun stack, with
-     * an explicit {@link RegistryAccess}.
-     *
-     * <p>This overload is retained for callers that already hold a
-     * {@link RegistryAccess} or need a {@code null} player context. New
-     * callers should prefer
-     * {@link #uninstallRandomPlugin(ItemStack, Player, boolean, boolean)}
-     * which derives the registry view from the player (设计文档 §API 签名).</p>
-     *
-     * @param gun            the gun item stack to modify (mutated on success);
-     *                       must not be {@code null}
-     * @param player         the player context for item return, or {@code null}
-     * @param force          {@code true} to ignore the {@code locked} flag
-     * @param returnItems    {@code true} to return the removed plugin item
-     * @param registryAccess the runtime registry view; must not be {@code null}
-     * @return an {@link UninstallResult} describing the outcome
-     * @deprecated Use {@link #uninstallRandomPlugin(ItemStack, Player, boolean, boolean)}
-     *             instead; this overload will be removed in a future release.
-     */
-    @Deprecated
-    public static UninstallResult uninstallRandomPlugin(
-            ItemStack gun,
-            @Nullable Player player,
-            boolean force,
-            boolean returnItems,
-            RegistryAccess registryAccess
-    ) {
-        Objects.requireNonNull(gun, "gun");
-        Objects.requireNonNull(registryAccess, "registryAccess");
         return PluginUninstallService.uninstallRandomPlugin(
                 gun, player, force, returnItems, registryAccess);
     }
@@ -486,45 +407,6 @@ public final class ModularShootAPI {
     }
 
     /**
-     * Removes every plugin whose {@code installedTypeId} matches the given
-     * category id from a gun stack, with an explicit {@link RegistryAccess}.
-     *
-     * <p>This overload is retained for callers that already hold a
-     * {@link RegistryAccess} or need a {@code null} player context. New
-     * callers should prefer
-     * {@link #uninstallPluginsByType(ItemStack, Player, ResourceLocation, boolean, boolean)}
-     * which derives the registry view from the player (设计文档 §API 签名).</p>
-     *
-     * @param gun            the gun item stack to modify (mutated on success);
-     *                       must not be {@code null}
-     * @param player         the player context for item return, or {@code null}
-     * @param pluginTypeId   the category id to match against; must not be
-     *                       {@code null}
-     * @param force          {@code true} to ignore the {@code locked} flag
-     * @param returnItems    {@code true} to return each removed plugin item
-     * @param registryAccess the runtime registry view; must not be {@code null}
-     * @return a list of {@link UninstallResult}, one per matching plugin;
-     *         empty when the stack is invalid or no plugin matches
-     * @deprecated Use {@link #uninstallPluginsByType(ItemStack, Player, ResourceLocation, boolean, boolean)}
-     *             instead; this overload will be removed in a future release.
-     */
-    @Deprecated
-    public static List<UninstallResult> uninstallPluginsByType(
-            ItemStack gun,
-            @Nullable Player player,
-            ResourceLocation pluginTypeId,
-            boolean force,
-            boolean returnItems,
-            RegistryAccess registryAccess
-    ) {
-        Objects.requireNonNull(gun, "gun");
-        Objects.requireNonNull(pluginTypeId, "pluginTypeId");
-        Objects.requireNonNull(registryAccess, "registryAccess");
-        return PluginUninstallService.uninstallPluginsByType(
-                gun, player, pluginTypeId, force, returnItems, registryAccess);
-    }
-
-    /**
      * Removes every installed plugin from a gun stack.
      *
      * <p>Delegates to
@@ -556,41 +438,6 @@ public final class ModularShootAPI {
         Objects.requireNonNull(gun, "gun");
         Objects.requireNonNull(player, "player");
         RegistryAccess registryAccess = player.level().registryAccess();
-        return PluginUninstallService.uninstallAllPlugins(
-                gun, player, force, returnItems, registryAccess);
-    }
-
-    /**
-     * Removes every installed plugin from a gun stack, with an explicit
-     * {@link RegistryAccess}.
-     *
-     * <p>This overload is retained for callers that already hold a
-     * {@link RegistryAccess} or need a {@code null} player context. New
-     * callers should prefer
-     * {@link #uninstallAllPlugins(ItemStack, Player, boolean, boolean)}
-     * which derives the registry view from the player (设计文档 §API 签名).</p>
-     *
-     * @param gun            the gun item stack to modify (mutated on success);
-     *                       must not be {@code null}
-     * @param player         the player context for item return, or {@code null}
-     * @param force          {@code true} to ignore the {@code locked} flag
-     * @param returnItems    {@code true} to return each removed plugin item
-     * @param registryAccess the runtime registry view; must not be {@code null}
-     * @return a list of {@link UninstallResult}, one per installed plugin;
-     *         empty when the stack is invalid or has no plugins
-     * @deprecated Use {@link #uninstallAllPlugins(ItemStack, Player, boolean, boolean)}
-     *             instead; this overload will be removed in a future release.
-     */
-    @Deprecated
-    public static List<UninstallResult> uninstallAllPlugins(
-            ItemStack gun,
-            @Nullable Player player,
-            boolean force,
-            boolean returnItems,
-            RegistryAccess registryAccess
-    ) {
-        Objects.requireNonNull(gun, "gun");
-        Objects.requireNonNull(registryAccess, "registryAccess");
         return PluginUninstallService.uninstallAllPlugins(
                 gun, player, force, returnItems, registryAccess);
     }
@@ -702,36 +549,6 @@ public final class ModularShootAPI {
         Objects.requireNonNull(instanceUuid, "instanceUuid");
         Objects.requireNonNull(registryAccess, "registryAccess");
         PluginLockService.setPluginLocked(gun, instanceUuid, locked, registryAccess);
-    }
-
-    /**
-     * Locks or unlocks a specific installed plugin instance on a gun stack
-     * without refreshing the {@code ATTRIBUTE_MODIFIERS} component.
-     *
-     * <p>Delegates to {@link PluginLockService#setPluginLocked}. The operation
-     * is a no-op when the stack is not a gun, carries no gun data, the plugin is
-     * absent, or the plugin is already in the requested lock state.</p>
-     *
-     * <p>Because a lock-state change does not alter which modifiers are active,
-     * skipping the refresh is safe in practice. Callers that have a
-     * {@link RegistryAccess} should prefer
-     * {@link #setPluginLocked(ItemStack, UUID, boolean, RegistryAccess)} to
-     * fully honour the design's refresh-trigger-point list.</p>
-     *
-     * @param gun          the gun item stack to modify (mutated on success);
-     *                     must not be {@code null}
-     * @param instanceUuid the instance uuid of the plugin to lock/unlock; must
-     *                     not be {@code null}
-     * @param locked       {@code true} to lock, {@code false} to unlock
-     * @deprecated Use {@link #setPluginLocked(ItemStack, UUID, boolean, RegistryAccess)}
-     *             to ensure the {@code ATTRIBUTE_MODIFIERS} component is
-     *             refreshed after the lock change.
-     */
-    @Deprecated
-    public static void setPluginLocked(ItemStack gun, UUID instanceUuid, boolean locked) {
-        Objects.requireNonNull(gun, "gun");
-        Objects.requireNonNull(instanceUuid, "instanceUuid");
-        PluginLockService.setPluginLocked(gun, instanceUuid, locked);
     }
 
     /**
@@ -1019,7 +836,7 @@ public final class ModularShootAPI {
      * @return {@code true} when the stack is a gun via either channel
      */
     public static boolean isGun(ItemStack stack) {
-        return isGun(stack, RegistryAccess.EMPTY, false);
+        return GunRecognition.isGun(stack);
     }
 
     /**
@@ -1039,7 +856,7 @@ public final class ModularShootAPI {
      * @return {@code true} when the stack is a gun via either channel
      */
     public static boolean isGun(ItemStack stack, RegistryAccess access) {
-        return isGun(stack, access, true);
+        return GunRecognition.isGun(stack, access);
     }
 
     // ---- Item binding registration (Java API) ----------------------------
@@ -1114,11 +931,7 @@ public final class ModularShootAPI {
             ItemStack stack, RegistryAccess access) {
         Objects.requireNonNull(stack, "stack");
         Objects.requireNonNull(access, "access");
-        GunData gunData = stack.get(ModularShootDataComponents.GUN_DATA.get());
-        if (gunData != null) {
-            return Optional.of(gunData.gunId());
-        }
-        return findBoundGunId(stack, access, true);
+        return GunRecognition.resolveGunId(stack, access);
     }
 
     /**
@@ -1190,7 +1003,7 @@ public final class ModularShootAPI {
     public static GunState getState(ItemStack gun, Player player) {
         Objects.requireNonNull(gun, "gun");
         Objects.requireNonNull(player, "player");
-        if (!isGun(gun, player.registryAccess())) {
+        if (!GunRecognition.isGun(gun, player.registryAccess())) {
             return null;
         }
         return GunState.of(gun, player);
@@ -1441,64 +1254,5 @@ public final class ModularShootAPI {
             snapshot.setDamageType(ModularShootDamageTypes.holderOrThrow(level.registryAccess()));
         }
         return BulletManager.get(level).fireBullet(level, position, direction, snapshot, shooter);
-    }
-
-    // ---- Dual-channel recognition helpers (private) ----------------------
-
-    /**
-     * Shared gun-recognition core for the {@link #isGun(ItemStack)} /
-     * {@link #isGun(ItemStack, RegistryAccess)} overloads (设计规格 物品绑定系统
-     * §4.1): component channel first ({@code gun_data}), binding channel as
-     * fallback. {@code includeDatapack} selects the degraded query
-     * (Java-API bindings only, {@link RegistryAccess#EMPTY}) or the full
-     * query (Java API + datapack) against the caller's registry view.
-     */
-    private static boolean isGun(ItemStack stack, RegistryAccess access, boolean includeDatapack) {
-        Objects.requireNonNull(stack, "stack");
-        Objects.requireNonNull(access, "access");
-        return stack.has(ModularShootDataComponents.GUN_DATA.get())
-                || findBoundGunId(stack, access, includeDatapack).isPresent();
-    }
-
-    /**
-     * Shared plugin-recognition core for the {@link #isPlugin(ItemStack)} /
-     * {@link #isPlugin(ItemStack, RegistryAccess)} overloads (设计规格 物品绑定
-     * 系统 §4.1): component channel first ({@code plugin_data}), binding
-     * channel as fallback. See {@link #isGun(ItemStack, RegistryAccess, boolean)}
-     * for the {@code includeDatapack} semantics.
-     */
-    private static boolean isPlugin(ItemStack stack, RegistryAccess access, boolean includeDatapack) {
-        Objects.requireNonNull(stack, "stack");
-        Objects.requireNonNull(access, "access");
-        return stack.has(ModularShootDataComponents.PLUGIN_DATA.get())
-                || findBoundPluginId(stack, access, includeDatapack).isPresent();
-    }
-
-    /**
-     * Resolves the gun id bound to the stack's item id via the
-     * {@code modularshoot:gun_items} binding table. Returns
-     * {@link Optional#empty()} when the item id cannot be resolved or no
-     * binding matches.
-     */
-    private static Optional<ResourceLocation> findBoundGunId(
-            ItemStack stack, RegistryAccess access, boolean includeDatapack) {
-        return stack.getItemHolder().unwrapKey()
-                .map(ResourceKey::location)
-                .flatMap(itemId -> GunItemBindingRegistry.getBoundGunId(
-                        includeDatapack ? access : RegistryAccess.EMPTY, itemId));
-    }
-
-    /**
-     * Resolves the plugin id bound to the stack's item id via the
-     * {@code modularshoot:plugin_items} binding table. Returns
-     * {@link Optional#empty()} when the item id cannot be resolved or no
-     * binding matches.
-     */
-    private static Optional<ResourceLocation> findBoundPluginId(
-            ItemStack stack, RegistryAccess access, boolean includeDatapack) {
-        return stack.getItemHolder().unwrapKey()
-                .map(ResourceKey::location)
-                .flatMap(itemId -> PluginItemBindingRegistry.getBoundPluginId(
-                        includeDatapack ? access : RegistryAccess.EMPTY, itemId));
     }
 }

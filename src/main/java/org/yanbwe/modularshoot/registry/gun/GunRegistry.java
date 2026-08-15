@@ -15,7 +15,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import org.yanbwe.modularshoot.ModularShoot;
-import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.attribute.AttributeModifierService;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
@@ -23,6 +22,7 @@ import org.yanbwe.modularshoot.datapack.RegistrationCoordinator;
 import org.yanbwe.modularshoot.item.ModularShootItems;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
 import org.yanbwe.modularshoot.registry.RegistryLookupCache;
+import org.yanbwe.modularshoot.util.GunRecognition;
 
 /**
  * Query, factory and registration API for the {@code modularshoot:guns}
@@ -467,7 +467,7 @@ public final class GunRegistry {
         if (stack.has(ModularShootDataComponents.GUN_DATA.get())) {
             return;
         }
-        Optional<ResourceLocation> gunId = ModularShootAPI.resolveGunId(stack, access);
+        Optional<ResourceLocation> gunId = GunRecognition.resolveGunId(stack, access);
         if (gunId.isEmpty()) {
             return;
         }

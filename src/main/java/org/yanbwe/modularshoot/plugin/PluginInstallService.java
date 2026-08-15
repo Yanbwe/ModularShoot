@@ -12,7 +12,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.common.NeoForge;
 import org.jetbrains.annotations.Nullable;
-import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.attribute.AttributeModifierService;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
@@ -21,6 +20,7 @@ import org.yanbwe.modularshoot.component.PluginInstance;
 import org.yanbwe.modularshoot.plugin.event.PostPluginInstallEvent;
 import org.yanbwe.modularshoot.plugin.event.PrePluginInstallEvent;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
+import org.yanbwe.modularshoot.util.GunRecognition;
 
 /**
  * Installation pipeline that writes a plugin into a gun's data component
@@ -191,7 +191,7 @@ public final class PluginInstallService {
         PluginData pluginData = pluginStack.get(ModularShootDataComponents.PLUGIN_DATA.get());
         ResourceLocation pluginId = (pluginData != null)
                 ? pluginData.pluginId()
-                : ModularShootAPI.resolvePluginId(pluginStack, registryAccess).orElse(null);
+                : GunRecognition.resolvePluginId(pluginStack, registryAccess).orElse(null);
         if (pluginId == null) {
             return InstallResult.failure(
                     Component.translatable("modularshoot.install.error.not_plugin"));

@@ -7,13 +7,13 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShoot;
-import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.attribute.AttributeResolver;
 import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.network.ShootAnimSyncService;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
+import org.yanbwe.modularshoot.util.GunRecognition;
 
 /**
  * Server-side orchestrator for
@@ -125,7 +125,7 @@ public final class ShootPacketHandler {
      * @return {@code true} when the stack is a {@code modularshoot:gun} item
      */
     private static boolean isMainHandGun(ItemStack mainHand, ServerPlayer player) {
-        return ModularShootAPI.isGun(mainHand, player.registryAccess());
+        return GunRecognition.isGun(mainHand, player.registryAccess());
     }
 
     /**

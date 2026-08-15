@@ -10,7 +10,7 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 
 import org.yanbwe.modularshoot.ModularShoot;
-import org.yanbwe.modularshoot.ModularShootAPI;
+import org.yanbwe.modularshoot.util.GunRecognition;
 
 /**
  * Fires {@link GunRightClickEvent} when a player right-clicks while holding a
@@ -62,7 +62,7 @@ import org.yanbwe.modularshoot.ModularShootAPI;
  * {@link LeftClickInterceptHandler}.</p>
  *
  * @see GunRightClickEvent
- * @see ModularShootAPI#isGun(ItemStack, RegistryAccess)
+ * @see GunRecognition#isGun(ItemStack, RegistryAccess)
  */
 @EventBusSubscriber(modid = ModularShoot.MODID)
 public final class RightClickHandler {
@@ -196,7 +196,7 @@ public final class RightClickHandler {
      * @return {@code true} when the main-hand stack is a {@code modularshoot:gun}
      */
     private static boolean isMainHandGun(Player player) {
-        return ModularShootAPI.isGun(player.getMainHandItem(), player.registryAccess());
+        return GunRecognition.isGun(player.getMainHandItem(), player.registryAccess());
     }
 
     /**

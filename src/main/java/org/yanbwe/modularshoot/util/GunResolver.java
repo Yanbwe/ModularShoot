@@ -8,7 +8,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
-import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.bullet.BulletSnapshot;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
@@ -156,7 +155,7 @@ public final class GunResolver {
      *         {@link GunData#gunInstanceUuid()} equals the target
      */
     private static boolean matchesGun(ItemStack stack, UUID gunInstanceUuid, RegistryAccess access) {
-        if (!ModularShootAPI.isGun(stack, access)) {
+        if (!GunRecognition.isGun(stack, access)) {
             return false;
         }
         GunData gunData = stack.get(ModularShootDataComponents.GUN_DATA.get());

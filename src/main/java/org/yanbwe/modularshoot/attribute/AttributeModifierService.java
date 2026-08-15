@@ -18,7 +18,6 @@ import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
 import org.yanbwe.modularshoot.ModularShoot;
-import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginInstance;
@@ -32,6 +31,7 @@ import org.yanbwe.modularshoot.registry.RegistryKeyedCache;
 import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
+import org.yanbwe.modularshoot.util.GunRecognition;
 
 /**
  * Computes the {@code ATTRIBUTE_MODIFIERS} component for a gun item stack.
@@ -350,7 +350,7 @@ public final class AttributeModifierService {
     private static int refreshIfGun(ItemStack stack, RegistryAccess registryAccess) {
         // 阶段 6.1 待迁移：本方法通过 ModularShootAPI.isGun 判定枪械。此处暂借
         // 公共 API 判定，6.1 会将 isGun 下沉到内部工具类后移除该依赖（不阻塞）。
-        if (ModularShootAPI.isGun(stack, registryAccess)) {
+        if (GunRecognition.isGun(stack, registryAccess)) {
             refreshModifiers(stack, registryAccess);
             return 1;
         }

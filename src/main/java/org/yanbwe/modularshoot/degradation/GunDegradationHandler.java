@@ -16,8 +16,11 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yanbwe.modularshoot.ModularShoot;
-import org.yanbwe.modularshoot.ModularShootAPI;
+import org.yanbwe.modularshoot.component.GunData;
+import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
+import org.yanbwe.modularshoot.registry.gun.GunRegistry;
+import org.yanbwe.modularshoot.util.GunRecognition;
 
 /**
  * Handles graceful degradation when a gun's {@code gunId} points to a
@@ -79,14 +82,14 @@ public final class GunDegradationHandler {
     public static boolean isGunDefinitionMissing(ItemStack stack, RegistryAccess registryAccess) {
         Objects.requireNonNull(stack, "stack");
         Objects.requireNonNull(registryAccess, "registryAccess");
-        if (!ModularShootAPI.isGun(stack, registryAccess)) {
+        if (!GunRecognition.isGun(stack, registryAccess)) {
             return false;
         }
-        ResourceLocation gunId = ModularShootAPI.getGunId(stack);
+        ResourceLocation gunId = readGunId(stack);
         if (gunId == null) {
             return false;
         }
-        return ModularShootAPI.getGunDefinition(registryAccess, gunId).isEmpty();
+        return GunRegistry.getGun(registryAccess, gunId).isEmpty();
     }
 
     /**
@@ -105,7 +108,7 @@ public final class GunDegradationHandler {
      */
     public static Component getDegradedName(ItemStack stack) {
         Objects.requireNonNull(stack, "stack");
-        ResourceLocation gunId = ModularShootAPI.getGunId(stack);
+        ResourceLocation gunId = readGunId(stack);
         String pathPart = gunId != null ? gunId.getPath() : "unknown";
         return Component.translatable("modularshoot.tooltip.unknown_gun", pathPart)
                 .withStyle(ChatFormatting.GRAY);
@@ -135,7 +138,7 @@ public final class GunDegradationHandler {
         if (!isGunDefinitionMissing(stack, registryAccess)) {
             return false;
         }
-        warnShootSilenced(player, ModularShootAPI.getGunId(stack));
+        warnShootSilenced(player, readGunId(stack));
         return true;
     }
 
@@ -167,10 +170,10 @@ public final class GunDegradationHandler {
         Objects.requireNonNull(registryAccess, "registryAccess");
         // 与 isGunDefinitionMissing / 3 参重载一致的降级契约：非枪械或缺少
         // gunId 时不是"定义缺失"，而是根本不参与射击，静默返回 false。
-        if (!ModularShootAPI.isGun(stack, registryAccess)) {
+        if (!GunRecognition.isGun(stack, registryAccess)) {
             return false;
         }
-        @Nullable ResourceLocation gunId = ModularShootAPI.getGunId(stack);
+        @Nullable ResourceLocation gunId = readGunId(stack);
         if (gunId == null) {
             return false;
         }
@@ -179,6 +182,21 @@ public final class GunDegradationHandler {
         }
         warnShootSilenced(player, gunId);
         return true;
+    }
+
+    /**
+     * Reads the gun definition id bound to a gun stack's {@code gun_data}
+     * component, or {@code null} when the stack carries no {@code gun_data}.
+     * Mirrors {@code ModularShootAPI#getGunId} without depending on the public
+     * facade (阶段 6.1 单向化).
+     *
+     * @param stack the stack to inspect; must not be {@code null}
+     * @return the gun definition id, or {@code null} when there is no
+     *         {@code gun_data} component
+     */
+    private static @Nullable ResourceLocation readGunId(ItemStack stack) {
+        GunData gunData = stack.get(ModularShootDataComponents.GUN_DATA.get());
+        return gunData == null ? null : gunData.gunId();
     }
 
     /**
