@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import net.minecraft.core.Holder;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -130,25 +131,41 @@ public final class ShootingEngine {
     // --- Entry point -----------------------------------------------------
 
     /**
-     * Main entry point: orchestrates shooting steps 3-9 for a single shot.
+     * Main entry point of the server-side shooting hot path: orchestrates
+     * shooting steps 3-9 for a single shot, reusing the gun definition and
+     * {@code fire_rate} value already resolved by the caller.
      *
      * <p>Called by {@link ShootPacketHandler} after the fire-rate gate and
-     * anti-cheat checks have passed. The {@code gunData} is the validated
-     * {@link GunData} component read from the player's main-hand gun stack.
-     * The main-hand stack is re-read here so that predicate and event steps
-     * receive the live {@link ItemStack}.</p>
+     * anti-cheat checks have passed. The {@link GunDefinition} for
+     * {@code gunData.gunId()} is resolved <b>exactly once</b> here via
+     * {@link #lookupGunDefinition} and passed onward to
+     * {@link TraitMergeService#computeTraits} and
+     * {@link VariantPoolService#buildPool} (whose assembly reuses
+     * {@code gunDefinition} without a second {@code guns} registry query), so
+     * a single shot never resolves the same definition twice. The
+     * {@code fireRate} was already resolved by
+     * {@link ShootPacketHandler}'s fire-rate gate and is forwarded into the
+     * snapshot instead of being re-read from the attribute chain
+     * (审查优化, 任务 1.2).</p>
      *
-     * @param player  the shooting server player; must not be {@code null}
-     * @param gunData the gun data of the main-hand gun; must not be {@code null}
+     * @param player   the shooting server player; must not be {@code null}
+     * @param gunData  the gun data of the main-hand gun; must not be {@code null}
+     * @param fireRate the final {@code fire_rate} value already resolved by
+     *                 the fire-rate gate
      */
-    public static void fire(ServerPlayer player, GunData gunData) {
+    public static void fire(ServerPlayer player, GunData gunData, double fireRate) {
         ItemStack gunStack = player.getMainHandItem();
+        RegistryAccess registryAccess = player.registryAccess();
         // Early degradation check: if the gun definition is missing, silently
         // cancel the shot with a rate-limited WARN (设计文档 §枪械 gunId 失效降级).
-        // This runs before predicates and PreShootEvent so that a degraded gun
-        // never fires, never triggers predicate side-effects, and never fires
-        // events that listeners might expect to be paired with a bullet.
-        if (GunDegradationHandler.shouldSilenceShoot(player, gunStack, player.registryAccess())) {
+        // The definition is resolved once here and reused below; the degraded
+        // branch no longer re-resolves it. This runs before predicates and
+        // PreShootEvent so that a degraded gun never fires, never triggers
+        // predicate side-effects, and never fires events that listeners might
+        // expect to be paired with a bullet.
+        GunDefinition gunDefinition =
+                lookupGunDefinition(registryAccess, gunData.gunId()).orElse(null);
+        if (GunDegradationHandler.shouldSilenceShoot(player, gunStack, registryAccess, gunDefinition)) {
             return;
         }
         // Step 3: ShootPredicate — abort on first failure (reason shown to player).
@@ -159,17 +176,11 @@ public final class ShootingEngine {
         if (!firePreShootEvent(player, gunStack, gunData.gunId())) {
             return;
         }
-        // Resolve the gun definition once for snapshot + sound steps.
-        GunDefinition gunDefinition =
-                GunRegistry.getGun(player.registryAccess(), gunData.gunId()).orElse(null);
-        if (gunDefinition == null) {
-            // Defensive guard: shouldSilenceShoot already handled the missing
-            // definition case above. This only triggers if the definition was
-            // removed between the early check and here (a rare race).
-            return;
-        }
-        // Step 5: build the frozen attribute/trait snapshot.
-        BulletSnapshot snapshot = buildSnapshot(player, gunStack, gunData, gunDefinition);
+        // Step 5: build the frozen attribute/trait snapshot (reusing the gun
+        // definition, the registry view and the fire rate resolved above — no
+        // further registry lookups).
+        BulletSnapshot snapshot =
+                buildSnapshot(player, gunStack, gunData, registryAccess, gunDefinition, fireRate);
         // Step 6+7: register one bullet per pellet; each pellet gets an independent
         // spread sample, bullet id and visual composition (规格 §3.2).
         List<BulletRecord> records = registerPellets(player, gunStack, snapshot, gunData, gunDefinition);
@@ -178,6 +189,25 @@ public final class ShootingEngine {
         ShootAnimSyncService.getInstance().onShootFired(player);
         // Step 9: PostShootEvent carrying every pellet.
         firePostShootEvent(player, gunStack, records);
+    }
+
+    /**
+     * Single gun-definition lookup seam for the shooting hot path
+     * (审查优化, 任务 1.2 回归保护).
+     *
+     * <p>{@link #fire} resolves the {@link GunDefinition} for a shot through
+     * exactly this method — nowhere else — so the "one gun-registry lookup per
+     * shot" invariant is a single, assertable call site. Do not inline a second
+     * {@link GunRegistry#getGun} call into {@code fire}: the structural test
+     * {@code ShootingEngineHotPathTest} verifies that {@code fire} invokes this
+     * seam once and never re-queries the gun registry directly.</p>
+     *
+     * @param registryAccess the runtime registry view
+     * @param gunId          the gun definition id to resolve
+     * @return the resolved definition, or {@code Optional.empty()} when absent
+     */
+    static Optional<GunDefinition> lookupGunDefinition(RegistryAccess registryAccess, ResourceLocation gunId) {
+        return GunRegistry.getGun(registryAccess, gunId);
     }
 
     // --- Step 3: ShootPredicate ------------------------------------------
@@ -252,15 +282,24 @@ public final class ShootingEngine {
      * @param player         the shooting player (attributes read from here)
      * @param gunStack       the gun item stack (used for trait merge)
      * @param gunData        the gun data (gun id, instance uuid, per-gun state)
-     * @param gunDefinition  the gun definition (inherent traits)
+     * @param registryAccess the runtime registry view, captured once at the
+     *                       {@code fire} entry point and reused here (attribute
+     *                       reads, trait merge and damage-type resolution all
+     *                       share this view)
+     * @param gunDefinition  the gun definition (inherent traits; already resolved in this shot)
+     * @param fireRate       the final {@code fire_rate} value already resolved by the
+     *                       fire-rate gate (reused; not re-read here)
      * @return a new {@link BulletSnapshot} ready to be embedded in a bullet
      */
     private static BulletSnapshot buildSnapshot(
-            ServerPlayer player, ItemStack gunStack, GunData gunData, GunDefinition gunDefinition) {
-        Map<ResourceLocation, Double> stats = collectAttributeStats(player);
+            ServerPlayer player, ItemStack gunStack, GunData gunData, RegistryAccess registryAccess,
+            GunDefinition gunDefinition, double fireRate) {
+        Map<ResourceLocation, Double> stats = collectAttributeStats(player, registryAccess, fireRate);
         // Merge gun inherent traits with installed plugin traits per design doc §布尔特性合并规则.
+        // The gun definition was already resolved in {@link #fire}'s scope; pass it through
+        // so the merge does not re-query the guns registry (审查优化, 任务 1.2).
         Map<ResourceLocation, Boolean> traits = new HashMap<>(
-                TraitMergeService.computeTraits(gunStack, player.registryAccess()));
+                TraitMergeService.computeTraits(gunStack, registryAccess, gunDefinition));
         Holder<DamageType> damageType = resolveDamageType(player, gunData);
         return new BulletSnapshot(
                 stats,
@@ -292,21 +331,27 @@ public final class ShootingEngine {
      * (insertion order), which makes snapshot debugging and log output
      * stable.</p>
      *
-     * @param player the player to read attributes from
+     * @param player         the player to read attributes from
+     * @param registryAccess the runtime registry view, resolved once by the
+     *                       caller (all ten reads share this view)
+     * @param fireRate       the final {@code fire_rate} value already resolved
+     *                       by the fire-rate gate; stored into the snapshot
+     *                       without re-reading the attribute chain
      * @return a mutable map of logical attribute id → final double value
      */
-    private static Map<ResourceLocation, Double> collectAttributeStats(ServerPlayer player) {
+    private static Map<ResourceLocation, Double> collectAttributeStats(
+            ServerPlayer player, RegistryAccess registryAccess, double fireRate) {
         Map<ResourceLocation, Double> stats = new LinkedHashMap<>();
-        stats.put(HIT_DAMAGE_ID, AttributeResolver.readFinalValue(player, HIT_DAMAGE_ID, player.registryAccess()));
-        stats.put(FIRE_RATE_ID, AttributeResolver.readFinalValue(player, FIRE_RATE_ID, player.registryAccess()));
-        stats.put(RANGE_ID, AttributeResolver.readFinalValue(player, RANGE_ID, player.registryAccess()));
-        stats.put(ACCURACY_YAW_ID, AttributeResolver.readFinalValue(player, ACCURACY_YAW_ID, player.registryAccess()));
-        stats.put(ACCURACY_PITCH_ID, AttributeResolver.readFinalValue(player, ACCURACY_PITCH_ID, player.registryAccess()));
-        stats.put(ENTITY_PENETRATION_ID, AttributeResolver.readFinalValue(player, ENTITY_PENETRATION_ID, player.registryAccess()));
-        stats.put(BULLET_SPEED_ID, AttributeResolver.readFinalValue(player, BULLET_SPEED_ID, player.registryAccess()));
-        stats.put(BULLET_SIZE_ID, AttributeResolver.readFinalValue(player, BULLET_SIZE_ID, player.registryAccess()));
-        stats.put(BLOCK_PENETRATION_ID, AttributeResolver.readFinalValue(player, BLOCK_PENETRATION_ID, player.registryAccess()));
-        stats.put(PELLET_COUNT_ID, AttributeResolver.readFinalValue(player, PELLET_COUNT_ID, player.registryAccess()));
+        stats.put(FIRE_RATE_ID, fireRate);
+        stats.put(HIT_DAMAGE_ID, AttributeResolver.readFinalValue(player, HIT_DAMAGE_ID, registryAccess));
+        stats.put(RANGE_ID, AttributeResolver.readFinalValue(player, RANGE_ID, registryAccess));
+        stats.put(ACCURACY_YAW_ID, AttributeResolver.readFinalValue(player, ACCURACY_YAW_ID, registryAccess));
+        stats.put(ACCURACY_PITCH_ID, AttributeResolver.readFinalValue(player, ACCURACY_PITCH_ID, registryAccess));
+        stats.put(ENTITY_PENETRATION_ID, AttributeResolver.readFinalValue(player, ENTITY_PENETRATION_ID, registryAccess));
+        stats.put(BULLET_SPEED_ID, AttributeResolver.readFinalValue(player, BULLET_SPEED_ID, registryAccess));
+        stats.put(BULLET_SIZE_ID, AttributeResolver.readFinalValue(player, BULLET_SIZE_ID, registryAccess));
+        stats.put(BLOCK_PENETRATION_ID, AttributeResolver.readFinalValue(player, BLOCK_PENETRATION_ID, registryAccess));
+        stats.put(PELLET_COUNT_ID, AttributeResolver.readFinalValue(player, PELLET_COUNT_ID, registryAccess));
         return stats;
     }
 

@@ -19,7 +19,6 @@ import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.bullet.BulletSnapshot;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.PluginInstance;
-import org.yanbwe.modularshoot.degradation.PluginDegradationHandler;
 import org.yanbwe.modularshoot.plugin.PluginDefinition;
 import org.yanbwe.modularshoot.plugin.PluginRegistry;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
@@ -388,14 +387,17 @@ public class VariantPoolService {
             RegistryAccess ra, GunDefinition gunDef, GunData gunData,
             Map<ResourceLocation, List<AttributeModifier>> contribMods) {
         Map<ResourceLocation, Double> pool = new LinkedHashMap<>(gunDef.variants());
-        List<PluginInstance> validPlugins =
-                PluginDegradationHandler.filterValidPlugins(gunData.installedPlugins(), ra);
-        for (PluginInstance instance : validPlugins) {
+        // 审查优化（任务 1.2）：每个已安装插件只解析一次 PluginDefinition——
+        // 先一次性收集 valid plugin definitions，循环内直接复用定义，不再对
+        // 每个实例二次调用 PluginRegistry.getPlugin（旧实现先
+        // filterValidPlugins 查一遍、循环内又 getPlugin 查一遍）。
+        List<PluginDefinition> validPluginDefs = new ArrayList<>();
+        for (PluginInstance instance : gunData.installedPlugins()) {
             Optional<PluginDefinition> pluginDef = PluginRegistry.getPlugin(ra, instance.pluginId());
-            if (pluginDef.isEmpty()) {
-                continue;
-            }
-            pluginDef.get().addsVariants().forEach((id, v) -> pool.merge(id, v, Double::sum));
+            pluginDef.ifPresent(validPluginDefs::add);
+        }
+        for (PluginDefinition pluginDef : validPluginDefs) {
+            pluginDef.addsVariants().forEach((id, v) -> pool.merge(id, v, Double::sum));
         }
         for (ResourceLocation id : contribMods.keySet()) {
             if (pool.containsKey(id)) {

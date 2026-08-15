@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.ModularShootAPI;
+import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 
 /**
  * Handles graceful degradation when a gun's {@code gunId} points to a
@@ -135,6 +136,48 @@ public final class GunDegradationHandler {
             return false;
         }
         warnShootSilenced(player, ModularShootAPI.getGunId(stack));
+        return true;
+    }
+
+    /**
+     * Checks whether a shot must be silently cancelled, reusing a gun
+     * definition the caller already resolved (设计文档 §射击路径单次解析与复用).
+     *
+     * <p>Equivalent degradation decision to
+     * {@link #shouldSilenceShoot(Player, ItemStack, RegistryAccess)} with the
+     * {@code guns} registry lookup hoisted to the caller: the caller resolves
+     * the {@link GunDefinition} once at the shooting entry point and passes it
+     * here, so the degraded branch logs the rate-limited {@code WARN} and
+     * cancels the shot without a second registry query.</p>
+     *
+     * @param player         the player attempting to shoot; must not be {@code null}
+     * @param stack          the gun item stack being fired; must not be {@code null}
+     * @param registryAccess the runtime registry view; must not be {@code null}
+     * @param gunDefinition  the gun definition already resolved by the caller;
+     *                       {@code null} means the definition is missing and the
+     *                       shot is silently cancelled
+     * @return {@code true} when the shot must be silently cancelled;
+     *         {@code false} when the definition exists and shooting may proceed
+     */
+    public static boolean shouldSilenceShoot(
+            Player player, ItemStack stack, RegistryAccess registryAccess,
+            @Nullable GunDefinition gunDefinition) {
+        Objects.requireNonNull(player, "player");
+        Objects.requireNonNull(stack, "stack");
+        Objects.requireNonNull(registryAccess, "registryAccess");
+        // 与 isGunDefinitionMissing / 3 参重载一致的降级契约：非枪械或缺少
+        // gunId 时不是"定义缺失"，而是根本不参与射击，静默返回 false。
+        if (!ModularShootAPI.isGun(stack, registryAccess)) {
+            return false;
+        }
+        @Nullable ResourceLocation gunId = ModularShootAPI.getGunId(stack);
+        if (gunId == null) {
+            return false;
+        }
+        if (gunDefinition != null) {
+            return false;
+        }
+        warnShootSilenced(player, gunId);
         return true;
     }
 

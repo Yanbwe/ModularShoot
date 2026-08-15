@@ -1,5 +1,10 @@
 package org.yanbwe.modularshoot.attribute;
 
+import java.util.Collections;
+import java.util.Map;
+import java.util.Optional;
+import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
@@ -28,8 +33,9 @@ import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
  * <ul>
  *   <li><b>挂载层</b> &mdash; {@link #resolveBoundHolder} resolves the bound
  *       vanilla attribute holder before mounting modifiers or building
- *       tooltip rows ({@link #metaFor} is called internally by
- *       {@link #readFinalValue} to resolve the metadata entry).</li>
+ *       tooltip rows ({@link #metaFor} and {@link #readFinalValue} resolve
+ *       the metadata entry and bound holder through the shared per-registry
+ *       cache).</li>
  *   <li><b>结算/射速门禁/客户端预测/调试命令</b> &mdash;
  *       {@link #readFinalValue} reads the entity's final computed value in a
  *       single call, following the full chain internally.</li>
@@ -55,6 +61,65 @@ public final class AttributeResolver {
     }
 
     /**
+     * Per-{@link Registry} weak-reference cache of the bound attribute holder
+     * (审查优化, 任务 1.2): {@link #readFinalValue} resolves the same
+     * {@code (RegistryAccess, logicalId)} pair — metadata entry + {@code binds}
+     * target holder — on every stat read of the shooting hot path. Results are
+     * keyed by the actual {@link Registry} instance (not the
+     * {@link RegistryAccess} wrapper), so a {@code /reload} that swaps in a new
+     * {@code attribute_meta} registry is a cache miss and never serves the old
+     * instance's bind. Misses (a logical id with no metadata entry, or a
+     * {@code binds} target that is unregistered) are cached too via
+     * {@link Optional} sentinels.
+     */
+    private static final Map<Registry<AttributeMeta>, Map<ResourceLocation, Optional<BoundAttribute>>> BOUND_CACHE =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
+    /**
+     * Immutable holder of one cached resolution: the metadata entry (never
+     * {@code null} when present) and its resolved vanilla attribute holder,
+     * which may be {@code null} when the {@code binds} target is unregistered.
+     */
+    private record BoundAttribute(AttributeMeta meta, @Nullable Holder<Attribute> holder) {
+    }
+
+    /**
+     * Resolves a logical attribute id to its metadata entry and bound vanilla
+     * attribute holder, caching the result per {@link Registry} instance.
+     *
+     * @param registryAccess the runtime registry view
+     * @param logicalId      the logical attribute id
+     * @return the cached resolution, or empty when the registry is absent or
+     *         the metadata entry is missing
+     */
+    private static Optional<BoundAttribute> resolveBound(RegistryAccess registryAccess, ResourceLocation logicalId) {
+        Registry<AttributeMeta> registry =
+                registryAccess.registry(ModularShootRegistries.ATTRIBUTE_META_KEY).orElse(null);
+        if (registry == null) {
+            return Optional.empty();
+        }
+        Map<ResourceLocation, Optional<BoundAttribute>> byId;
+        synchronized (BOUND_CACHE) {
+            byId = BOUND_CACHE.computeIfAbsent(registry, r -> new ConcurrentHashMap<>());
+        }
+        return byId.computeIfAbsent(logicalId, id -> resolveBoundUncached(registry, id));
+    }
+
+    /**
+     * Uncached resolution: metadata entry from the registry, then its
+     * {@code binds} target holder from {@link BuiltInRegistries#ATTRIBUTE}.
+     */
+    private static Optional<BoundAttribute> resolveBoundUncached(
+            Registry<AttributeMeta> registry, ResourceLocation logicalId) {
+        AttributeMeta meta = registry.get(logicalId);
+        if (meta == null) {
+            return Optional.empty();
+        }
+        Holder<Attribute> holder = BuiltInRegistries.ATTRIBUTE.getHolder(meta.binds()).orElse(null);
+        return Optional.of(new BoundAttribute(meta, holder));
+    }
+
+    /**
      * Looks up the {@link AttributeMeta} entry for a logical attribute id.
      *
      * <p>Returns the raw metadata entry without resolving its {@code binds}
@@ -71,12 +136,7 @@ public final class AttributeResolver {
      */
     @Nullable
     public static AttributeMeta metaFor(RegistryAccess registryAccess, ResourceLocation logicalId) {
-        Registry<AttributeMeta> registry =
-                registryAccess.registry(ModularShootRegistries.ATTRIBUTE_META_KEY).orElse(null);
-        if (registry == null) {
-            return null;
-        }
-        return registry.get(logicalId);
+        return resolveBound(registryAccess, logicalId).map(BoundAttribute::meta).orElse(null);
     }
 
     /**
@@ -123,14 +183,15 @@ public final class AttributeResolver {
      *         chain is missing or the entity type is not whitelisted
      */
     public static double readFinalValue(LivingEntity entity, ResourceLocation logicalId, RegistryAccess registryAccess) {
-        AttributeMeta meta = metaFor(registryAccess, logicalId);
-        if (meta == null) {
+        Optional<BoundAttribute> bound = resolveBound(registryAccess, logicalId);
+        if (bound.isEmpty()) {
             return 0.0;
         }
-        if (!meta.allowsEntity(entity.getType())) {
+        BoundAttribute b = bound.get();
+        if (!b.meta().allowsEntity(entity.getType())) {
             return 0.0;
         }
-        Holder<Attribute> holder = resolveBoundHolder(meta);
+        Holder<Attribute> holder = b.holder();
         if (holder == null) {
             return 0.0;
         }

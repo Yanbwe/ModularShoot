@@ -83,7 +83,34 @@ public final class TraitMergeService {
             return Map.of();
         }
         GunDefinition gunDefinition = GunRegistry.getGun(registryAccess, gunData.gunId()).orElse(null);
+        return computeTraits(gun, registryAccess, gunDefinition);
+    }
+
+    /**
+     * Computes the final boolean trait map from an already-resolved
+     * {@link GunDefinition} (设计文档 §射击路径单次解析与复用).
+     *
+     * <p>Identical merge semantics to {@link #computeTraits(ItemStack,
+     * RegistryAccess)}, but the caller supplies the {@link GunDefinition}
+     * resolved earlier in the shooting entry point so the {@code guns}
+     * registry is <em>not</em> queried a second time. {@code null} gun data
+     * or {@code null} definition degrades to an empty map, matching the
+     * two-argument overload.</p>
+     *
+     * @param gun            the gun item stack to read {@link GunData} from
+     * @param registryAccess the runtime registry view used to resolve plugin
+     *                       definitions (never the gun definition)
+     * @param gunDefinition  the gun definition already resolved by the caller;
+     *                       {@code null} yields an empty map
+     * @return an unmodifiable map of trait id → final boolean value
+     */
+    public static Map<ResourceLocation, Boolean> computeTraits(
+            ItemStack gun, RegistryAccess registryAccess, @org.jetbrains.annotations.Nullable GunDefinition gunDefinition) {
         if (gunDefinition == null) {
+            return Map.of();
+        }
+        GunData gunData = gun.get(ModularShootDataComponents.GUN_DATA.get());
+        if (gunData == null) {
             return Map.of();
         }
         List<PluginDefinition> sortedPlugins = sortPluginsByPriority(gunData.installedPlugins(), registryAccess);

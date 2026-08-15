@@ -94,22 +94,23 @@ public final class ShootPacketHandler {
                     player.getName().getString(), packetModifierVersion, gunData.modifierVersion());
             return;
         }
-        if (!checkFireRate(player, gunData.gunId())) {
+        // 审查优化（任务 1.2）：fire_rate 只在火控门禁解析一次，解析出的 final
+        // 值同时传给 ShootingEngine.fire，避免 snapshot 阶段再次解析 FIRE_RATE。
+        double fireRate = readFireRate(player);
+        if (!checkFireRate(player, gunData.gunId(), fireRate)) {
             // Debug-level: when the client holds the shoot button it sends a
             // ShootC2SPacket every tick; most are rejected by the fire-rate
             // controller, so an INFO log here would flood the log (W9). Use
             // DEBUG so the rejection is visible only when diagnosing issues.
-            // 审查优化 P8: isDebugEnabled 守卫——否则参数（getString + 完整属性
-            // 解析链）在 DEBUG 关闭时也每 tick 求值。
+            // 审查优化 P8: isDebugEnabled 守卫 + 复用已解析的 fireRate——
+            // 否则参数（getString + 完整属性解析链）在 DEBUG 关闭时也每 tick 求值。
             if (ModularShoot.LOGGER.isDebugEnabled()) {
                 ModularShoot.LOGGER.debug("Shoot rejected by fire-rate controller (player={}, gun={}, fireRate={})",
-                        player.getName().getString(), gunData.gunId(),
-                        AttributeResolver.readFinalValue(player, ModularShootAttributes.FIRE_RATE.getKey().location(),
-                                player.registryAccess()));
+                        player.getName().getString(), gunData.gunId(), fireRate);
             }
             return;
         }
-        delegateToShootEngine(player, gunData);
+        delegateToShootEngine(player, gunData, fireRate);
     }
 
     /**
@@ -152,18 +153,33 @@ public final class ShootPacketHandler {
     }
 
     /**
-     * Runs the fire-rate gate using the player's final {@code fire_rate}
-     * value resolved via the {@code attribute_meta} {@code binds} chain
-     * (see {@link AttributeResolver#readFinalValue}); a missing link in the
-     * chain degrades the value to {@code 0.0} and the gate rejects the shot.
+     * Resolves the player's final {@code fire_rate} value once, following the
+     * {@code attribute_meta} {@code binds} chain (see
+     * {@link AttributeResolver#readFinalValue}). A missing link degrades to
+     * {@code 0.0} and the fire-rate gate rejects the shot.
      *
      * @param player the shooting player
-     * @param gunId  the gun definition id
+     * @return the final {@code fire_rate} attribute value (shots per second)
+     */
+    private static double readFireRate(ServerPlayer player) {
+        return AttributeResolver.readFinalValue(
+                player, ModularShootAttributes.FIRE_RATE.getKey().location(), player.registryAccess());
+    }
+
+    /**
+     * Runs the fire-rate gate using the already-resolved final
+     * {@code fire_rate} value resolved via the {@code attribute_meta}
+     * {@code binds} chain (see {@link AttributeResolver#readFinalValue}); a
+     * missing link in the chain degrades the value to {@code 0.0} and the gate
+     * rejects the shot.
+     *
+     * @param player   the shooting player
+     * @param gunId    the gun definition id
+     * @param fireRate the final {@code fire_rate} value already resolved by
+     *                 {@link #readFireRate}
      * @return {@code true} if the shot may proceed under the fire-rate limit
      */
-    private static boolean checkFireRate(ServerPlayer player, ResourceLocation gunId) {
-        double fireRate = AttributeResolver.readFinalValue(player, ModularShootAttributes.FIRE_RATE.getKey().location(),
-                player.registryAccess());
+    private static boolean checkFireRate(ServerPlayer player, ResourceLocation gunId, double fireRate) {
         return FireRateController.canShoot(player, gunId, fireRate);
     }
 
@@ -173,10 +189,12 @@ public final class ShootPacketHandler {
      * {@code BulletManager} registration, sound playback and
      * {@code PostShootEvent} dispatch.
      *
-     * @param player  the shooting player
-     * @param gunData the gun data of the main-hand gun
+     * @param player   the shooting player
+     * @param gunData  the gun data of the main-hand gun
+     * @param fireRate the final {@code fire_rate} value already resolved by
+     *                 the fire-rate gate (reused by the engine snapshot)
      */
-    private static void delegateToShootEngine(ServerPlayer player, GunData gunData) {
-        ShootingEngine.fire(player, gunData);
+    private static void delegateToShootEngine(ServerPlayer player, GunData gunData, double fireRate) {
+        ShootingEngine.fire(player, gunData, fireRate);
     }
 }
