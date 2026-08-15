@@ -108,8 +108,12 @@ public final class GunSyncService {
      * diff on the throttled state-flush path (阶段 2 / 任务 2.3 §GunSync 状态
      * diff). Keyed by a stable pair so a structural full sync for a new gun
      * never diffs against the previous gun's state. Cleaned up on logout.
+     *
+     * <p>Package-private so the prune seam
+     * {@link #pruneStaleBaselines(Map, UUID, UUID)} can be unit-tested
+     * headlessly (阶段 7 / 任务 7.1 — 最小可测 seam).</p>
      */
-    private record PlayerStateKey(UUID playerUuid, UUID gunUuid) {
+    record PlayerStateKey(UUID playerUuid, UUID gunUuid) {
     }
 
     private static final Map<PlayerStateKey, CompoundTag> LAST_SYNCED_STATE =
@@ -342,13 +346,49 @@ public final class GunSyncService {
      * mutations of the gun's {@code GunData.state()} between syncs cannot
      * corrupt the stored diff base.</p>
      *
+     * <p><b>Prune (阶段 7 / 任务 7.1).</b> Because a player can switch between
+     * many guns across a session, each structural full sync also drops any
+     * other gun-uuid baselines held for the same player (we can only ever diff
+     * the single current main-hand gun). This prevents {@link #LAST_SYNCED_STATE}
+     * from growing slowly across the many guns a player picks up and drops
+     * within one session.</p>
+     *
      * @param player  the player
      * @param gunData the gun whose state is now fully in sync
      */
     private static void recordSyncedState(ServerPlayer player, GunData gunData) {
+        final UUID playerUuid = player.getUUID();
+        final UUID currentGunUuid = gunData.gunInstanceUuid();
+        // Prune stale baselines: only the current main-hand gun is ever synced,
+        // so any other gun-uuid baseline for this player is dead weight that
+        // would otherwise accumulate across gun switches within the session.
+        pruneStaleBaselines(LAST_SYNCED_STATE, playerUuid, currentGunUuid);
         LAST_SYNCED_STATE.put(
-                new PlayerStateKey(player.getUUID(), gunData.gunInstanceUuid()),
+                new PlayerStateKey(playerUuid, currentGunUuid),
                 gunData.state().copy());
+    }
+
+    /**
+     * Drops every last-synced-state baseline held for {@code playerUuid} whose
+     * gun uuid differs from the current {@code currentGunUuid}.
+     *
+     * <p>Because a player can switch between many guns across a session and
+     * only the single current main-hand gun is ever diffed against, other
+     * gun-uuid baselines for the same player are dead weight that would
+     * otherwise accumulate (阶段 7 / 任务 7.1). The official
+     * {@link PlayerStateKey} nest is package-private so this pure map operation
+     * can be unit-tested headlessly without constructing a
+     * {@link ServerPlayer} (阶段 7 / 任务 7.1 — 最小可测 seam).</p>
+     *
+     * @param map           the last-synced-state map to prune (mutated in place)
+     * @param playerUuid    the player whose stale baselines are removed
+     * @param currentGunUuid the gun uuid to retain (the current main-hand gun)
+     */
+    static void pruneStaleBaselines(
+            Map<PlayerStateKey, CompoundTag> map, UUID playerUuid, UUID currentGunUuid) {
+        map.keySet().removeIf(
+                key -> key.playerUuid().equals(playerUuid)
+                        && !key.gunUuid().equals(currentGunUuid));
     }
 
     /**

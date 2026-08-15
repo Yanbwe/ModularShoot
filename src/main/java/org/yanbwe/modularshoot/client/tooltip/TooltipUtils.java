@@ -33,9 +33,18 @@ import net.minecraft.network.chat.MutableComponent;
  */
 public final class TooltipUtils {
 
-    /** Decimal format for attribute values: trims trailing zeros (#.##). */
-    private static final DecimalFormat VALUE_FORMAT = new DecimalFormat(
-            "#.##", DecimalFormatSymbols.getInstance(Locale.ROOT));
+    /**
+     * Decimal format for attribute values: trims trailing zeros (#.##).
+     *
+     * <p>{@link DecimalFormat} is not thread-safe, and tooltip building can
+     * be reached from multiple threads (render thread vs. main thread during
+     * cache misses). The shared instance is therefore replaced with a
+     * per-thread {@link ThreadLocal} so concurrent use never races on the
+     * formatter's internal mutable state (阶段 7 / 任务 7.1).</p>
+     */
+    private static final ThreadLocal<DecimalFormat> VALUE_FORMAT =
+            ThreadLocal.withInitial(() -> new DecimalFormat(
+                    "#.##", DecimalFormatSymbols.getInstance(Locale.ROOT)));
 
     private TooltipUtils() {
     }
@@ -90,6 +99,6 @@ public final class TooltipUtils {
      * @return the formatted string
      */
     public static String formatValue(double value) {
-        return VALUE_FORMAT.format(value);
+        return VALUE_FORMAT.get().format(value);
     }
 }

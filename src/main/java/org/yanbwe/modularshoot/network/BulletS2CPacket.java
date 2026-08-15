@@ -195,6 +195,26 @@ public record BulletS2CPacket(
         return ordinal != null ? ordinal : (byte) BulletStyle.RenderMode.BILLBOARD.ordinal();
     }
 
+    /**
+     * Decodes a render-mode ordinal written by {@link #renderModeOrdinal} back
+     * to its serialized name, defensively mapping any out-of-range value
+     * (malicious or corrupted packet) to {@code BILLBOARD} so decode never
+     * throws {@link ArrayIndexOutOfBoundsException} from a direct
+     * {@code values()[byte]} index (阶段 7 / 任务 7.1).
+     *
+     * <p>Package-private for direct unit testing; the decision is pure.</p>
+     *
+     * @param ordinal the render-mode ordinal read from the wire
+     * @return the matching serialized name, or {@code "billboard"} for unknown
+     *         values
+     */
+    static String decodeRenderMode(byte ordinal) {
+        BulletStyle.RenderMode[] modes = BulletStyle.RenderMode.values();
+        return ordinal >= 0 && ordinal < modes.length
+                ? modes[ordinal].getSerializedName()
+                : BulletStyle.RenderMode.BILLBOARD.getSerializedName();
+    }
+
     // --- FullBulletEntry codec ------------------------------------------
 
     /**
@@ -330,7 +350,7 @@ public record BulletS2CPacket(
     private static BulletStyleData decodeBulletStyleData(RegistryFriendlyByteBuf buf) {
         ResourceLocation texture = decodeNullableResourceLocation(buf);
         ResourceLocation modelLocation = decodeNullableResourceLocation(buf);
-        String renderMode = BulletStyle.RenderMode.values()[buf.readByte()].getSerializedName();
+        String renderMode = decodeRenderMode(buf.readByte());
         float renderScale = buf.readFloat();
         @Nullable Vector4f composedTint = null;
         if (buf.readBoolean()) {
@@ -341,7 +361,7 @@ public record BulletS2CPacket(
         List<BulletS2CPacket.FullBulletEntry.LayerEntryFull> layers =
                 new ArrayList<>(Math.max(0, layerCount));
         for (int i = 0; i < layerCount; i++) {
-            String layerRenderMode = BulletStyle.RenderMode.values()[buf.readByte()].getSerializedName();
+            String layerRenderMode = decodeRenderMode(buf.readByte());
             ResourceLocation layerTexture = decodeNullableResourceLocation(buf);
             ResourceLocation layerModel = decodeNullableResourceLocation(buf);
             boolean followRotation = buf.readBoolean();

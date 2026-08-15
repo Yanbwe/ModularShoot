@@ -40,7 +40,24 @@ import org.yanbwe.modularshoot.state.GunStateStorage;
  *                        {@link #stateMap(RegistryAccess)} and the single-key
  *                        accessors {@link #getStateValue}/{@link #withStateValue}/
  *                        {@link #clearStateValue}; the dispatch codecs live in
- *                        {@link org.yanbwe.modularshoot.state.StateValueCodecs}
+ *                        {@link org.yanbwe.modularshoot.state.StateValueCodecs}.<br>
+ *                        <strong>Immutability contract (阶段 7 / 任务 7.1):</strong> a
+ *                        {@link GunData} is immutable, but the {@code CompoundTag}
+ *                        returned by {@link #state()} / the record accessor is the
+ *                        <em>live backing tag</em> held by this instance — it must
+ *                        <b>never</b> be mutated in place (that would corrupt the
+ *                        component and every copy referencing it, and could race with
+ *                        concurrent readers). Treat it as read-only; any change must go
+ *                        through the functional accessors
+ *                        {@link #withStateValue}/{@link #withStateMap}/
+ *                        {@link #clearStateValue}, which return a new immutable
+ *                        {@link GunData}. <em>No defensive copy is made on
+ *                        construction or read</em> (a per-access {@code copy()}
+ *                        would turn every state read into O(state) work on the
+ *                        hot tooltip/render path); the convergence is the
+ *                        read-only contract above plus the fact that all mutation
+ *                        flows through the accessors, which replace the tag with a
+ *                        fresh immutable one. (审查 Low — 文档/实现偏差)
  */
 public record GunData(
         ResourceLocation gunId,

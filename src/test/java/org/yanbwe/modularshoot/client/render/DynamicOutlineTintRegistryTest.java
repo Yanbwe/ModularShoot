@@ -32,6 +32,7 @@ class DynamicOutlineTintRegistryTest {
     @BeforeEach
     void clearRegistry() {
         DynamicOutlineTintRegistry.clear();
+        DynamicOutlineTintRegistry.resetCacheClearCount();
     }
 
     @Test
@@ -57,5 +58,28 @@ class DynamicOutlineTintRegistryTest {
                 List.of(ResourceLocation.parse("examplemod:other"), PLUGIN_A), null, 0.0F);
         assertTrue(tint.isPresent(), "unregistered ids are skipped until a registered one is found");
         assertEquals(0.5F, tint.get().x(), 1.0E-5F);
+    }
+
+    @Test
+    void registerInvalidatesDynamicGunTextureCache() {
+        // 阶段 7 / 任务 7.1 (审查 Medium 1): registering a provider must clear
+        // the composited gun texture cache so already-cached entries that lack
+        // the dynamic outline mask get rebuilt with one.
+        assertEquals(0, DynamicOutlineTintRegistry.textureCacheClearCount,
+                "cache clear counter starts at 0 after reset");
+
+        DynamicOutlineTintRegistry.register(PLUGIN_A, provider(0.5F));
+
+        assertEquals(1, DynamicOutlineTintRegistry.textureCacheClearCount,
+                "registering a provider must trigger one texture-cache clear");
+    }
+
+    @Test
+    void everyRegisterInvalidatesCacheExactlyOnce() {
+        // Two registrations → two cache invalidations (each register clears).
+        DynamicOutlineTintRegistry.register(PLUGIN_A, provider(0.5F));
+        DynamicOutlineTintRegistry.register(PLUGIN_B, provider(0.9F));
+        assertEquals(2, DynamicOutlineTintRegistry.textureCacheClearCount,
+                "each register call invalidates the texture cache once");
     }
 }

@@ -185,7 +185,7 @@ public final class RightClickHandler {
     /**
      * Checks whether the player's main-hand item is a framework gun.
      *
-     * <p>Delegates to {@link ModularShootAPI#isGun(ItemStack, RegistryAccess)}
+     * <p>Delegates to {@link GunRecognition#isGun(ItemStack, RegistryAccess)}
      * after reading the main-hand stack, passing the player's runtime
      * {@link RegistryAccess} so datapack-bound guns are recognized. Extracted
      * as a helper so both listeners share a

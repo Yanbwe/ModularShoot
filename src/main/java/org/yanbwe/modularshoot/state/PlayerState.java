@@ -296,12 +296,53 @@ public final class PlayerState {
      * to know the value type. The operation is always safe and never
      * throws.</p>
      *
+     * <p><strong>Short-circuit (阶段 7 / 任务 7.1):</strong> consistent with
+     * the same-value short-circuit in {@link #setTypedValue}, clearing a key
+     * that is absent or already holds the default value — where removal would
+     * not change the next read — skips {@link Player#setData} and
+     * {@link #markDirtyIfServer()} entirely, avoiding a redundant write and a
+     * spurious throttled sync.</p>
+     *
      * @param stateId the state id to remove
      */
     public void clearState(ResourceLocation stateId) {
-        final PlayerStateData newData = currentPlayerData().clearStateValue(stateId);
+        final PlayerStateData current = currentPlayerData();
+        // 键不存在（读取已得默认值）或值已是默认值时，清除不产生任何实际
+        // 变化——与 setTypedValue 的同值短路保持一致，跳过 setData 与
+        // markDirty（阶段 7 / 任务 7.1）。
+        if (shouldSkipClear(current, stateId, registryAccess)) {
+            return;
+        }
+        final PlayerStateData newData = current.clearStateValue(stateId);
         player.setData(ModularShootAttachmentTypes.PLAYER_STATE.get(), newData);
         markDirtyIfServer();
+    }
+
+    /**
+     * Decides whether {@link #clearState} would be a no-op because the key is
+     * absent (already reading the registry default) or already holds the
+     * default value.
+     *
+     * <p>Used both by {@link #clearState} (to skip {@code setData} and
+     * {@code markDirty} on a no-op clear) and by headless unit tests, which
+     * assert the short-circuit decision without constructing a real
+     * {@link Player} (阶段 7 / 任务 7.1 — 最小可测 seam, mirroring
+     * {@link #writeIfChanged}). When {@code true}, removing the key would not
+     * change the next read, so the write-back path is skipped entirely.</p>
+     *
+     * @param data           the current per-player payload (never {@code null})
+     * @param stateId        the state id to clear
+     * @param registryAccess the runtime registry view
+     * @return {@code true} when the key is absent or holds the default value
+     *         (clearing is a no-op); {@code false} when a genuine value exists
+     */
+    static boolean shouldSkipClear(
+            PlayerStateData data, ResourceLocation stateId, RegistryAccess registryAccess) {
+        final Object currentValue = data.getStateValue(stateId, registryAccess);
+        final Object defaultOrNull = StateRegistry.getState(registryAccess, stateId)
+                .map(StateDefinition::defaultValue)
+                .orElse(null);
+        return Objects.equals(currentValue, defaultOrNull);
     }
 
     // ------------------------------------------------------------------

@@ -279,4 +279,44 @@ class BulletS2CPacketCodecTest {
         assertTrue(decoded.updatedBullets().isEmpty(), "full-sync ignores delta bucket");
         assertTrue(decoded.removedBulletIds().isEmpty(), "full-sync ignores removal bucket");
     }
+
+    // --- defensive render-mode decode (阶段 7 / 任务 7.1) -----------------
+
+    @Test
+    void decodeRenderModeMapsKnownOrdinalsToSerializedNames() {
+        assertEquals("billboard", BulletS2CPacket.decodeRenderMode((byte) 0),
+                "ordinal 0 is BILLBOARD");
+        assertEquals("3d", BulletS2CPacket.decodeRenderMode((byte) 1),
+                "ordinal 1 is THREE_D");
+    }
+
+    @Test
+    void decodeRenderModeFallsBackToBillboardForOutOfRangeOrdinals() {
+        // Previously a direct values()[byte] index would throw
+        // ArrayIndexOutOfBoundsException on these malformed inputs.
+        assertEquals("billboard", BulletS2CPacket.decodeRenderMode((byte) -1),
+                "negative ordinal falls back to billboard");
+        assertEquals("billboard", BulletS2CPacket.decodeRenderMode((byte) 99),
+                "over-range ordinal falls back to billboard");
+        assertEquals("billboard", BulletS2CPacket.decodeRenderMode(Byte.MAX_VALUE),
+                "max byte ordinal falls back to billboard");
+    }
+
+    @Test
+    void decodeRenderModeNeverThrowsForAnyByteValue() {
+        // Exhaustive sweep over every byte: the decode helper must map every
+        // possible wire value without throwing (defensive robustness). Valid
+        // ordinals keep their name; out-of-range values fall back to billboard.
+        for (int i = Byte.MIN_VALUE; i <= Byte.MAX_VALUE; i++) {
+            byte b = (byte) i;
+            if (b == 0) {
+                assertEquals("billboard", BulletS2CPacket.decodeRenderMode(b));
+            } else if (b == 1) {
+                assertEquals("3d", BulletS2CPacket.decodeRenderMode(b));
+            } else {
+                assertEquals("billboard", BulletS2CPacket.decodeRenderMode(b),
+                        "out-of-range byte " + b + " must fall back to billboard");
+            }
+        }
+    }
 }

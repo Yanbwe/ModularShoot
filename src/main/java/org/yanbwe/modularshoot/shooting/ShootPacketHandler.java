@@ -116,7 +116,7 @@ public final class ShootPacketHandler {
     /**
      * Checks whether the main-hand item is a framework gun.
      *
-     * <p>Delegates to {@link ModularShootAPI#isGun(ItemStack, RegistryAccess)}
+     * <p>Delegates to {@link GunRecognition#isGun(ItemStack, RegistryAccess)}
      * with the player's runtime {@link RegistryAccess} so datapack-bound guns
      * are recognized (绑定感知识别).</p>
      *

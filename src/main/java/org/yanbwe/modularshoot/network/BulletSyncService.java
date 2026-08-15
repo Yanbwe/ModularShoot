@@ -36,8 +36,6 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
-import org.jetbrains.annotations.Nullable;
-
 /**
  * Server-side per-tick bullet broadcast service (设计文档 §同步策略).
  *

@@ -1,7 +1,9 @@
 package org.yanbwe.modularshoot.damage;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import net.minecraft.world.entity.Entity;
 import org.yanbwe.modularshoot.ModularShoot;
@@ -48,7 +50,38 @@ public final class DamageHandlerRegistry {
      */
     private static final List<DamageHandler> HANDLERS = new CopyOnWriteArrayList<>();
 
+    /**
+     * Per-handler-class minute bucket of the last emitted error log, so a
+     * handler that throws on consecutive bullet hits cannot flood the log
+     * (阶段 7 / 任务 7.1). Mirrors the rate-limit pattern used by
+     * {@code StateWarnLogger} / {@code GunDegradationHandler}.
+     */
+    private static final Map<String, Long> LAST_ERROR_BUCKETS = new ConcurrentHashMap<>();
+
+    /**
+     * One minute in milliseconds; used to bucket handler error logs.
+     *
+     * <p><b>Whole-minute bucket semantics (审查 Low):</b> the throttle compares
+     * bucket ids computed as {@code now / ERROR_INTERVAL_MS}, so it is <em>at
+     * most one log per whole minute bucket</em> — not a strict "once per 60s"
+     * sliding window. A throw late in bucket N and one early in bucket N+1
+     * (seconds apart across a minute boundary) can both log; this is the
+     * documented convergence for an intentionally cheap integer comparison.</p>
+     */
+    private static final long ERROR_INTERVAL_MS = 60_000L;
+
     private DamageHandlerRegistry() {
+    }
+
+    /**
+     * Resets the shared rate-limit state.
+     *
+     * <p>Package-private: used by unit tests to reset the static
+     * {@link #LAST_ERROR_BUCKETS} between cases. Not intended as a runtime
+     * API.</p>
+     */
+    static void resetRateLimitState() {
+        LAST_ERROR_BUCKETS.clear();
     }
 
     /**
@@ -89,7 +122,10 @@ public final class DamageHandlerRegistry {
      *
      * <p>Exception isolation: a handler that throws an exception is logged
      * and skipped; the chain continues with the last successfully computed
-     * value (抛异常的第三方 handler 被记录并跳过，链以最近一次成功结果继续).</p>
+     * value (抛异常的第三方 handler 被记录并跳过，链以最近一次成功结果继续).
+     * The error log is rate-limited to at most once per minute bucket per
+     * handler class, so a handler that throws on every consecutive bullet hit
+     * cannot flood the log (阶段 7 / 任务 7.1).</p>
      *
      * @param bullet      the bullet record that hit the target; must not be
      *                    {@code null}
@@ -104,15 +140,99 @@ public final class DamageHandlerRegistry {
     public static double processChain(BulletRecord bullet, Entity target, double baseDamage) {
         Objects.requireNonNull(bullet, "bullet");
         Objects.requireNonNull(target, "target");
+        // No handlers registered: short-circuit and return the base damage
+        // unmodified, avoiding an empty iteration (阶段 7 / 任务 7.1).
+        // The empty-list handling lives in runChain so it is unit-testable
+        // headlessly (阶段 7 / 任务 7.1 — 最小可测 seam).
+        return runChain(HANDLERS, bullet, target, baseDamage);
+    }
+
+    /**
+     * Executes a damage-handler chain over {@code handlers}, returning the
+     * final damage value.
+     *
+     * <p>Extracted as the pure, headless-testable core of
+     * {@link #processChain(BulletRecord, Entity, double)} (阶段 7 /
+     * 任务 7.1 — 最小可测 seam): it takes the handler list explicitly so tests
+     * can exercise the empty-list, exception-swallowing, and chain-continue
+     * behaviour without a real {@link Entity} (the seam may receive a
+     * {@code null} target; production passes the hit entity). An empty list
+     * returns {@code baseDamage} unchanged; a throwing handler is logged at
+     * most once per minute bucket (via {@link #logExceptionRateLimited}) and
+     * skipped, letting the rest of the chain continue with the last
+     * successfully computed value.</p>
+     *
+     * @param handlers   the handler chain to execute (may be empty)
+     * @param bullet     the bullet record; must not be {@code null}
+     * @param target     the hit entity (may be {@code null} when called from
+     *                   tests that ignore the target)
+     * @param baseDamage the initial damage value
+     * @return the final damage after the whole chain, or {@code baseDamage}
+     *         unchanged when {@code handlers} is empty
+     */
+    static double runChain(
+            List<DamageHandler> handlers, BulletRecord bullet, Entity target, double baseDamage) {
+        if (handlers.isEmpty()) {
+            return baseDamage;
+        }
         double current = baseDamage;
-        for (DamageHandler handler : HANDLERS) {
+        for (DamageHandler handler : handlers) {
             try {
                 current = handler.processDamage(bullet, target, current);
             } catch (Exception e) {
-                ModularShoot.LOGGER.error(
-                        "DamageHandler threw an exception; skipping this handler", e);
+                logExceptionRateLimited(handler, e);
             }
         }
         return current;
+    }
+
+    /**
+     * Logs a handler exception at most once per minute bucket per handler
+     * class, so a continuously-throwing handler cannot flood the log on
+     * consecutive bullet hits (阶段 7 / 任务 7.1).
+     *
+     * @param handler the handler that threw
+     * @param e       the thrown exception
+     */
+    private static void logExceptionRateLimited(DamageHandler handler, Exception e) {
+        final String key = handler.getClass().getName();
+        final long currentBucket = System.currentTimeMillis() / ERROR_INTERVAL_MS;
+        if (shouldLog(key, currentBucket)) {
+            ModularShoot.LOGGER.error(
+                    "DamageHandler {} threw an exception; skipping this handler",
+                    handler.getClass().getSimpleName(), e);
+        }
+    }
+
+    /**
+     * Rate-limit decision: whether an error log may be emitted for
+     * {@code handlerKey} in the given {@code currentBucket}.
+     *
+     * <p>The throttle uses <em>whole-minute bucket</em> semantics (阶段 7 /
+     * 任务 7.1 — 审查 Low): {@code currentBucket = now / 60_000}, so at most
+     * one log is emitted per handler per minute <em>bucket</em> — i.e. at most
+     * roughly once per minute, but a hit late in bucket N and an early hit in
+     * bucket N+1 (a few ms apart across a minute boundary) may both log. This
+     * is not a sliding 60-second window; it is an intentionally cheap integer
+     * comparison. Returns {@code true} the first time a key is seen in a
+     * bucket and records that bucket; {@code false} on any later call within
+     * the same bucket.</p>
+     *
+     * <p>Extracted as a headless-testable seam (阶段 7 / 任务 7.1 — 最小可测
+     * seam): the decision is purely a bucket map lookup, so it is tested with
+     * a controllable {@code currentBucket} instead of {@code System.currentTimeMillis()}.</p>
+     *
+     * @param handlerKey    the handler class name
+     * @param currentBucket the whole-minute bucket for "now"
+     * @return {@code true} to emit the log for this bucket; {@code false} to
+     *         suppress it (already logged in this bucket)
+     */
+    static boolean shouldLog(String handlerKey, long currentBucket) {
+        final Long last = LAST_ERROR_BUCKETS.get(handlerKey);
+        if (last != null && last.longValue() == currentBucket) {
+            return false;
+        }
+        LAST_ERROR_BUCKETS.put(handlerKey, currentBucket);
+        return true;
     }
 }

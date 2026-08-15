@@ -39,6 +39,27 @@ public final class DynamicOutlineTintRegistry {
     private static final Map<ResourceLocation, GunOutlineTintProvider> PROVIDERS =
             new ConcurrentHashMap<>();
 
+    /**
+     * Number of times {@link #register} has invalidated the dynamic gun
+     * texture cache (阶段 7 / 任务 7.1).
+     *
+     * <p>Package-private test seam: the real {@link DynamicGunTextureCache}
+     * {@code clear()} needs a live client (GPU textures), so unit tests observe
+     * the invalidation side effect through this counter instead. It is reset by
+     * {@link #resetCacheClearCount()}. Not part of the runtime API.</p>
+     */
+    static int textureCacheClearCount;
+
+    /**
+     * Resets the package-private {@link #textureCacheClearCount} observer.
+     *
+     * <p>Used by unit tests to reset the shared static state. Not intended as
+     * a runtime API.</p>
+     */
+    static void resetCacheClearCount() {
+        textureCacheClearCount = 0;
+    }
+
     private DynamicOutlineTintRegistry() {
     }
 
@@ -83,6 +104,15 @@ public final class DynamicOutlineTintRegistry {
         Objects.requireNonNull(pluginId, "pluginId");
         Objects.requireNonNull(provider, "provider");
         PROVIDERS.put(pluginId, provider);
+        // Registering a provider changes whether the outline mask should be
+        // built for any cached gun carrying that plugin's outline
+        // (DynamicGunTextureCache gates the mask on provider presence, 阶段 4 /
+        // 任务 4.3). Invalidate the texture cache so already-composited entries
+        // lacking a mask get rebuilt with one (阶段 7 / 任务 7.1). Provider
+        // registration is rare (client init), so a wholesale clear is cheap.
+        DynamicGunTextureCache.getInstance().clear();
+        // Test-observable side-effect counter (package-private seam).
+        textureCacheClearCount++;
     }
 
     /**

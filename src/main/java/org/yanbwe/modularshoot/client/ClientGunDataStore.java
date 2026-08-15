@@ -14,6 +14,7 @@ import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import org.jetbrains.annotations.Nullable;
 
 import org.yanbwe.modularshoot.ModularShoot;
+import org.yanbwe.modularshoot.client.tooltip.TooltipVersion;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.network.GunStateDiff;
@@ -203,6 +204,10 @@ public final class ClientGunDataStore {
 
     /**
      * Clears all stored sync data, resetting the store to its initial state.
+     *
+     * <p>Also drops the {@link TooltipVersion} tracked-stream references that
+     * key against this store's state payload, so a previous session / gun's
+     * payload references are not retained across sessions (阶段 7 / 任务 7.1).</p>
      */
     public void clear() {
         this.installedPlugins = List.of();
@@ -211,6 +216,7 @@ public final class ClientGunDataStore {
         this.gunInstanceUuid = null;
         this.hotbarSlot = -1;
         this.hasSyncData = false;
+        TooltipVersion.clear();
     }
 
     /**

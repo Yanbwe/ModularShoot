@@ -79,13 +79,35 @@ import org.yanbwe.modularshoot.state.PlayerStateData;
  * resulting <em>counter</em> would let two different players with the same
  * counter collide. The player's UUID is folded into the data version as well,
  * so the key genuinely distinguishes viewers.</p>
+ *
+ * <p><b>Lifecycle (阶段 7 / 任务 7.1):</b> {@link #clear()} drops the
+ * store-owned stream reference (the {@link ClientGunDataStore} state token).
+ * It is invoked when the {@link ClientGunDataStore} is cleared on client
+ * logout (and on main-hand gun switches) so a previous session's store payload
+ * reference is never retained. The per-player streams (keyed by player UUID)
+ * are deliberately <em>not</em> cleared: they are bounded by the LRU eviction
+ * and clearing them would needlessly invalidate per-player tooltip caches
+ * while widening the main-thread critical section.</p>
+ *
+ * <p><b>Threading (阶段 7 / 任务 7.1, 审查 Medium 2):</b> {@code TRACKED} is a
+ * non-thread-safe {@link LinkedHashMap}. {@link #versionFor} is reached from
+ * the render thread while {@link #clear()} runs on the main thread (logout /
+ * main-hand switch), so <em>every</em> access to {@code TRACKED} is guarded by
+ * a monitor ({@code synchronized(TRACKED)}). This makes the map safe under
+ * concurrent versionFor + clear without changing the version semantics.</p>
  */
-final class TooltipVersion {
+public final class TooltipVersion {
     private TooltipVersion() {
     }
 
-    /** Token identifying the single {@link ClientGunDataStore} state stream. */
-    private static final Object STORE_TOKEN = new Object();
+    /**
+     * Token identifying the single {@link ClientGunDataStore} state stream.
+     *
+     * <p>Package-private so unit tests in this package can assert that
+     * {@link #clear()} drops exactly this stream (阶段 7 / 任务 7.1, 审查
+     * Medium 2 — 最小可测 seam). Not part of the runtime API.</p>
+     */
+    static final Object STORE_TOKEN = new Object();
 
     /** Hard bound on tracked streams so the map never grows unboundedly. */
     private static final int MAX_TRACKED = 64;
@@ -107,22 +129,51 @@ final class TooltipVersion {
      * <em>reference</em> changes; equal references reuse the stored version
      * with O(1) cost (no recursive hash).
      *
+     * <p>Called from the render thread (tooltip building); the whole
+     * {@code TRACKED} access is synchronized so it cannot race with
+     * {@link #clear()} on the main thread (阶段 7 / 任务 7.1, 审查 Medium 2).</p>
+     *
      * @param token          stable per-stream key (store marker or player UUID)
      * @param currentPayload the current payload reference
      * @return the current version for this stream
      */
     static int versionFor(Object token, Object currentPayload) {
-        StreamState prev = TRACKED.get(token);
-        if (prev != null && prev.payload == currentPayload) {
-            return prev.version();
+        synchronized (TRACKED) {
+            StreamState prev = TRACKED.get(token);
+            if (prev != null && prev.payload == currentPayload) {
+                return prev.version();
+            }
+            int next = (prev == null ? 0 : prev.version()) + 1;
+            TRACKED.put(token, new StreamState(currentPayload, next));
+            while (TRACKED.size() > MAX_TRACKED) {
+                Object eldest = TRACKED.keySet().iterator().next();
+                TRACKED.remove(eldest);
+            }
+            return next;
         }
-        int next = (prev == null ? 0 : prev.version()) + 1;
-        TRACKED.put(token, new StreamState(currentPayload, next));
-        while (TRACKED.size() > MAX_TRACKED) {
-            Object eldest = TRACKED.keySet().iterator().next();
-            TRACKED.remove(eldest);
+    }
+
+    /**
+     * Drops the store-owned tracked-stream reference.
+     *
+     * <p>Called when the {@link ClientGunDataStore} is cleared (client logout
+     * / main-hand switch) so the previous session's store state payload
+     * reference is not retained (阶段 7 / 任务 7.1). After clearing, the next
+     * {@link #versionFor} call for the store token starts its counter afresh,
+     * which merely causes an occasional tooltip cache miss — never a stale
+     * hit.</p>
+     *
+     * <p><b>Narrow scope (审查 Medium 2):</b> only the {@link #STORE_TOKEN}
+     * entry is removed, <em>not</em> the whole map. The per-player streams
+     * (keyed by UUID) are bounded by the LRU eviction and clearing them would
+     * needlessly invalidate every per-player tooltip cache while widening the
+     * main-thread critical section that must synchronize with the render
+     * thread's {@link #versionFor}.</p>
+     */
+    public static void clear() {
+        synchronized (TRACKED) {
+            TRACKED.remove(STORE_TOKEN);
         }
-        return next;
     }
 
     /**
@@ -168,6 +219,11 @@ final class TooltipVersion {
         version = version * 31 + (isHoveredLocalMainHand(stack, viewingPlayer) ? 1 : 0);
         version = version * 31 + (holdsGunInMainHand(viewingPlayer) ? 1 : 0);
 
+        // 语言切换失效 (阶段 7 / 任务 7.1): tooltip 文本经 translatable key
+        // 渲染，随客户端语言变化。将当前语言折叠进 data version，语言切换即
+        // 使 cache key 变化 → 旧 tooltip 缓存失效重排。
+        version = version * 31 + currentLanguage().hashCode();
+
         if (viewingPlayer != null) {
             PlayerStateData playerState = viewingPlayer.getData(
                     ModularShootAttachmentTypes.PLAYER_STATE.get());
@@ -212,5 +268,22 @@ final class TooltipVersion {
         }
         return ModularShootAPI.isGun(
                 viewingPlayer.getMainHandItem(), viewingPlayer.registryAccess());
+    }
+
+    /**
+     * Returns the client's currently selected language code, or a stable
+     * sentinel when no live Minecraft client exists (headless tests). Folding
+     * this into the mutable-data version makes a language switch invalidate
+     * cached tooltips (阶段 7 / 任务 7.1).
+     *
+     * @return the current language code, or {@code "none"} when no Minecraft
+     *         client is available
+     */
+    private static String currentLanguage() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.getLanguageManager() == null) {
+            return "none";
+        }
+        return minecraft.getLanguageManager().getSelected();
     }
 }

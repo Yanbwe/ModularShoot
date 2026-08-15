@@ -300,9 +300,9 @@ public final class ModularShootAPI {
      * {@code player.level().registryAccess()}, so the caller does not need to
      * obtain one explicitly (设计文档 §API 签名 — 无 RegistryAccess 参数).
      * When the player context may be {@code null} (e.g. the gun is in a chest
-     * or processed by automation), use the
-     * {@link #uninstallPlugin(ItemStack, UUID, Player, boolean, boolean, RegistryAccess)}
-     * overload instead.</p>
+     * or processed by automation), call
+     * {@link PluginUninstallService#uninstallPlugin} directly with an explicit
+     * {@link RegistryAccess} instead.</p>
      *
      * @param gun          the gun item stack to modify (mutated on success);
      *                     must not be {@code null}
@@ -339,10 +339,9 @@ public final class ModularShootAPI {
      *
      * <p>The runtime {@link RegistryAccess} is derived internally from
      * {@code player.level().registryAccess()} (设计文档 §API 签名 — 无
-     * RegistryAccess 参数). When the player context may be {@code null}, use
-     * the
-     * {@link #uninstallRandomPlugin(ItemStack, Player, boolean, boolean, RegistryAccess)}
-     * overload instead.</p>
+     * RegistryAccess 参数). When the player context may be {@code null}, call
+     * {@link PluginUninstallService#uninstallRandomPlugin} directly with an
+     * explicit {@link RegistryAccess} instead.</p>
      *
      * @param gun         the gun item stack to modify (mutated on success);
      *                    must not be {@code null}
@@ -375,10 +374,9 @@ public final class ModularShootAPI {
      *
      * <p>The runtime {@link RegistryAccess} is derived internally from
      * {@code player.level().registryAccess()} (设计文档 §API 签名 — 无
-     * RegistryAccess 参数). When the player context may be {@code null}, use
-     * the
-     * {@link #uninstallPluginsByType(ItemStack, Player, ResourceLocation, boolean, boolean, RegistryAccess)}
-     * overload instead.</p>
+     * RegistryAccess 参数). When the player context may be {@code null}, call
+     * {@link PluginUninstallService#uninstallPluginsByType} directly with an
+     * explicit {@link RegistryAccess} instead.</p>
      *
      * @param gun          the gun item stack to modify (mutated on success);
      *                     must not be {@code null}
@@ -415,10 +413,9 @@ public final class ModularShootAPI {
      *
      * <p>The runtime {@link RegistryAccess} is derived internally from
      * {@code player.level().registryAccess()} (设计文档 §API 签名 — 无
-     * RegistryAccess 参数). When the player context may be {@code null}, use
-     * the
-     * {@link #uninstallAllPlugins(ItemStack, Player, boolean, boolean, RegistryAccess)}
-     * overload instead.</p>
+     * RegistryAccess 参数). When the player context may be {@code null}, call
+     * {@link PluginUninstallService#uninstallAllPlugins} directly with an
+     * explicit {@link RegistryAccess} instead.</p>
      *
      * @param gun         the gun item stack to modify (mutated on success);
      *                    must not be {@code null}

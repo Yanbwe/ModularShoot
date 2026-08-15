@@ -224,4 +224,46 @@ class StateWriteShortCircuitTest {
         assertEquals(5, data.getStateValue(INT_STATE, REGISTRY),
                 "原数据不得被修改（不可变）");
     }
+
+    // ------------------------------------------------------------------
+    // 5. PlayerState.clearState no-op short-circuit (阶段 7 / 任务 7.1)
+    // ------------------------------------------------------------------
+
+    @Test
+    void shouldSkipClearWhenKeyAbsent() {
+        // 键不存在时读取已返回默认值 0，清除是 no-op → 跳过 setData/markDirty。
+        PlayerStateData data = new PlayerStateData(new CompoundTag());
+        assertTrue(PlayerState.shouldSkipClear(data, INT_STATE, REGISTRY),
+                "缺失键的清除是 no-op（读取已得默认值）");
+    }
+
+    @Test
+    void shouldSkipClearWhenValueIsDefault() {
+        // 显式存储了默认值 0：清除后读取仍为 0 → no-op，跳过写回。
+        PlayerStateData data = new PlayerStateData(tagWithInt5());
+        PlayerStateData withDefault = data.withStateValue(INT_STATE, 0, REGISTRY);
+        assertTrue(PlayerState.shouldSkipClear(withDefault, INT_STATE, REGISTRY),
+                "显式存储默认值时清除是 no-op");
+    }
+
+    @Test
+    void shouldNotSkipClearWhenValueIsNonDefault() {
+        // 存储了非默认值 5：清除会真正改变下次读取 → 必须走 setData/markDirty。
+        PlayerStateData data = new PlayerStateData(tagWithInt5());
+        assertFalse(PlayerState.shouldSkipClear(data, INT_STATE, REGISTRY),
+                "非默认值时清除必须真正执行（写回逻辑）");
+    }
+
+    @Test
+    void clearStateValueFromNonDefaultRemovesEntry() {
+        // 非默认值场景下，清除应产生移除了该键的新 payload。
+        PlayerStateData data = new PlayerStateData(tagWithInt5());
+        PlayerStateData cleared = data.clearStateValue(INT_STATE);
+        assertEquals(0, cleared.getStateValue(INT_STATE, REGISTRY),
+                "清除后读取恢复默认值 0");
+        assertFalse(cleared.stateTag().contains(INT_STATE.toString()),
+                "清除后 backing tag 不再含该键");
+        assertEquals(5, data.getStateValue(INT_STATE, REGISTRY),
+                "原 payload 不得被修改（不可变）");
+    }
 }
