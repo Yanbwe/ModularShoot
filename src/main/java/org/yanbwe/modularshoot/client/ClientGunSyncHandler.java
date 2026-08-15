@@ -4,12 +4,14 @@ import java.util.List;
 import java.util.Objects;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginInstance;
+import org.yanbwe.modularshoot.network.GunStateDiff;
 import org.yanbwe.modularshoot.network.GunSyncS2CPacket;
 
 /**
@@ -109,15 +111,45 @@ public final class ClientGunSyncHandler {
 
     /**
      * Reconstructs a {@link GunData} from the packet, preserving the immutable
-     * {@code gunId} and {@code gunInstanceUuid} from the existing client data
-     * while overwriting the mutable plugin list, modifier version and state
-     * map from the server snapshot.
+     * {@code gunId} and {@code gunInstanceUuid} from the existing client data.
+     *
+     * <p>Two modes are supported (阶段 2 / 任务 2.3):</p>
+     * <ul>
+     *   <li>Full structural sync ({@code statePatch == false}) &mdash; the
+     *       mutable plugin list, modifier version and full state map are
+     *       overwritten from the server snapshot.</li>
+     *   <li>State diff ({@code statePatch == true}) &mdash; the plugin list and
+     *       modifier version are unchanged, and the packet's partial state is
+     *       {@link GunStateDiff merged} into the existing state map (patch keys
+     *       overwrite, {@code removedStateKeys} are removed).</li>
+     * </ul>
      *
      * @param existing the current client-side gun data (source of gunId/uuid)
-     * @param packet   the server snapshot (source of plugins/version/state)
+     * @param packet   the server packet (full snapshot or state diff)
      * @return a new immutable {@link GunData} ready to write onto the stack
      */
-    private static GunData rebuildGunData(GunData existing, GunSyncS2CPacket packet) {
+    static GunData rebuildGunData(GunData existing, GunSyncS2CPacket packet) {
+        if (packet.statePatch()) {
+            // Baseline guard (审查修复): a state patch is a diff against the
+            // previously-synced full structural state. If no full sync has been
+            // received yet, the local GunData state may not be an authoritative
+            // baseline, so merging the partial diff onto it would produce an
+            // incomplete / drifted state. Ignore the patch and wait for the next
+            // full structural sync (equivalent baseline guard to
+            // ClientGunDataStore.handleSync).
+            if (!ClientGunDataStore.getInstance().hasSyncData()) {
+                return existing;
+            }
+            List<PluginInstance> plugins = existing.installedPlugins();
+            CompoundTag mergedState = GunStateDiff.merge(
+                    existing.state(), packet.state(), packet.removedStateKeys());
+            return new GunData(
+                    existing.gunId(),
+                    existing.gunInstanceUuid(),
+                    plugins,
+                    existing.modifierVersion(),
+                    mergedState);
+        }
         List<PluginInstance> plugins = packet.plugins().stream()
                 .map(ClientGunSyncHandler::toPluginInstance)
                 .toList();

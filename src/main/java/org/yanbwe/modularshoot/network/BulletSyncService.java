@@ -163,6 +163,25 @@ public final class BulletSyncService {
     private static final Map<Level, List<BulletRecord>> CREATED_THIS_TICK =
             Collections.synchronizedMap(new WeakHashMap<>());
 
+    /**
+     * Server-wide content addresser for the flight-invariant bullet style
+     * payload (阶段 2 / 任务 2.3): assigns a stable wire id per style
+     * fingerprint and caches the full {@link BulletStyleData} under that id so
+     * each distinct style is transmitted in full at most once per client.
+     */
+    private static final BulletStyleContentAddresser STYLE_ADDRESSER =
+            new BulletStyleContentAddresser();
+
+    /**
+     * Per-client set of style wire ids the server has already sent in full to
+     * that client. When an id is present, the server sends only the id in
+     * subsequent full/delta entries; when absent, the full style is attached.
+     * Cleared on logout / dimension change in lock-step with
+     * {@link #CLIENT_STATES} and {@link #LAST_FORCE_FULL_SYNC_TICK}.
+     */
+    private static final Map<ServerPlayer, Set<Integer>> PLAYER_KNOWN_STYLE_IDS =
+            new ConcurrentHashMap<>();
+
     private BulletSyncService() {
     }
 
@@ -194,6 +213,7 @@ public final class BulletSyncService {
         if (event.getEntity() instanceof ServerPlayer player) {
             CLIENT_STATES.remove(player);
             LAST_FORCE_FULL_SYNC_TICK.remove(player);
+            PLAYER_KNOWN_STYLE_IDS.remove(player);
         }
     }
 
@@ -216,6 +236,7 @@ public final class BulletSyncService {
         if (event.getEntity() instanceof ServerPlayer player) {
             CLIENT_STATES.remove(player);
             LAST_FORCE_FULL_SYNC_TICK.remove(player);
+            PLAYER_KNOWN_STYLE_IDS.remove(player);
         }
     }
 
@@ -257,10 +278,11 @@ public final class BulletSyncService {
         if (players.isEmpty()) {
             return;
         }
-        // Per-tick full-entry cache: FullBulletEntry is player-independent and
-        // immutable (record with frozen lists/maps), so one conversion per
-        // bullet is shared by every player instead of being rebuilt per player.
-        Map<Integer, BulletS2CPacket.FullBulletEntry> fullEntryCache = new HashMap<>();
+        // Per-tick style-payload cache: BulletStyleData is player-independent, so
+        // one conversion per bullet is shared by every player; the per-player
+        // style wire id + whether to attach the full payload is resolved per
+        // player from PLAYER_KNOWN_STYLE_IDS (阶段 2 / 任务 2.3).
+        Map<Integer, BulletStyleData> styleDataCache = new HashMap<>();
         for (ServerPlayer player : players) {
             // Spatial range query: only inspect bullets within this player's
             // sync radius instead of scanning every bullet in the dimension
@@ -270,7 +292,7 @@ public final class BulletSyncService {
             double syncRadius = getSyncRadius(player);
             Collection<BulletRecord> visibleBullets =
                     manager.getActiveBulletsInRange(player.position(), syncRadius);
-            syncPlayerBullets(player, visibleBullets, createdThisTick, serverLevel, fullEntryCache);
+            syncPlayerBullets(player, visibleBullets, createdThisTick, serverLevel, styleDataCache);
         }
     }
 
@@ -284,22 +306,22 @@ public final class BulletSyncService {
      *                       subset is treated as removed for this player
      * @param createdThisTick bullets created this tick (short-life guarantee), or {@code null}
      * @param serverLevel    the server level (for gun-registry lookups and tick time)
-     * @param fullEntryCache the per-tick full-entry conversion cache shared by all players
+     * @param styleDataCache the per-tick full-entry conversion cache shared by all players
      */
     private static void syncPlayerBullets(
             ServerPlayer player,
             Collection<BulletRecord> visibleBullets,
             List<BulletRecord> createdThisTick,
             ServerLevel serverLevel,
-            Map<Integer, BulletS2CPacket.FullBulletEntry> fullEntryCache) {
+            Map<Integer, BulletStyleData> styleDataCache) {
         Map<Integer, BulletState> playerStates =
                 CLIENT_STATES.computeIfAbsent(player, k -> new HashMap<>());
         long currentTick = serverLevel.getGameTime();
         if (shouldForceFullSync(player, currentTick)) {
-            sendForceFullSync(player, visibleBullets, createdThisTick, playerStates, serverLevel, fullEntryCache);
+            sendForceFullSync(player, visibleBullets, createdThisTick, playerStates, serverLevel, styleDataCache);
             return;
         }
-        sendDeltaSync(player, visibleBullets, createdThisTick, playerStates, serverLevel, fullEntryCache);
+        sendDeltaSync(player, visibleBullets, createdThisTick, playerStates, serverLevel, styleDataCache);
     }
 
     /**
@@ -335,7 +357,7 @@ public final class BulletSyncService {
      * @param createdThisTick bullets created this tick (short-life guarantee), or {@code null}
      * @param playerStates   the player's per-bullet sync state (cleared and rebuilt)
      * @param serverLevel    the server level (for gun-registry lookups)
-     * @param fullEntryCache the per-tick full-entry conversion cache shared by all players
+     * @param styleDataCache the per-tick full-entry conversion cache shared by all players
      */
     private static void sendForceFullSync(
             ServerPlayer player,
@@ -343,16 +365,22 @@ public final class BulletSyncService {
             List<BulletRecord> createdThisTick,
             Map<Integer, BulletState> playerStates,
             ServerLevel serverLevel,
-            Map<Integer, BulletS2CPacket.FullBulletEntry> fullEntryCache) {
+            Map<Integer, BulletStyleData> styleDataCache) {
         double syncRadius = getSyncRadius(player);
         long currentTick = serverLevel.getGameTime();
         List<BulletS2CPacket.FullBulletEntry> entries = new ArrayList<>();
         Set<Integer> seenIds = new HashSet<>();
         playerStates.clear();
+        // Force-full-sync always attaches the full style payload (审查修复:
+        // 丢包恢复). If the first full-style transmission for a style id was
+        // dropped, the same id could still be referenced by a style-less entry
+        // while the client has no cached copy — so every full-sync re-sends the
+        // full payload unconditionally, letting the client self-heal rather than
+        // getting stuck on a missing style cache entry forever.
         collectCreatedThisTick(createdThisTick, player, syncRadius, serverLevel, currentTick,
-                entries, playerStates, seenIds, fullEntryCache);
+                entries, playerStates, seenIds, styleDataCache, true);
         collectActiveFullEntries(visibleBullets, player, syncRadius, serverLevel, currentTick,
-                entries, playerStates, seenIds, fullEntryCache);
+                entries, playerStates, seenIds, styleDataCache, true);
         PacketDistributor.sendToPlayer(player, BulletS2CPacket.fullSync(entries));
     }
 
@@ -370,7 +398,7 @@ public final class BulletSyncService {
      * @param entries      the full-entry list to populate
      * @param playerStates the player's per-bullet sync state (updated)
      * @param seenIds      ids already added (updated)
-     * @param fullEntryCache the per-tick full-entry conversion cache shared by all players
+     * @param styleDataCache the per-tick full-entry conversion cache shared by all players
      */
     private static void collectActiveFullEntries(
             Collection<BulletRecord> visibleBullets,
@@ -381,13 +409,14 @@ public final class BulletSyncService {
             List<BulletS2CPacket.FullBulletEntry> entries,
             Map<Integer, BulletState> playerStates,
             Set<Integer> seenIds,
-            Map<Integer, BulletS2CPacket.FullBulletEntry> fullEntryCache) {
+            Map<Integer, BulletStyleData> styleDataCache,
+            boolean forceAttachStyle) {
         for (BulletRecord bullet : visibleBullets) {
             int bulletId = bullet.getBulletId();
             if (seenIds.contains(bulletId) || !isInRenderDistance(bullet, player, syncRadius)) {
                 continue;
             }
-            entries.add(toFullBulletEntry(bullet, serverLevel, fullEntryCache));
+            entries.add(toFullBulletEntry(bullet, serverLevel, player, styleDataCache, forceAttachStyle));
             playerStates.put(bulletId, toBulletState(bullet, currentTick));
             seenIds.add(bulletId);
         }
@@ -404,7 +433,7 @@ public final class BulletSyncService {
      * @param createdThisTick bullets created this tick (short-life guarantee), or {@code null}
      * @param playerStates   the player's per-bullet sync state (updated in place)
      * @param serverLevel    the server level (for gun-registry lookups)
-     * @param fullEntryCache the per-tick full-entry conversion cache shared by all players
+     * @param styleDataCache the per-tick full-entry conversion cache shared by all players
      */
     private static void sendDeltaSync(
             ServerPlayer player,
@@ -412,7 +441,7 @@ public final class BulletSyncService {
             List<BulletRecord> createdThisTick,
             Map<Integer, BulletState> playerStates,
             ServerLevel serverLevel,
-            Map<Integer, BulletS2CPacket.FullBulletEntry> fullEntryCache) {
+            Map<Integer, BulletStyleData> styleDataCache) {
         double syncRadius = getSyncRadius(player);
         long currentTick = serverLevel.getGameTime();
 
@@ -432,12 +461,12 @@ public final class BulletSyncService {
         // 1. Short-life guarantee: this tick's creations get full entries
         //    even if already removed by collision (D-03).
         collectCreatedThisTick(createdThisTick, player, syncRadius, serverLevel, currentTick,
-                newBullets, playerStates, createdIds, fullEntryCache);
+                newBullets, playerStates, createdIds, styleDataCache, false);
 
         // 2. Diff active bullets against client state.
         Set<Integer> activeIds = collectActiveBulletDeltas(
                 visibleBullets, player, syncRadius, serverLevel, currentTick,
-                newBullets, updatedBullets, playerStates, createdIds, fullEntryCache);
+                newBullets, updatedBullets, playerStates, createdIds, styleDataCache, false);
 
         // 3. Removed bullets: in client state but no longer active and not
         //    just created this tick.
@@ -464,7 +493,7 @@ public final class BulletSyncService {
      * @param newBullets      the new-bullets bucket to populate
      * @param playerStates    the player's per-bullet sync state (updated)
      * @param createdIds      the set of created-this-tick ids (populated)
-     * @param fullEntryCache  the per-tick full-entry conversion cache shared by all players
+     * @param styleDataCache  the per-tick full-entry conversion cache shared by all players
      */
     private static void collectCreatedThisTick(
             List<BulletRecord> createdThisTick,
@@ -475,7 +504,8 @@ public final class BulletSyncService {
             List<BulletS2CPacket.FullBulletEntry> newBullets,
             Map<Integer, BulletState> playerStates,
             Set<Integer> createdIds,
-            Map<Integer, BulletS2CPacket.FullBulletEntry> fullEntryCache) {
+            Map<Integer, BulletStyleData> styleDataCache,
+            boolean forceAttachStyle) {
         if (createdThisTick == null) {
             return;
         }
@@ -484,7 +514,7 @@ public final class BulletSyncService {
                 continue;
             }
             int bulletId = bullet.getBulletId();
-            newBullets.add(toFullBulletEntry(bullet, serverLevel, fullEntryCache));
+            newBullets.add(toFullBulletEntry(bullet, serverLevel, player, styleDataCache, forceAttachStyle));
             playerStates.put(bulletId, toBulletState(bullet, currentTick));
             createdIds.add(bulletId);
         }
@@ -507,7 +537,7 @@ public final class BulletSyncService {
      * @param updatedBullets the updated-bullets bucket to populate
      * @param playerStates  the player's per-bullet sync state (updated)
      * @param createdIds    ids already handled via created-this-tick
-     * @param fullEntryCache the per-tick full-entry conversion cache shared by all players
+     * @param styleDataCache the per-tick full-entry conversion cache shared by all players
      * @return the set of active bullet ids visible to the player
      */
     private static Set<Integer> collectActiveBulletDeltas(
@@ -520,7 +550,8 @@ public final class BulletSyncService {
             List<BulletS2CPacket.DeltaBulletEntry> updatedBullets,
             Map<Integer, BulletState> playerStates,
             Set<Integer> createdIds,
-            Map<Integer, BulletS2CPacket.FullBulletEntry> fullEntryCache) {
+            Map<Integer, BulletStyleData> styleDataCache,
+            boolean forceAttachStyle) {
         Set<Integer> activeIds = new HashSet<>();
         for (BulletRecord bullet : visibleBullets) {
             int bulletId = bullet.getBulletId();
@@ -539,7 +570,7 @@ public final class BulletSyncService {
             activeIds.add(bulletId);
             BulletState prevState = playerStates.get(bulletId);
             if (prevState == null) {
-                newBullets.add(toFullBulletEntry(bullet, serverLevel, fullEntryCache));
+                newBullets.add(toFullBulletEntry(bullet, serverLevel, player, styleDataCache, forceAttachStyle));
                 playerStates.put(bulletId, toBulletState(bullet, currentTick));
             } else if (stateChanged(bullet, prevState)
                     && BulletDeltaQuantizer.isUpdateEligible(
@@ -654,52 +685,88 @@ public final class BulletSyncService {
     // --- Entry conversion -----------------------------------------------
 
     /**
-     * Converts a bullet into a {@link BulletS2CPacket.FullBulletEntry} once per
-     * tick, reusing the result for every player.
+     * Converts a bullet into a per-player {@link BulletS2CPacket.FullBulletEntry}
+     * with content-addressed visual style (阶段 2 / 任务 2.3).
      *
-     * <p>The entry is player-independent (it is built purely from the frozen
-     * bullet record, the pre-composed visual style and the shooter's network
-     * entity id) and immutable (record with frozen lists/maps), so sharing a
-     * single instance across all players within one tick is safe.</p>
+     * <p>The flight-invariant style payload ({@link BulletStyleData}) is built
+     * at most once per bullet per tick into {@code styleDataCache}. The stable
+     * style wire id comes from {@link #STYLE_ADDRESSER}; the full style payload
+     * is attached only when the receiving player does not yet know that style id
+     * (tracked in {@link #PLAYER_KNOWN_STYLE_IDS}).</p>
+     *
+     * <p><b>Re-transmission guarantee (审查修复).</b> When
+     * {@code forceAttachStyle} is {@code true} (the force-full-sync path) the
+     * full payload is attached <em>unconditionally</em>, regardless of the
+     * player's known-set. Marking the player's known-set on send is only a
+     * bandwidth heuristic for incremental deltas: if the very first full-style
+     * delta packet is dropped, the next force-full-sync re-sends the full
+     * payload so the client can heal its style cache instead of being stuck on
+     * a missing style id forever. Delta packets reference the known-set and are
+     * allowed to carry only the id; a dropped delta is repaired by the next
+     * full-sync.</p>
      *
      * @param bullet        the bullet record to convert
      * @param level         the server level (only for entity-id lookups now)
-     * @param fullEntryCache the per-tick conversion cache, keyed by bullet id
-     * @return a full bullet entry ready for serialisation
+     * @param player        the player this entry is being built for
+     * @param styleDataCache the per-tick style-payload cache, keyed by bullet id
+     * @param forceAttachStyle whether to unconditionally attach the full style
+     *                        payload ({@code true} on force-full-sync)
+     * @return a full bullet entry carrying the style id and (when needed) the
+     *         full style payload
      */
     private static BulletS2CPacket.FullBulletEntry toFullBulletEntry(
-            BulletRecord bullet, Level level,
-            Map<Integer, BulletS2CPacket.FullBulletEntry> fullEntryCache) {
-        return fullEntryCache.computeIfAbsent(bullet.getBulletId(), id -> buildFullBulletEntry(bullet, level));
+            BulletRecord bullet, Level level, ServerPlayer player,
+            Map<Integer, BulletStyleData> styleDataCache, boolean forceAttachStyle) {
+        BulletStyleData styleData = styleDataCache.computeIfAbsent(
+                bullet.getBulletId(), id -> buildBulletStyleData(bullet, level));
+        String fingerprint = BulletStyleFingerprint.of(styleData);
+        Integer existingId = STYLE_ADDRESSER.peekId(fingerprint);
+        boolean clientKnows = !forceAttachStyle && existingId != null
+                && PLAYER_KNOWN_STYLE_IDS.computeIfAbsent(player, k -> new HashSet<>()).contains(existingId);
+        BulletStyleContentAddresser.BulletStyleRef ref =
+                STYLE_ADDRESSER.resolve(styleData, fingerprint, clientKnows);
+        if (ref.hasFullStyle()) {
+            PLAYER_KNOWN_STYLE_IDS.computeIfAbsent(player, k -> new HashSet<>()).add(ref.styleId());
+        }
+        Vec3 pos = bullet.getPosition();
+        Vec3 dir = bullet.getDirection();
+        return new BulletS2CPacket.FullBulletEntry(
+                bullet.getBulletId(),
+                pos.x, pos.y, pos.z,
+                dir.x, dir.y, dir.z,
+                resolveShooterEntityId(bullet, level),
+                ref.styleId(),
+                ref.style());
     }
 
     /**
-     * Cached-miss builder: performs the actual full-entry conversion,
-     * reading the creation-frozen composed visual style from
-     * {@link BulletRecord#getComposedStyle()} and the shooter's network
-     * entity id.
+     * Builds the content-addressed flight-invariant style payload
+     * {@link BulletStyleData} for a bullet: the composed visual style (texture /
+     * model / render mode / scale / tint / attach layers) plus the client-side
+     * snapshot projection (stats / traits / gun id). Player-independent and
+     * shared per tick via {@code styleDataCache}. The per-bullet shooter is
+     * deliberately excluded (审查修复): it is carried inline by
+     * {@link BulletS2CPacket.FullBulletEntry#shooterEntityId()}, so the same
+     * visual style can be shared across different shooters via one wire id.
      *
-     * <p>As of the modifier-stacking redesign (设计规格 §2.1 / §4.3), the
-     * visual style is <em>cached</em> on the {@link BulletRecord} by whichever
+     * <p>As of the modifier-stacking redesign (设计规格 §2.1 / §4.3), the visual
+     * style is <em>cached</em> on the {@link BulletRecord} by whichever
      * bullet-creation call site invoked {@link
      * org.yanbwe.modularshoot.bullet.VisualCompositionService#compose}. This
-     * method does <b>not</b> re-resolve the visual style from the gun registry
-     * on a cache miss — it re-reads the same frozen value. In-flight
-     * appearance mutations (e.g. {@code onVisualTick} hooks) operate on the
-     * client-side {@code BulletRenderObject} directly and never re-flow
-     * through this method (spec §7.2).</p>
+     * method does <b>not</b> re-resolve the visual style from the gun registry —
+     * it re-reads the same frozen value. In-flight appearance mutations (e.g.
+     * {@code onVisualTick} hooks) operate on the client-side
+     * {@code BulletRenderObject} directly and never re-flow through this method
+     * (spec §7.2).</p>
      *
      * @param bullet the bullet record to convert
      * @param level  the server level (only for entity-id lookups now)
-     * @return a full bullet entry ready for serialisation
+     * @return the flight-invariant style payload
      */
-    private static BulletS2CPacket.FullBulletEntry buildFullBulletEntry(BulletRecord bullet, Level level) {
-        Vec3 pos = bullet.getPosition();
-        Vec3 dir = bullet.getDirection();
+    private static BulletStyleData buildBulletStyleData(BulletRecord bullet, Level level) {
         BulletSnapshot snapshot = bullet.getSnapshot();
         ComposedBulletStyle composed = bullet.getComposedStyle();
-        int shooterEntityId = resolveShooterEntityId(bullet, level);
-        ClientBulletSnapshot clientSnapshot = toClientBulletSnapshot(snapshot, bullet.getShooter());
+        ClientBulletSnapshot clientSnapshot = toClientBulletSnapshot(snapshot);
         // base texture/model: only one is non-null per render mode.
         BulletStyle.RenderMode baseMode = composed.base().renderMode();
         @Nullable ResourceLocation baseTexture =
@@ -709,13 +776,9 @@ public final class BulletSyncService {
         // composedTint: collapse the white identity tint to a null wire sentinel
         // (spec §4.3 — saves 4 floats per default-styled bullet on the wire).
         @Nullable Vector4f composedTint = isWhite(composed.composedTint()) ? null : composed.composedTint();
-        return new BulletS2CPacket.FullBulletEntry(
-                bullet.getBulletId(),
-                pos.x, pos.y, pos.z,
-                dir.x, dir.y, dir.z,
+        return new BulletStyleData(
                 baseTexture, baseModel, baseMode.getSerializedName(),
                 composed.renderScale(),
-                shooterEntityId, clientSnapshot,
                 composedTint,
                 composed.layers().stream()
                         .map(l -> new BulletS2CPacket.FullBulletEntry.LayerEntryFull(
@@ -726,7 +789,8 @@ public final class BulletSyncService {
                                 l.offsetX(), l.offsetY(), l.offsetZ(),
                                 l.scale(),
                                 l.tint().x, l.tint().y, l.tint().z, l.tint().w))
-                        .toList());
+                        .toList(),
+                clientSnapshot);
     }
 
     /**
@@ -745,8 +809,18 @@ public final class BulletSyncService {
 
     /**
      * Builds a {@link ClientBulletSnapshot} — the client-side projection of
-     * the bullet's frozen stats/traits and identity — from the server-side
+     * the bullet's frozen stats/traits — from the server-side
      * {@link BulletSnapshot} (设计文档 §特性视觉钩子, line 1298).
+     *
+     * <p><b>Shooter is excluded (审查修复).</b> The shooter is a per-bullet
+     * dynamic identity carried inline by
+     * {@link BulletS2CPacket.FullBulletEntry#shooterEntityId()}, not part of
+     * the content-addressed flight-invariant style payload. It is therefore
+     * omitted from the snapshot so that bullets sharing one visual style across
+     * different shooters map to the <em>same</em> style fingerprint and share a
+     * single wire id ({@link BulletStyleFingerprint} no longer hashes it). Any
+     * client that needs owner attribution reads {@code shooterEntityId()} from
+     * the full entry.</p>
      *
      * <p>The full stats and traits maps are synced because the framework
      * cannot predict which attributes third-party visual hooks will read
@@ -758,17 +832,14 @@ public final class BulletSyncService {
      * {@code onVisualTick}.</p>
      *
      * @param snapshot the bullet's frozen server-side snapshot
-     * @param shooter  the bullet record's shooter uuid (preferred over the
-     *                 snapshot's shooter for consistency with
-     *                 {@link #resolveShooterEntityId}), or {@code null}
      * @return a client-safe snapshot projection ready for serialisation
      */
-    private static ClientBulletSnapshot toClientBulletSnapshot(BulletSnapshot snapshot, @Nullable UUID shooter) {
+    private static ClientBulletSnapshot toClientBulletSnapshot(BulletSnapshot snapshot) {
         return new ClientBulletSnapshot(
                 snapshot.getStats(),
                 snapshot.getTraits(),
                 snapshot.getGunId(),
-                shooter);
+                null);
     }
 
     /**

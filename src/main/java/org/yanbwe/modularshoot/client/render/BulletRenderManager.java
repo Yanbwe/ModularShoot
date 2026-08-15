@@ -18,6 +18,7 @@ import net.neoforged.neoforge.event.level.LevelEvent;
 
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShoot;
+import org.yanbwe.modularshoot.network.BulletStyleData;
 import org.yanbwe.modularshoot.network.ClientBulletSnapshot;
 import org.yanbwe.modularshoot.network.BulletS2CPacket;
 import org.yanbwe.modularshoot.network.BulletS2CPacket.DeltaBulletEntry;
@@ -103,6 +104,18 @@ public final class BulletRenderManager {
      * every put/remove on one map is mirrored on the other.</p>
      */
     private final Map<Integer, ClientBulletSnapshot> snapshots = new HashMap<>();
+
+    /**
+     * Content-addressed style cache keyed by the server's stable style wire id
+     * (阶段 2 / 任务 2.3). Populated when a {@link FullBulletEntry} arrives with
+     * a full {@link BulletStyleData} attached ({@code entry.style() != null});
+     * subsequent entries for the same id reference the cached copy. Bullets
+     * sharing one style id share the cached payload, so re-transmission of the
+     * full style is avoided. Styles are bounded by the number of distinct
+     * bullet styles and are cleared together with the render objects on level
+     * unload / logout.
+     */
+    private final Map<Integer, BulletStyleData> styleCache = new HashMap<>();
 
     private BulletRenderManager() {
     }
@@ -245,25 +258,42 @@ public final class BulletRenderManager {
      * Creates a new {@link BulletRenderObject} from a full-data entry and
      * registers it in the map.
      *
-     * <p>The {@code renderScale} from the entry is used as the initial visual
-     * scale; the composed tint and attach_layer list are carried over from the
-     * wire (设计规格 §4.5).</p>
+     * <p>The visual style is content-addressed (阶段 2 / 任务 2.3): the entry
+     * carries a {@code styleId} and, on first transmission, the full
+     * {@link BulletStyleData} payload. The full payload is cached by id and
+     * reused by any later entry referencing the same id. The
+     * {@code renderScale}, composed tint and attach-layer list are read from
+     * the resolved style payload.</p>
+     *
+     * <p><b>Style-miss degradation (审查修复).</b> If the style payload is
+     * missing and not yet cached (a dropped first transmission), the bullet is
+     * <em>skipped</em> — no render object is created — instead of throwing.
+     * The server's periodic force-full-sync re-sends every style in full, which
+     * heals the cache, so the skipped bullet reappears on the next full-sync
+     * rather than crashing the client.</p>
      *
      * @param entry the full-data entry describing the new bullet
      */
     private void createRenderObject(FullBulletEntry entry) {
+        BulletStyleData style = resolveStyle(entry);
+        if (style == null) {
+            // No cached style and no full payload attached — the first full-style
+            // transmission for this id was dropped. Skip this bullet; the next
+            // force-full-sync (which always attaches full styles) will recover it.
+            return;
+        }
         Vec3 position = new Vec3(entry.posX(), entry.posY(), entry.posZ());
         Vec3 direction = new Vec3(entry.dirX(), entry.dirY(), entry.dirZ());
         BulletRenderObject obj = new BulletRenderObject(
                 entry.bulletId(),
                 position,
                 direction,
-                entry.texture(),
-                entry.modelLocation(),
-                entry.renderMode(),
-                entry.renderScale(),
-                entry.composedTint(),
-                entry.layers().stream()
+                style.texture(),
+                style.modelLocation(),
+                style.renderMode(),
+                style.renderScale(),
+                style.composedTint(),
+                style.layers().stream()
                         .map(l -> new BulletRenderObject.LayerData(
                                 l.renderMode(), l.texture(), l.model(),
                                 l.followRotation(), l.followScale(),
@@ -275,7 +305,7 @@ public final class BulletRenderManager {
                                         l.tintR(), l.tintG(), l.tintB(), l.tintA())))
                         .toList());
         renderObjects.put(entry.bulletId(), obj);
-        snapshots.put(entry.bulletId(), entry.snapshot());
+        snapshots.put(entry.bulletId(), style.snapshot());
     }
 
     /**
@@ -292,7 +322,8 @@ public final class BulletRenderManager {
 
     /**
      * Updates an existing render object with full visual data (position,
-     * direction, texture, model, render mode, size) from a full-data entry.
+     * direction, texture, model, render mode, size) from a full-data entry,
+     * resolving the content-addressed style payload.
      *
      * <p>Used when a new-bullets entry references an id that already has a
      * render object (e.g. after a dropped remove packet or a force-full-sync
@@ -301,18 +332,32 @@ public final class BulletRenderManager {
      * archives the old position as {@code prevPosition} for frame
      * interpolation.</p>
      *
+     * <p><b>Style-miss degradation (审查修复).</b> When the style payload is
+     * missing and not cached, the position/direction are still advanced (data
+     * continues to be accurate) but the visual style is left as-is; the next
+     * force-full-sync re-sends the full style to heal the cache. This mirrors
+     * {@link #createRenderObject}'s graceful handling and never throws.</p>
+     *
      * @param obj   the existing render object to update
      * @param entry the full-data entry with the new state
      */
     private void updateRenderObjectFull(BulletRenderObject obj, FullBulletEntry entry) {
+        // Advance position/direction regardless of style availability so the
+        // bullet keeps moving; only the visual style may lag a sync behind.
         obj.updatePosition(new Vec3(entry.posX(), entry.posY(), entry.posZ()));
         obj.setDirection(new Vec3(entry.dirX(), entry.dirY(), entry.dirZ()));
-        obj.setTexture(entry.texture());
-        obj.setModelLocation(entry.modelLocation());
-        obj.setRenderMode(entry.renderMode());
-        obj.setScale(entry.renderScale());
-        obj.setComposedTint(entry.composedTint());
-        obj.setLayers(entry.layers().stream()
+        BulletStyleData style = resolveStyle(entry);
+        if (style == null) {
+            // Missing style (dropped first full transmission) — keep existing
+            // visual; the next force-full-sync repairs it.
+            return;
+        }
+        obj.setTexture(style.texture());
+        obj.setModelLocation(style.modelLocation());
+        obj.setRenderMode(style.renderMode());
+        obj.setScale(style.renderScale());
+        obj.setComposedTint(style.composedTint());
+        obj.setLayers(style.layers().stream()
                 .map(l -> new BulletRenderObject.LayerData(
                         l.renderMode(), l.texture(), l.model(),
                         l.followRotation(), l.followScale(),
@@ -321,7 +366,42 @@ public final class BulletRenderManager {
                         isLayerTintWhite(l) ? null : new Vector4f(
                                 l.tintR(), l.tintG(), l.tintB(), l.tintA())))
                 .toList());
-        snapshots.put(entry.bulletId(), entry.snapshot());
+        snapshots.put(entry.bulletId(), style.snapshot());
+    }
+
+    /**
+     * Resolves the content-addressed style payload for a full entry, caching
+     * it when the entry carries the full {@link BulletStyleData} and looking
+     * it up by {@code styleId} otherwise.
+     *
+     * <p>The server attaches the full payload on the first transmission of a
+     * style id to this client (阶段 2 / 任务 2.3), and re-attaches it
+     * unconditionally on every force-full-sync (审查修复). A style-less entry
+     * whose id is not cached yet therefore indicates the first full-style
+     * transmission was dropped. Rather than throwing (which would crash the
+     * client), the caller degrades gracefully by skipping the bullet / leaving
+     * its visual unchanged; the next force-full-sync re-sends the full style
+     * and heals the cache.</p>
+     *
+     * @param entry the full-data entry referencing a style id
+     * @return the resolved {@link BulletStyleData}, {@code null} when the style
+     *         is neither attached nor cached (dropped first transmission)
+     */
+    @Nullable
+    private BulletStyleData resolveStyle(FullBulletEntry entry) {
+        if (entry.style() != null) {
+            styleCache.put(entry.styleId(), entry.style());
+        }
+        BulletStyleData cached = styleCache.get(entry.styleId());
+        if (cached != null) {
+            return cached;
+        }
+        // A style-less entry whose id is not cached yet indicates a protocol
+        // desync (the first full-style transmission for this id was dropped).
+        // Degrade gracefully and let the periodic force-full-sync (which always
+        // attaches full styles) heal the cache, instead of throwing and
+        // crashing the client.
+        return null;
     }
 
     /**
@@ -400,6 +480,7 @@ public final class BulletRenderManager {
     public void clear() {
         renderObjects.clear();
         snapshots.clear();
+        styleCache.clear();
     }
 
     /**

@@ -12,7 +12,7 @@ import org.yanbwe.modularshoot.ModularShoot;
 
 /**
  * Server-to-client gun data sync packet (设计文档 §GunSyncS2CPacket, lines
- * 2038-2059).
+ * 2038-2059; 阶段 2 / 任务 2.3 §GunSync 状态 diff).
  *
  * <p>Sent by the server to push the authoritative {@link
  * org.yanbwe.modularshoot.component.GunData GunData} of the player's main-hand
@@ -28,13 +28,28 @@ import org.yanbwe.modularshoot.ModularShoot;
  *   <li>Per-gun state is modified by hooks (flushed next tick).</li>
  * </ol>
  *
+ * <p><b>Two modes (阶段 2 / 任务 2.3).</b> Scenarios 1-3 are <em>structural</em>
+ * changes (plugin list / modifier version may change) and are sent as a full
+ * snapshot via {@link #full}: the packet carries the complete plugin list, the
+ * {@code modifierVersion} and the <em>entire</em> state map, and the client
+ * replaces its copy wholesale. Scenario 4 is a <em>per-gun state diff</em> sent
+ * via {@link #statePatch}: the plugin list and modifier version are unchanged,
+ * so the packet only carries the changed state keys ({@link #state()}) plus the
+ * keys to remove ({@link #removedStateKeys()}). The client merges the patch
+ * into its existing state instead of replacing it — this avoids re-transmitting
+ * the full plugin list + NBT state map every time a single state value changes
+ * (e.g. ammo decrement while shooting).</p>
+ *
  * <p><b>Wire format:</b> the payload id is <em>not</em> written by the codec
  * &mdash; NeoForge writes it automatically around the codec output (see
  * {@link CustomPacketPayload} class docs). The codec writes, in order: the
  * {@code gunInstanceUuid} ownership marker ({@code UUID}), the {@code hotbarSlot}
- * the snapshot was read from ({@code int}), plugin count ({@code int}), each
- * {@link PluginSyncEntry}, {@code modifierVersion} ({@code int}), and
- * {@code state} ({@code NBT}).</p>
+ * ({@code int}), the plugin count + each {@link PluginSyncEntry},
+ * {@code modifierVersion} ({@code int}), {@code state} ({@code NBT}), the
+ * removed-state-key count + keys, and the {@code statePatch} flag
+ * ({@code boolean}). For a state-patch packet the plugin count is {@code 0}
+ * and {@code removedStateKeys} carries the removals; for a full packet
+ * {@code removedStateKeys} is empty and {@code statePatch} is {@code false}.</p>
  *
  * @param gunInstanceUuid the {@code gunInstanceUuid} of the synced gun — one
  *                        half of the ownership marker the client uses to
@@ -48,21 +63,28 @@ import org.yanbwe.modularshoot.ModularShoot;
  *                        slot, so a snapshot for a slot the player has
  *                        switched away from is dropped even when the uuid
  *                        matches a copied twin
- * @param plugins         the installed plugin list of the synced gun; each entry
- *                        mirrors a {@link org.yanbwe.modularshoot.component.PluginInstance}
- * @param modifierVersion the anti-cheat modifier version counter of the gun
- * @param state           the per-gun state compound tag (state id &rarr; value);
- *                        only contains keys already written onto this gun;
- *                        the client handler writes this directly into
- *                        {@link org.yanbwe.modularshoot.component.GunData#state}
- *                        on the local main-hand stack
+ * @param plugins         the installed plugin list of the synced gun; empty
+ *                        for a state-patch packet (the plugin list is
+ *                        unchanged)
+ * @param modifierVersion the anti-cheat modifier version counter of the gun;
+ *                        meaningful only for a full packet
+ * @param state           for a full packet, the complete per-gun state
+ *                        compound; for a state patch, only the changed state
+ *                        keys (partial map)
+ * @param removedStateKeys state keys to remove client-side; non-empty only on
+ *                        a state patch
+ * @param statePatch      {@code true} when this is a state diff (merge
+ *                        semantic), {@code false} when it is a structural full
+ *                        sync (replace semantic)
  */
 public record GunSyncS2CPacket(
         UUID gunInstanceUuid,
         int hotbarSlot,
         List<PluginSyncEntry> plugins,
         int modifierVersion,
-        CompoundTag state
+        CompoundTag state,
+        List<String> removedStateKeys,
+        boolean statePatch
 ) implements CustomPacketPayload {
 
     /** Payload identifier: {@code modularshoot:gun_sync_s2c}. */
@@ -75,11 +97,48 @@ public record GunSyncS2CPacket(
      *
      * <p>Encoding order: {@code gunInstanceUuid} &rarr; {@code hotbarSlot}
      * &rarr; plugin count &rarr; each {@link PluginSyncEntry} &rarr;
-     * {@code modifierVersion} &rarr; {@code state} NBT. The payload id is
-     * written by NeoForge, not here.</p>
+     * {@code modifierVersion} &rarr; {@code state} NBT &rarr; removed-state-key
+     * count &rarr; keys &rarr; {@code statePatch}. The payload id is written by
+     * NeoForge, not here.</p>
      */
     public static final StreamCodec<RegistryFriendlyByteBuf, GunSyncS2CPacket> STREAM_CODEC =
             StreamCodec.of(GunSyncS2CPacket::encode, GunSyncS2CPacket::decode);
+
+    /**
+     * Creates a structural full-sync packet: complete plugin list, modifier
+     * version, and the entire state map (replace semantic on the client).
+     *
+     * @param gunInstanceUuid the gun instance uuid ownership marker
+     * @param hotbarSlot      the hotbar slot the snapshot was read from
+     * @param plugins         the complete installed plugin list
+     * @param modifierVersion the modifier version counter
+     * @param state           the complete per-gun state compound tag
+     * @return a full structural sync packet
+     */
+    public static GunSyncS2CPacket full(
+            UUID gunInstanceUuid, int hotbarSlot,
+            List<PluginSyncEntry> plugins, int modifierVersion, CompoundTag state) {
+        return new GunSyncS2CPacket(gunInstanceUuid, hotbarSlot, plugins,
+                modifierVersion, state, List.of(), false);
+    }
+
+    /**
+     * Creates a state-diff (patch) packet: only the changed state keys plus
+     * the keys to remove. The plugin list and modifier version are left empty /
+     * zero and must be preserved client-side.
+     *
+     * @param gunInstanceUuid the gun instance uuid ownership marker
+     * @param hotbarSlot      the hotbar slot the snapshot was read from
+     * @param patch           the changed-key patch state (see {@link GunStateDiff#diff})
+     * @param removedStateKeys state keys to remove (see {@link GunStateDiff#removedKeys})
+     * @return a state-patch sync packet
+     */
+    public static GunSyncS2CPacket statePatch(
+            UUID gunInstanceUuid, int hotbarSlot,
+            CompoundTag patch, List<String> removedStateKeys) {
+        return new GunSyncS2CPacket(gunInstanceUuid, hotbarSlot, List.of(),
+                0, patch, removedStateKeys, true);
+    }
 
     /**
      * Immutable snapshot of a single installed plugin, mirroring the fields of
@@ -142,6 +201,11 @@ public record GunSyncS2CPacket(
         }
         buf.writeInt(packet.modifierVersion);
         buf.writeNbt(packet.state);
+        buf.writeInt(packet.removedStateKeys.size());
+        for (String key : packet.removedStateKeys) {
+            buf.writeUtf(key);
+        }
+        buf.writeBoolean(packet.statePatch);
     }
 
     /**
@@ -165,7 +229,14 @@ public record GunSyncS2CPacket(
         if (state == null) {
             state = new CompoundTag();
         }
-        return new GunSyncS2CPacket(gunInstanceUuid, hotbarSlot, plugins, modifierVersion, state);
+        int removedCount = buf.readInt();
+        List<String> removedStateKeys = new ArrayList<>(removedCount);
+        for (int i = 0; i < removedCount; i++) {
+            removedStateKeys.add(buf.readUtf());
+        }
+        boolean statePatch = buf.readBoolean();
+        return new GunSyncS2CPacket(gunInstanceUuid, hotbarSlot, plugins,
+                modifierVersion, state, removedStateKeys, statePatch);
     }
 
     /**

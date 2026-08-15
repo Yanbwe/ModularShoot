@@ -16,7 +16,8 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
 /**
- * Server-to-client bullet sync packet (设计文档 §BulletS2CPacket / §同步策略).
+ * Server-to-client bullet sync packet (设计文档 §BulletS2CPacket / §同步策略;
+ * 阶段 2 / 任务 2.3 §全量同步内容寻址).
  *
  * <p>Sent by the server every tick (via {@code BulletSyncService}) to inform
  * clients of bullet state changes within their render distance. The server
@@ -33,39 +34,44 @@ import net.minecraft.resources.ResourceLocation;
  * <ul>
  *   <li>{@link FullBulletEntry} — newly created bullets (or a forced
  *       full-sync set) carrying every field the client needs to instantiate
- *       a {@code BulletRenderObject}.</li>
+ *       a {@code BulletRenderObject}, <em>except</em> the visual style which
+ *       is content-addressed (see below).</li>
  *   <li>{@link DeltaBulletEntry} — already-known bullets whose
  *       position/direction has changed since the last sync; carries only the
- *       id and the new absolute position/direction (simplified delta — see
- *       design note below).</li>
+ *       id and the new absolute position/direction.</li>
  *   <li>{@link #removedBulletIds()} — bullet ids that have expired or hit
  *       something since the last sync; the client destroys the
  *       corresponding render objects.</li>
  * </ul>
  *
- * <p><b>Design note — absolute vs relative delta:</b> the design doc says
- * "位置变化量" (position delta). This implementation uses <em>absolute</em>
- * position/direction in {@link DeltaBulletEntry} rather than relative deltas.
- * Absolute values are loss-tolerant: a dropped update packet does not
- * desynchronise subsequent deltas, and a periodic {@link #forceFullSync()}
- * corrects any drift. This trades a few extra bytes per update for robustness
- * and simpler client logic.</p>
+ * <p><b>Content-addressed visual style (阶段 2 / 任务 2.3).</b> The full
+ * visual style (texture / model / render mode / scale / tint / attach layers)
+ * and the stats/traits snapshot are <em>flight-invariant</em> for a bullet.
+ * Instead of re-transmitting them on every full entry (including the periodic
+ * force-full-sync), the server assigns each distinct style a stable wire id
+ * ({@link BulletStyleContentAddresser}) and carries that id in
+ * {@link FullBulletEntry#styleId()}. The full payload ({@link BulletStyleData})
+ * is attached ({@link FullBulletEntry#style()}) only on the first transmission
+ * of a given style id to a client; afterwards the client reuses its cached
+ * copy by id. Delta and full-sync packets therefore only carry the wire id
+ * once the client knows it.</p>
+ *
+ * <p><b>Design note — absolute vs relative delta:</b> position/direction in
+ * {@link DeltaBulletEntry} are <em>absolute</em> values. Absolute values are
+ * loss-tolerant: a dropped update packet does not desynchronise subsequent
+ * deltas, and a periodic {@link #forceFullSync()} corrects any drift.</p>
  *
  * <p><b>Force-full-sync:</b> when {@link #forceFullSync()} is {@code true},
  * the client reconciles its render-object map against
- * {@link #newBullets()} as a diff update — existing ids are updated in place
- * (keeping their interpolation pair), new ids are created, and ids absent
- * from the set are removed. {@link #updatedBullets()} and
- * {@link #removedBulletIds()} are ignored. The service triggers this
- * periodically (every {@code FULL_SYNC_INTERVAL_TICKS}) to recover from
- * packet loss, and on player join.</p>
+ * {@link #newBullets()} as a diff update — existing ids are updated in place,
+ * new ids are created, and ids absent from the set are removed. The style
+ * payload is still content-addressed: only style ids the client does not yet
+ * know are re-sent in full.</p>
  *
  * <p><b>Short-life guarantee (设计文档 §短寿命子弹保证, line 1276):</b> the
  * sync service marks every bullet created this tick and includes them in
  * {@link #newBullets()} at the end of the tick — even if the bullet was
- * already removed by collision in the same Pre simulation step. This ensures
- * high-speed / short-range bullets still appear on the client for at least
- * one render frame.</p>
+ * already removed by collision in the same Pre simulation step.</p>
  *
  * @param newBullets      full-data entries for newly created (or forced
  *                        full-sync) bullets the client should create
@@ -224,7 +230,8 @@ public record BulletS2CPacket(
 
     /**
      * Encodes a single {@link FullBulletEntry} into the buffer in fixed
-     * field order.
+     * field order: id, position, direction, shooter entity id, style id, then
+     * (when the full style is attached) the {@link BulletStyleData} payload.
      *
      * @param buf   the target buffer
      * @param entry the full entry to serialize
@@ -237,39 +244,13 @@ public record BulletS2CPacket(
         buf.writeDouble(entry.dirX());
         buf.writeDouble(entry.dirY());
         buf.writeDouble(entry.dirZ());
-        encodeNullableResourceLocation(buf, entry.texture());
-        encodeNullableResourceLocation(buf, entry.modelLocation());
-        // Enum ordinal byte instead of a UTF string: the two render modes are
-        // fixed in code (unreleased mod — no cross-version compat concern).
-        buf.writeByte(renderModeOrdinal(entry.renderMode()));
-        buf.writeFloat(entry.renderScale());
         buf.writeInt(entry.shooterEntityId());
-        ClientBulletSnapshot.STREAM_CODEC.encode(buf, entry.snapshot());
-        // new fields (design §4.3 extension)
-        if (entry.composedTint() == null) {
+        buf.writeVarInt(entry.styleId());
+        if (entry.style() == null) {
             buf.writeBoolean(false);
         } else {
             buf.writeBoolean(true);
-            buf.writeFloat(entry.composedTint().x);
-            buf.writeFloat(entry.composedTint().y);
-            buf.writeFloat(entry.composedTint().z);
-            buf.writeFloat(entry.composedTint().w);
-        }
-        buf.writeVarInt(entry.layers().size());
-        for (FullBulletEntry.LayerEntryFull l : entry.layers()) {
-            buf.writeByte(renderModeOrdinal(l.renderMode()));
-            encodeNullableResourceLocation(buf, l.texture());
-            encodeNullableResourceLocation(buf, l.model());
-            buf.writeBoolean(l.followRotation());
-            buf.writeBoolean(l.followScale());
-            buf.writeFloat(l.offsetX());
-            buf.writeFloat(l.offsetY());
-            buf.writeFloat(l.offsetZ());
-            buf.writeFloat(l.scale());
-            buf.writeFloat(l.tintR());
-            buf.writeFloat(l.tintG());
-            buf.writeFloat(l.tintB());
-            buf.writeFloat(l.tintA());
+            encodeBulletStyleData(buf, entry.style());
         }
     }
 
@@ -288,19 +269,77 @@ public record BulletS2CPacket(
         double dirX = buf.readDouble();
         double dirY = buf.readDouble();
         double dirZ = buf.readDouble();
+        int shooterEntityId = buf.readInt();
+        int styleId = buf.readVarInt();
+        BulletStyleData style = buf.readBoolean() ? decodeBulletStyleData(buf) : null;
+        return new FullBulletEntry(
+                bulletId, posX, posY, posZ, dirX, dirY, dirZ,
+                shooterEntityId, styleId, style);
+    }
+
+    // --- BulletStyleData codec ------------------------------------------
+
+    /**
+     * Encodes the content-addressed style payload: nullable texture, nullable
+     * model, render mode ordinal, render scale, composed tint (white sentinel
+     * collapses to {@code null}), the snapshot, and the layer list.
+     *
+     * @param buf   the target buffer
+     * @param style the style payload to serialize
+     */
+    private static void encodeBulletStyleData(RegistryFriendlyByteBuf buf, BulletStyleData style) {
+        encodeNullableResourceLocation(buf, style.texture());
+        encodeNullableResourceLocation(buf, style.modelLocation());
+        buf.writeByte(renderModeOrdinal(style.renderMode()));
+        buf.writeFloat(style.renderScale());
+        if (style.composedTint() == null) {
+            buf.writeBoolean(false);
+        } else {
+            buf.writeBoolean(true);
+            buf.writeFloat(style.composedTint().x);
+            buf.writeFloat(style.composedTint().y);
+            buf.writeFloat(style.composedTint().z);
+            buf.writeFloat(style.composedTint().w);
+        }
+        ClientBulletSnapshot.STREAM_CODEC.encode(buf, style.snapshot());
+        buf.writeVarInt(style.layers().size());
+        for (BulletS2CPacket.FullBulletEntry.LayerEntryFull l : style.layers()) {
+            buf.writeByte(renderModeOrdinal(l.renderMode()));
+            encodeNullableResourceLocation(buf, l.texture());
+            encodeNullableResourceLocation(buf, l.model());
+            buf.writeBoolean(l.followRotation());
+            buf.writeBoolean(l.followScale());
+            buf.writeFloat(l.offsetX());
+            buf.writeFloat(l.offsetY());
+            buf.writeFloat(l.offsetZ());
+            buf.writeFloat(l.scale());
+            buf.writeFloat(l.tintR());
+            buf.writeFloat(l.tintG());
+            buf.writeFloat(l.tintB());
+            buf.writeFloat(l.tintA());
+        }
+    }
+
+    /**
+     * Decodes a {@link BulletStyleData} written by
+     * {@link #encodeBulletStyleData}.
+     *
+     * @param buf the source buffer
+     * @return a new {@link BulletStyleData}
+     */
+    private static BulletStyleData decodeBulletStyleData(RegistryFriendlyByteBuf buf) {
         ResourceLocation texture = decodeNullableResourceLocation(buf);
         ResourceLocation modelLocation = decodeNullableResourceLocation(buf);
         String renderMode = BulletStyle.RenderMode.values()[buf.readByte()].getSerializedName();
         float renderScale = buf.readFloat();
-        int shooterEntityId = buf.readInt();
-        ClientBulletSnapshot snapshot = ClientBulletSnapshot.STREAM_CODEC.decode(buf);
-        // new fields (design §4.3 extension)
         @Nullable Vector4f composedTint = null;
         if (buf.readBoolean()) {
             composedTint = new Vector4f(buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat());
         }
+        ClientBulletSnapshot snapshot = ClientBulletSnapshot.STREAM_CODEC.decode(buf);
         int layerCount = buf.readVarInt();
-        List<FullBulletEntry.LayerEntryFull> layers = new ArrayList<>(Math.max(0, layerCount));
+        List<BulletS2CPacket.FullBulletEntry.LayerEntryFull> layers =
+                new ArrayList<>(Math.max(0, layerCount));
         for (int i = 0; i < layerCount; i++) {
             String layerRenderMode = BulletStyle.RenderMode.values()[buf.readByte()].getSerializedName();
             ResourceLocation layerTexture = decodeNullableResourceLocation(buf);
@@ -315,16 +354,14 @@ public record BulletS2CPacket(
             float tintG = buf.readFloat();
             float tintB = buf.readFloat();
             float tintA = buf.readFloat();
-            layers.add(new FullBulletEntry.LayerEntryFull(
+            layers.add(new BulletS2CPacket.FullBulletEntry.LayerEntryFull(
                     layerRenderMode, layerTexture, layerModel,
                     followRotation, followScale,
                     offsetX, offsetY, offsetZ,
                     scale, tintR, tintG, tintB, tintA));
         }
-        return new FullBulletEntry(
-                bulletId, posX, posY, posZ, dirX, dirY, dirZ,
-                texture, modelLocation, renderMode, renderScale, shooterEntityId, snapshot,
-                composedTint, layers);
+        return new BulletStyleData(texture, modelLocation, renderMode, renderScale,
+                composedTint, layers, snapshot);
     }
 
     // --- DeltaBulletEntry codec -----------------------------------------
@@ -361,17 +398,14 @@ public record BulletS2CPacket(
     }
 
     /**
-     * Encodes a single {@link DeltaBulletEntry} — id + 3 position doubles +
-     * 3 direction doubles. Visual style is omitted (already known from the
-     * initial full entry).
+     * Encodes a single {@link DeltaBulletEntry} — id + 3 position floats +
+     * 3 direction floats. Visual style is omitted (already known from the
+     * initial full entry / cached by style id).
      *
      * @param buf   the target buffer
      * @param entry the delta entry to serialize
      */
     private static void encodeDeltaEntry(RegistryFriendlyByteBuf buf, DeltaBulletEntry entry) {
-        // 审查优化 P3: 每 tick 每玩家每子弹的常驻带宽大头。id 用 varint
-        // （每维度从 1 起，1-2 字节），位置/方向用 float（渲染插值精度足够：
-        // y=1000 处 float 精度 ~6e-5 方块）。52 字节 → ~26 字节/条目。
         buf.writeVarInt(entry.bulletId());
         buf.writeFloat((float) entry.posX());
         buf.writeFloat((float) entry.posY());
@@ -473,12 +507,12 @@ public record BulletS2CPacket(
      * for client sync — used when a bullet is first created or during a
      * forced full-sync.
      *
-     * <p>This is a flat, primitive-typed record (rather than embedding
-     * {@code Vec3} / {@code BulletStyle}) so the wire format is explicit and
-     * allocation-light on the hot per-tick sync path. Position and direction
-     * are split into their three scalar components; the visual style is
-     * carried as a nullable texture path (billboard mode), a nullable model
-     * path (3d mode) and a render-mode tag string.</p>
+     * <p>The per-bullet dynamic fields (id, position, direction, shooter
+     * entity id) are carried inline, while the flight-invariant visual style
+     * and stats/traits snapshot are content-addressed: {@link #styleId()}
+     * references the client's cache and {@link #style()} carries the full
+     * {@link BulletStyleData} payload only on the first transmission of that
+     * style id to a client (阶段 2 / 任务 2.3).</p>
      *
      * @param bulletId        unique-per-dimension bullet id, correlating 1:1
      *                        with the server {@code BulletRecord}
@@ -488,41 +522,16 @@ public record BulletS2CPacket(
      * @param dirX            normalized direction x component
      * @param dirY            normalized direction y component
      * @param dirZ            normalized direction z component
-     * @param texture         billboard-mode texture path, or {@code null}
-     *                        when the bullet uses 3d mode or has no visual
-     * @param modelLocation   3d-mode vanilla JSON model path, or {@code null}
-     *                        when the bullet uses billboard mode or has no
-     *                        visual
-     * @param renderMode      rendering pipeline tag — {@code "billboard"} or
-     *                        {@code "3d"} (see
-     *                        {@link org.yanbwe.modularshoot.registry.gun.BulletStyle.RenderMode})
-     * @param renderScale     composed visual scale of the bullet. Renamed
-     *                        from {@code bulletSize} in the modifier-stacking
-     *                        redesign (设计规格 §3.4): the wire field stays a
-     *                        single {@code float} in the same position, so
-     *                        the wire format is forward/back compatible by
-     *                        construction.
      * @param shooterEntityId network entity id of the shooter for
      *                        client-side owner attribution, or {@code -1}
      *                        when the bullet is ownerless (independent
      *                        firing from traps etc.)
-     * @param snapshot        client-side projection of the bullet's frozen
-     *                        stats/traits and identity, consumed by
-     *                        {@code onVisualTick} hooks to adjust appearance
-     *                        in-flight (设计文档 §特性视觉钩子, line 1298);
-     *                        never {@code null}
-     * @param composedTint    channel-wise composed tint
-     *                        ({@link org.yanbwe.modularshoot.bullet.ComposedBulletStyle#composedTint()}),
-     *                        or {@code null} as the wire sentinel for the
-     *                        white identity tint {@code (1,1,1,1)} so a
-     *                        default-styled bullet saves 4 floats on the
-     *                        wire. The client rebuilds the white vector when
-     *                        it sees {@code null}. Added in the
-     *                        modifier-stacking redesign (spec §4.3).
-     * @param layers          composed {@code attach_layer} entries, in source
-     *                        order. Empty when the bullet has no additive
-     *                        layers (most common case). Added in the
-     *                        modifier-stacking redesign (spec §4.3).
+     * @param styleId         stable content-addressed wire id referencing the
+     *                        client's cached {@link BulletStyleData}
+     * @param style           the full style payload when this transmission is
+     *                        the first for this style id to this client, or
+     *                        {@code null} when the client already has it
+     *                        cached
      */
     public record FullBulletEntry(
             int bulletId,
@@ -532,14 +541,9 @@ public record BulletS2CPacket(
             double dirX,
             double dirY,
             double dirZ,
-            @Nullable ResourceLocation texture,
-            @Nullable ResourceLocation modelLocation,
-            String renderMode,
-            float renderScale,
             int shooterEntityId,
-            ClientBulletSnapshot snapshot,
-            @Nullable Vector4f composedTint,
-            List<LayerEntryFull> layers) {
+            int styleId,
+            @Nullable BulletStyleData style) {
 
         /**
          * Wire-side description of one {@code attach_layer} layer. Scalar
@@ -580,11 +584,11 @@ public record BulletS2CPacket(
      * changed since the last sync (设计文档 §同步策略, line 2043: "后续更新包
      * 仅包含 ID 和位置变化量").
      *
-     * <p>Visual style (texture, model, render mode, size, shooter) is
-     * omitted: the client already has it from the initial
-     * {@link FullBulletEntry} and these fields do not change in-flight. This
-     * reduces per-update bandwidth significantly in multi-bullet scenarios
-     * (shotgun pellets, multi-player firefights).</p>
+     * <p>Visual style (content-addressed by {@link FullBulletEntry} via
+     * {@code styleId}) and shooter are omitted: the client already has them
+     * from the initial full entry and these fields do not change in-flight.
+     * This reduces per-update bandwidth significantly in multi-bullet
+     * scenarios (shotgun pellets, multi-player firefights).</p>
      *
      * <p>Position and direction are <em>absolute</em> values (not relative
      * deltas) so a dropped packet does not desynchronise subsequent updates;
@@ -593,10 +597,7 @@ public record BulletS2CPacket(
      * <p><b>Wire compression (审查优化 P3):</b> the id is written as a
      * varint and the six position/direction components as {@code float}
      * (≈26 bytes per entry instead of 52). The record fields stay
-     * {@code double} so server-side diffing keeps full precision; the
-     * float wire precision (≈6e-5 blocks at y=1000) is far below render
-     * scale. The in-memory {@code DeltaBulletEntry} values survive the
-     * round trip exactly for float-representable inputs.</p>
+     * {@code double} so server-side diffing keeps full precision.</p>
      *
      * @param bulletId unique-per-dimension bullet id matching the initial
      *                 {@link FullBulletEntry}

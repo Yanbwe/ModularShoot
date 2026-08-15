@@ -21,11 +21,11 @@ import static org.junit.jupiter.api.Assertions.*;
  * hand-rolled wire format in the sync layer (three entry buckets +
  * force-full-sync flag, nullable locations/tint/uuid, variable-length layer
  * lists). Every test encodes into a fresh {@link RegistryFriendlyByteBuf}
- * and decodes from the same buffer (bootstrap recipe identical to
- * {@link GunSyncS2CPacketCodecTest}), then asserts field-by-field equality,
- * including the {@code null} sentinel semantics: {@code null} texture /
- * model / gunId / shooter / composedTint must survive the round trip as
- * {@code null}.
+ * and decodes from the same buffer, then asserts field-by-field equality,
+ * including the content-addressed style semantics (阶段 2 / 任务 2.3):
+ * a {@link FullBulletEntry} carries a style wire id and an optional full
+ * {@link BulletStyleData} payload; the {@code null} sentinel for the style
+ * payload must survive the round trip.
  */
 class BulletS2CPacketCodecTest {
 
@@ -75,26 +75,44 @@ class BulletS2CPacketCodecTest {
                 1.0f, 0.9f, 0.8f, 0.5f);
     }
 
-    private static FullBulletEntry fullEntry(int bulletId) {
-        return new FullBulletEntry(
-                bulletId,
-                1.5, 2.5, 3.5,
-                0.0, 1.0, 0.0,
+    private static BulletStyleData styleData() {
+        return new BulletStyleData(
                 ResourceLocation.parse("modularshoot:textures/bullet/example.png"),
                 ResourceLocation.parse("modularshoot:item/example"),
                 "3d",
                 0.75f,
-                42,
-                snapshot(),
                 new Vector4f(0.1f, 0.2f, 0.3f, 0.9f),
-                List.of(billboardLayer(), threeDLayer()));
+                List.of(billboardLayer(), threeDLayer()),
+                snapshot());
+    }
+
+    /** A full entry carrying a full style payload (first transmission). */
+    private static FullBulletEntry fullEntryWithStyle(int bulletId, int styleId) {
+        return new FullBulletEntry(
+                bulletId,
+                1.5, 2.5, 3.5,
+                0.0, 1.0, 0.0,
+                42,
+                styleId,
+                styleData());
+    }
+
+    /** A full entry referencing a style id the client already has (no payload). */
+    private static FullBulletEntry fullEntryStyleRef(int bulletId, int styleId) {
+        return new FullBulletEntry(
+                bulletId,
+                1.5, 2.5, 3.5,
+                0.0, 1.0, 0.0,
+                42,
+                styleId,
+                null);
     }
 
     // --- FullBulletEntry ---
 
     @Test
-    void roundTripPreservesEveryFieldOfFullBulletEntry() {
-        FullBulletEntry entry = fullEntry(17);
+    void roundTripPreservesEveryFieldOfFullBulletEntryWithStyle() {
+        FullBulletEntry entry = fullEntryWithStyle(17, 3);
         BulletS2CPacket decoded = roundTrip(
                 BulletS2CPacket.delta(List.of(entry), List.of(), List.of()));
 
@@ -107,68 +125,58 @@ class BulletS2CPacketCodecTest {
         assertEquals(0.0, out.dirX(), 0.0);
         assertEquals(1.0, out.dirY(), 0.0);
         assertEquals(0.0, out.dirZ(), 0.0);
-        assertEquals(ResourceLocation.parse("modularshoot:textures/bullet/example.png"), out.texture());
-        assertEquals(ResourceLocation.parse("modularshoot:item/example"), out.modelLocation());
-        assertEquals("3d", out.renderMode(), "render mode tag survives the enum-ordinal wire encoding");
-        assertEquals(0.75f, out.renderScale(), 0.0f);
         assertEquals(42, out.shooterEntityId());
-        assertEquals(entry.snapshot(), out.snapshot(),
+        assertEquals(3, out.styleId(), "the content-addressed style wire id round-trips");
+        assertNotNull(out.style(), "a first-transmission entry carries the full style payload");
+        assertEquals(styleData().texture(), out.style().texture());
+        assertEquals(styleData().modelLocation(), out.style().modelLocation());
+        assertEquals("3d", out.style().renderMode(),
+                "render mode tag survives the enum-ordinal wire encoding");
+        assertEquals(0.75f, out.style().renderScale(), 0.0f);
+        assertEquals(styleData().composedTint(), out.style().composedTint());
+        assertEquals(styleData().snapshot(), out.style().snapshot(),
                 "ClientBulletSnapshot projection (stats/traits/gunId/shooter) round-trips intact");
-        assertEquals(entry.composedTint(), out.composedTint(),
-                "non-null composed tint keeps its four channels");
-        assertEquals(2, out.layers().size(), "variable-length layer list round-trips in source order");
-        assertEquals(entry.layers(), out.layers(),
-                "each layer keeps mode, texture/model, follow flags, offset, scale and tint");
+        assertEquals(2, out.style().layers().size(),
+                "variable-length layer list round-trips in source order");
+        assertEquals(styleData().layers(), out.style().layers());
     }
 
     @Test
-    void roundTripPreservesNullSentinelForComposedTint() {
-        FullBulletEntry entry = new FullBulletEntry(
-                1,
-                0.0, 0.0, 0.0,
-                1.0, 0.0, 0.0,
-                ResourceLocation.parse("modularshoot:textures/bullet/example.png"),
-                null,
-                "billboard",
-                1.0f,
-                -1,
-                snapshot(),
-                null, // null sentinel: client rebuilds the white identity tint (1,1,1,1)
-                List.of());
-
-        BulletS2CPacket decoded = roundTrip(
-                BulletS2CPacket.delta(List.of(entry), List.of(), List.of()));
-
-        assertNull(decoded.newBullets().get(0).composedTint(),
-                "null composedTint must stay null on the wire (it is the white-identity sentinel)");
-    }
-
-    @Test
-    void roundTripPreservesNullLocationsAndOwnerlessSnapshot() {
-        FullBulletEntry entry = new FullBulletEntry(
-                2,
-                -10.0, 64.0, 200.0,
-                0.0, 0.0, -1.0,
-                null, // no billboard texture
-                null, // no 3d model
-                "3d",
-                0.5f,
-                -1,   // ownerless (independent firing, e.g. traps)
-                new ClientBulletSnapshot(
-                        Map.of(ResourceLocation.parse("modularshoot:hit_damage"), 3.0),
-                        Map.of(),
-                        null, // independent firing has no gun id
-                        null), // ownerless shooter uuid
-                new Vector4f(1.0f, 1.0f, 1.0f, 1.0f),
-                List.of());
-
+    void roundTripPreservesNullStyleSentinelForKnownStyle() {
+        FullBulletEntry entry = fullEntryStyleRef(9, 4);
         BulletS2CPacket decoded = roundTrip(
                 BulletS2CPacket.delta(List.of(entry), List.of(), List.of()));
 
         FullBulletEntry out = decoded.newBullets().get(0);
+        assertEquals(4, out.styleId());
+        assertNull(out.style(),
+                "a style-less entry (client already has the id) stays null on the wire");
+    }
+
+    @Test
+    void roundTripPreservesNullLocationsAndOwnerlessSnapshot() {
+        BulletStyleData ownerless = new BulletStyleData(
+                null, // no billboard texture
+                null, // no 3d model
+                "3d",
+                0.5f,
+                new Vector4f(1.0f, 1.0f, 1.0f, 1.0f),
+                List.of(),
+                new ClientBulletSnapshot(
+                        Map.of(ResourceLocation.parse("modularshoot:hit_damage"), 3.0),
+                        Map.of(),
+                        null, // independent firing has no gun id
+                        null) // ownerless shooter uuid
+        );
+        FullBulletEntry entry = new FullBulletEntry(
+                2, -10.0, 64.0, 200.0, 0.0, 0.0, -1.0, -1, 7, ownerless);
+
+        BulletS2CPacket decoded = roundTrip(
+                BulletS2CPacket.delta(List.of(entry), List.of(), List.of()));
+
+        BulletStyleData out = decoded.newBullets().get(0).style();
         assertNull(out.texture(), "null texture must survive as null");
         assertNull(out.modelLocation(), "null modelLocation must survive as null");
-        assertEquals(-1, out.shooterEntityId(), "ownerless shooter marker survives");
         assertNull(out.snapshot().gunId(), "null snapshot gunId must survive as null");
         assertNull(out.snapshot().shooter(), "null snapshot shooter uuid must survive as null");
         assertTrue(out.layers().isEmpty(), "empty layer list survives");
@@ -176,24 +184,24 @@ class BulletS2CPacketCodecTest {
 
     @Test
     void roundTripPreservesBillboardRenderModeTag() {
-        FullBulletEntry entry = new FullBulletEntry(
-                3,
-                0.0, 0.0, 0.0,
-                0.0, 0.0, 1.0,
+        BulletStyleData billboard = new BulletStyleData(
                 ResourceLocation.parse("modularshoot:textures/bullet/example.png"),
                 null,
                 "billboard",
                 1.0f,
-                -1,
-                new ClientBulletSnapshot(Map.of(), Map.of(), null, null),
-                null,
-                List.of());
+                null, // white identity sentinel
+                List.of(),
+                new ClientBulletSnapshot(Map.of(), Map.of(), null, null));
+        FullBulletEntry entry = new FullBulletEntry(
+                3, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, -1, 1, billboard);
 
         BulletS2CPacket decoded = roundTrip(
                 BulletS2CPacket.delta(List.of(entry), List.of(), List.of()));
 
-        assertEquals("billboard", decoded.newBullets().get(0).renderMode(),
+        assertEquals("billboard", decoded.newBullets().get(0).style().renderMode(),
                 "billboard (ordinal 0) render-mode tag survives the wire");
+        assertNull(decoded.newBullets().get(0).style().composedTint(),
+                "null (white identity) composed tint sentinel survives the wire");
     }
 
     // --- DeltaBulletEntry ---
@@ -214,8 +222,6 @@ class BulletS2CPacketCodecTest {
     @Test
     void deltaFloatCompressionKeepsSubPixelPrecision() {
         // 审查优化 P3: delta 条目在线路上以 float 传输（52 → ~26 字节）。
-        // float 不能精确表示 0.1，往返后允许亚像素级偏差（渲染不可见），
-        // 但必须远小于 1 像素（≈0.06 方块，y=1000 处 float 精度）。
         DeltaBulletEntry delta = new DeltaBulletEntry(
                 1001, 1000.1, 64.7, -200.3, 0.1, 0.2, -0.3);
 
@@ -261,7 +267,8 @@ class BulletS2CPacketCodecTest {
 
     @Test
     void roundTripPreservesForceFullSyncFlag() {
-        BulletS2CPacket packet = BulletS2CPacket.fullSync(List.of(fullEntry(1), fullEntry(2)));
+        BulletS2CPacket packet = BulletS2CPacket.fullSync(
+                List.of(fullEntryWithStyle(1, 1), fullEntryWithStyle(2, 1)));
 
         BulletS2CPacket decoded = roundTrip(packet);
 

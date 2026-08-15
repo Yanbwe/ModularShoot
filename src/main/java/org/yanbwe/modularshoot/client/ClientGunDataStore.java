@@ -16,6 +16,7 @@ import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
+import org.yanbwe.modularshoot.network.GunStateDiff;
 import org.yanbwe.modularshoot.network.GunSyncS2CPacket;
 import org.yanbwe.modularshoot.network.GunSyncS2CPacket.PluginSyncEntry;
 
@@ -78,8 +79,18 @@ public final class ClientGunDataStore {
     /**
      * Stores the authoritative gun-data snapshot pushed by the server.
      *
-     * <p>Overwrites any previously stored data. Called on the main client
-     * thread via {@code enqueueWork} from
+     * <p>Two modes are supported (阶段 2 / 任务 2.3):</p>
+     * <ul>
+     *   <li>Full structural sync ({@code statePatch == false}) &mdash; the
+     *       plugin list, modifier version and full state map are replaced
+     *       wholesale.</li>
+     *   <li>State diff ({@code statePatch == true}) &mdash; plugin list and
+     *       modifier version are preserved, and the packet's partial state is
+     *       {@link GunStateDiff merged} into the stored state (patch keys
+     *       overwrite, {@code removedStateKeys} are removed).</li>
+     * </ul>
+     *
+     * <p>Called on the main client thread via {@code enqueueWork} from
      * {@link org.yanbwe.modularshoot.network.ModularShootPayloads#handleGunSyncS2C},
      * which only forwards snapshots whose {@code gunInstanceUuid} matches the
      * local main-hand gun (see
@@ -88,6 +99,20 @@ public final class ClientGunDataStore {
      * @param packet the {@link GunSyncS2CPacket} received on the client
      */
     public void handleSync(GunSyncS2CPacket packet) {
+        if (packet.statePatch()) {
+            // Baseline guard (审查修复): a state patch is a diff against the
+            // previously-synced full state. If no full structural sync has been
+            // received yet, merging the patch onto an empty state would produce
+            // an incomplete baseline. Ignore the patch and wait for the next
+            // full structural sync instead.
+            if (!hasSyncData) {
+                return;
+            }
+            this.state = GunStateDiff.merge(this.state, packet.state(), packet.removedStateKeys());
+            this.gunInstanceUuid = packet.gunInstanceUuid();
+            this.hotbarSlot = packet.hotbarSlot();
+            return;
+        }
         this.installedPlugins = packet.plugins();
         this.modifierVersion = packet.modifierVersion();
         this.state = packet.state();

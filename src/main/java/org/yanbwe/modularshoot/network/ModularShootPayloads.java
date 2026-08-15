@@ -57,12 +57,18 @@ public final class ModularShootPayloads {
      * a three-bucket structure (newBullets / updatedBullets / removedBulletIds
      * + forceFullSync flag) for incremental delta sync.</p>
      *
+     * <p>Bumped to {@code "3"} at 阶段 2 / 任务 2.3: {@code BulletS2CPacket}
+     * now content-addresses the flight-invariant style (a wire style id plus an
+     * optional full style payload carried once per client), and
+     * {@code GunSyncS2CPacket} gained a state-patch mode (only changed state
+     * keys, a removed-key list, and a {@code statePatch} flag).</p>
+     *
      * <p>Not bumped for the action-key rename (commit history): the payload id
      * {@code reload_c2s} → {@code action_c2s} is a wire-breaking change, but
      * the mod is unreleased, so no compatibility is preserved (see 设计文档
      * §动作键中立化).</p>
      */
-    public static final String PROTOCOL_VERSION = "2";
+    public static final String PROTOCOL_VERSION = "3";
 
     private ModularShootPayloads() {}
 

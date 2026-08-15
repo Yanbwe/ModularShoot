@@ -122,8 +122,11 @@ public final class GunSyncTickHandler {
         if (!manager.shouldSync(gunUuid, currentTick)) {
             return;
         }
-        // Reuse GunSyncService's packet builder + sender to stay DRY.
-        GunSyncService.syncToPlayer(player);
+        // Reuse GunSyncService's state-diff packet builder + sender to stay DRY.
+        // syncStateToPlayer sends only the changed state keys (阶段 2 / 任务 2.3),
+        // not the full plugin list + NBT state, since per-gun state writes leave
+        // the plugin structure unchanged.
+        GunSyncService.syncStateToPlayer(player);
         manager.markSynced(gunUuid, currentTick);
     }
 

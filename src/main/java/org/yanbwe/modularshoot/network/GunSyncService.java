@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.core.RegistryAccess;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -101,6 +102,18 @@ public final class GunSyncService {
     }
 
     private static final Map<UUID, MainHandTrack> previousMainHand = new ConcurrentHashMap<>();
+
+    /**
+     * Per-(player, gun) last-synced state, used to build the minimal state
+     * diff on the throttled state-flush path (阶段 2 / 任务 2.3 §GunSync 状态
+     * diff). Keyed by a stable pair so a structural full sync for a new gun
+     * never diffs against the previous gun's state. Cleaned up on logout.
+     */
+    private record PlayerStateKey(UUID playerUuid, UUID gunUuid) {
+    }
+
+    private static final Map<PlayerStateKey, CompoundTag> LAST_SYNCED_STATE =
+            new ConcurrentHashMap<>();
 
     private GunSyncService() {
     }
@@ -231,6 +244,7 @@ public final class GunSyncService {
     public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
         UUID playerUuid = event.getEntity().getUUID();
         previousMainHand.remove(playerUuid);
+        LAST_SYNCED_STATE.entrySet().removeIf(e -> e.getKey().playerUuid().equals(playerUuid));
         FireRateController.clearPlayer(playerUuid);
         ModifierVersionAntiCheat.clearPlayer(playerUuid);
     }
@@ -240,8 +254,13 @@ public final class GunSyncService {
     // ------------------------------------------------------------------
 
     /**
-     * Builds a {@link GunSyncS2CPacket} from the player's main-hand gun data
-     * and sends it to the player's client.
+     * Builds and sends a full structural {@link GunSyncS2CPacket} from the
+     * player's main-hand gun data (插件列表 + modifierVersion + 完整 state) and
+     * records the synced state for subsequent diffs.
+     *
+     * <p>Used by the structural trigger scenarios: player login, main-hand
+     * switch, and plugin install/uninstall. The client replaces its copy
+     * wholesale (no merge).</p>
      *
      * <p>Silently does nothing when the main-hand item is not a framework gun
      * or carries no {@code gun_data} component &mdash; a gun stack should
@@ -261,8 +280,75 @@ public final class GunSyncService {
         if (gunData == null) {
             return;
         }
-        GunSyncS2CPacket packet = buildPacket(gunData, player.getInventory().selected);
+        GunSyncS2CPacket packet = buildFullPacket(gunData, player.getInventory().selected);
         PacketDistributor.sendToPlayer(player, packet);
+        recordSyncedState(player, gunData);
+    }
+
+    /**
+     * Builds and sends a minimal {@link GunStateDiff} state-patch
+     * {@link GunSyncS2CPacket} for the player's main-hand gun, sending only
+     * the state keys that changed since the last sync (阶段 2 / 任务 2.3).
+     *
+     * <p>Used by the throttled per-gun state flush path
+     * ({@link org.yanbwe.modularshoot.state.GunSyncTickHandler}), where the
+     * plugin list and modifier version are unchanged. If nothing changed,
+     * no packet is sent. On the first call for a gun (no recorded base state)
+     * it falls back to a full structural sync so the client always has a
+     * complete baseline before receiving patches.</p>
+     *
+     * @param player the player whose main-hand gun state may have changed
+     */
+    public static void syncStateToPlayer(ServerPlayer player) {
+        Objects.requireNonNull(player, "player");
+        ItemStack mainHand = player.getMainHandItem();
+        if (!ModularShootAPI.isGun(mainHand, player.registryAccess())) {
+            return;
+        }
+        @Nullable GunData gunData = mainHand.get(ModularShootDataComponents.GUN_DATA.get());
+        if (gunData == null) {
+            return;
+        }
+        PlayerStateKey key = new PlayerStateKey(player.getUUID(), gunData.gunInstanceUuid());
+        int hotbarSlot = player.getInventory().selected;
+        CompoundTag current = gunData.state();
+        CompoundTag previous = LAST_SYNCED_STATE.get(key);
+        if (previous == null) {
+            // No baseline yet — send a full structural sync so the client has
+            // the complete state before any subsequent patch.
+            PacketDistributor.sendToPlayer(player, buildFullPacket(gunData, hotbarSlot));
+            recordSyncedState(player, gunData);
+            return;
+        }
+        CompoundTag patch = GunStateDiff.diff(previous, current);
+        List<String> removed = GunStateDiff.removedKeys(previous, current);
+        if (patch.isEmpty() && removed.isEmpty()) {
+            // No state change — nothing to send. Keep the recorded base so the
+            // next change still diffs correctly.
+            return;
+        }
+        GunSyncS2CPacket packet = GunSyncS2CPacket.statePatch(
+                gunData.gunInstanceUuid(), hotbarSlot, patch, removed);
+        PacketDistributor.sendToPlayer(player, packet);
+        LAST_SYNCED_STATE.put(key, current.copy());
+    }
+
+    /**
+     * Records the current gun state as the last-synced baseline for a player's
+     * gun, so a later {@link #syncStateToPlayer} diffs against it.
+     *
+     * <p><b>Defensive copy (审查修复).</b> The baseline is a {@code copy()} of
+     * the gun's live state rather than a reference, so in-place server-side
+     * mutations of the gun's {@code GunData.state()} between syncs cannot
+     * corrupt the stored diff base.</p>
+     *
+     * @param player  the player
+     * @param gunData the gun whose state is now fully in sync
+     */
+    private static void recordSyncedState(ServerPlayer player, GunData gunData) {
+        LAST_SYNCED_STATE.put(
+                new PlayerStateKey(player.getUUID(), gunData.gunInstanceUuid()),
+                gunData.state().copy());
     }
 
     /**
@@ -293,17 +379,18 @@ public final class GunSyncService {
     }
 
     /**
-     * Maps a {@link GunData} into a {@link GunSyncS2CPacket} by projecting
-     * each {@link PluginInstance} onto a {@link GunSyncS2CPacket.PluginSyncEntry}.
+     * Maps a {@link GunData} into a full structural {@link GunSyncS2CPacket}
+     * by projecting each {@link PluginInstance} onto a
+     * {@link GunSyncS2CPacket.PluginSyncEntry}.
      *
      * @param gunData the source gun data
-     * @return a new {@link GunSyncS2CPacket} ready to send
+     * @return a new full {@link GunSyncS2CPacket} ready to send
      */
-    private static GunSyncS2CPacket buildPacket(GunData gunData, int hotbarSlot) {
+    private static GunSyncS2CPacket buildFullPacket(GunData gunData, int hotbarSlot) {
         List<GunSyncS2CPacket.PluginSyncEntry> entries = gunData.installedPlugins().stream()
                 .map(GunSyncService::toSyncEntry)
                 .toList();
-        return new GunSyncS2CPacket(gunData.gunInstanceUuid(), hotbarSlot, entries,
+        return GunSyncS2CPacket.full(gunData.gunInstanceUuid(), hotbarSlot, entries,
                 gunData.modifierVersion(), gunData.state());
     }
 

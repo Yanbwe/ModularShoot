@@ -33,7 +33,7 @@ class GunSyncS2CPacketCodecTest {
         state.putInt("kills", 3);
         state.putString("mode", "full-auto");
 
-        GunSyncS2CPacket packet = new GunSyncS2CPacket(gunUuid, 3, List.of(entry), 7, state);
+        GunSyncS2CPacket packet = GunSyncS2CPacket.full(gunUuid, 3, List.of(entry), 7, state);
         GunSyncS2CPacket.STREAM_CODEC.encode(buf, packet);
         buf.readerIndex(0);
         GunSyncS2CPacket decoded = GunSyncS2CPacket.STREAM_CODEC.decode(buf);
@@ -46,7 +46,8 @@ class GunSyncS2CPacketCodecTest {
         RegistryFriendlyByteBuf buf = new RegistryFriendlyByteBuf(
                 new FriendlyByteBuf(Unpooled.buffer()), RegistryAccess.EMPTY);
 
-        GunSyncS2CPacket packet = new GunSyncS2CPacket(UUID.randomUUID(), 7, List.of(), 0, new CompoundTag());
+        GunSyncS2CPacket packet = GunSyncS2CPacket.full(
+                UUID.randomUUID(), 7, List.of(), 0, new CompoundTag());
         GunSyncS2CPacket.STREAM_CODEC.encode(buf, packet);
         buf.readerIndex(0);
         GunSyncS2CPacket decoded = GunSyncS2CPacket.STREAM_CODEC.decode(buf);
