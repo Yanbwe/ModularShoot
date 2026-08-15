@@ -38,9 +38,6 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class FireRateController {
 
-    /** Vanilla tick rate (ticks per second), used to convert shots/s into a tick interval. */
-    private static final int TICKS_PER_SECOND = 20;
-
     /** Per-player, per-gun last shoot tick: player uuid &rarr; (gun id &rarr; last shoot tick). */
     private static final Map<UUID, Map<ResourceLocation, Integer>> lastShootTicks = new HashMap<>();
 
@@ -76,7 +73,7 @@ public final class FireRateController {
             return false;
         }
         int currentTick = server.getTickCount();
-        int interval = computeInterval(fireRate);
+        int interval = FireRateMath.computeInterval(fireRate);
         Integer lastTick = getRecordedLastShootTick(player.getUUID(), gunId);
         if (lastTick != null && currentTick - lastTick < interval) {
             return false;
@@ -89,30 +86,17 @@ public final class FireRateController {
      * Computes the fire-rate interval in ticks:
      * {@code max(1, round(20 / fireRate))}.
      *
-     * <p>The minimum of {@code 1} tick ensures that even very high fire rates
-     * cannot fire more than once per tick. {@link Math#round(double)} returns
-     * a {@code long} which is narrowed to {@code int} after the {@code max}
-     * clamp; the result always fits because {@code fireRate} is positive.</p>
-     *
-     * <p><b>Attribute range vs. effective fire rate (W18 fix).</b> The
-     * {@code fire_rate} attribute is registered in
-     * {@link org.yanbwe.modularshoot.attribute.ModularShootAttributes} with a
-     * {@link net.minecraft.world.entity.ai.attributes.RangedAttribute} clamp
-     * of {@code [0, 1024]} &mdash; that is the range the attribute value may
-     * hold after modifier aggregation. The <em>effective</em> fire rate,
-     * however, is bounded by the server tick rate of 20 ticks/s: any
-     * {@code fire_rate > 20} yields {@code round(20 / fireRate) = 0}, which the
-     * {@code max(1, ...)} clamp raises to a 1-tick interval, i.e. at most 20
-     * shots/s in practice (设计文档 §属性表: "实际参与计算的值 clamp 到
-     * (0, 20]"). A {@code fire_rate <= 0} is rejected earlier in
-     * {@link #canShoot}. This method therefore only ever sees positive values
-     * and always returns a well-defined {@code >= 1} interval.</p>
+     * <p>Delegates to the shared {@link FireRateMath#computeInterval(double)}
+     * so the server gate and the client predictor use exactly one formula
+     * (计划 §阶段 6 / 任务 6.4). The maths (rounding, clamping to a minimum of
+     * 1 tick, and the effective-rate cap at the 20 ticks/s server tick rate)
+     * are documented there.</p>
      *
      * @param fireRate the fire-rate attribute value (shots per second); must be {@code > 0}
      * @return the minimum number of ticks between two shots
      */
     private static int computeInterval(double fireRate) {
-        return Math.max(1, (int) Math.round(TICKS_PER_SECOND / fireRate));
+        return FireRateMath.computeInterval(fireRate);
     }
 
     /**

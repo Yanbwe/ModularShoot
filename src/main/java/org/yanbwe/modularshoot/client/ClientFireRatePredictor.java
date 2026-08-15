@@ -43,8 +43,9 @@ import org.yanbwe.modularshoot.component.ModularShootDataComponents;
  * {@code syncable} the client reads {@code 0.0} and prediction is silently
  * disabled (降级路径, consistent with
  * {@link org.yanbwe.modularshoot.degradation.AttributeBindsDegradationHandler}).
- * The interval formula {@code max(1, round(20 / fireRate))} is replicated
- * verbatim from {@code FireRateController.computeInterval}. Minor tick-skew
+ * The interval formula {@code max(1, round(20 / fireRate))} lives in the
+ * shared {@link org.yanbwe.modularshoot.shooting.FireRateMath} used by both
+ * this predictor and {@code FireRateController}. Minor tick-skew
  * between client and server is acceptable: this predictor drives only
  * <em>visuals</em> (texture flash + arm pose); it never decides whether a
  * bullet actually spawns &mdash; that remains the server's exclusive
@@ -61,9 +62,6 @@ import org.yanbwe.modularshoot.component.ModularShootDataComponents;
  */
 @EventBusSubscriber(modid = ModularShoot.MODID, value = Dist.CLIENT)
 public final class ClientFireRatePredictor {
-
-    /** Vanilla tick rate (ticks per second), used to convert shots/s into a tick interval. */
-    private static final int TICKS_PER_SECOND = 20;
 
     /** Per-player, per-gun last predicted shoot tick: player uuid &rarr; (gun id &rarr; last shoot tick). */
     private static final Map<UUID, Map<ResourceLocation, Long>> lastShootTicks = new HashMap<>();
@@ -102,7 +100,7 @@ public final class ClientFireRatePredictor {
             return false;
         }
         long currentTick = player.level().getGameTime();
-        int interval = computeInterval(fireRate);
+        int interval = org.yanbwe.modularshoot.shooting.FireRateMath.computeInterval(fireRate);
         Long lastTick = getRecordedLastShootTick(player.getUUID(), gunId);
         if (lastTick != null && currentTick - lastTick < interval) {
             return false;
@@ -131,16 +129,19 @@ public final class ClientFireRatePredictor {
      * Computes the fire-rate interval in ticks:
      * {@code max(1, round(20 / fireRate))}.
      *
-     * <p>Replicated verbatim from
-     * {@link org.yanbwe.modularshoot.shooting.FireRateController#computeInterval}
-     * so the client's predicted cadence matches the server's actual cadence.
-     * Any change to the server formula must be mirrored here.</p>
+     * <p>Delegates to the shared
+     * {@link org.yanbwe.modularshoot.shooting.FireRateMath#computeInterval}
+     * so the client's predicted cadence matches the server's actual cadence
+     * with a single formula (计划 §阶段 6 / 任务 6.4). The maths (rounding,
+     * clamping to a minimum of 1 tick, and the effective-rate cap at the
+     * 20 ticks/s server tick rate) live in {@code FireRateMath} and are shared
+     * with {@code FireRateController}.</p>
      *
      * @param fireRate the fire-rate attribute value (shots per second); must be {@code > 0}
      * @return the minimum number of ticks between two predicted shots
      */
     private static int computeInterval(double fireRate) {
-        return Math.max(1, (int) Math.round(TICKS_PER_SECOND / fireRate));
+        return org.yanbwe.modularshoot.shooting.FireRateMath.computeInterval(fireRate);
     }
 
     /**
