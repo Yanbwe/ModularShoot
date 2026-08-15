@@ -143,6 +143,12 @@ class PluginInstallServiceTest {
             return;
         }
         Registry<Attribute> attributes = BuiltInRegistries.ATTRIBUTE;
+        // 若同一 JVM 内其它测试（如 StateTooltipBuildTest）已注册过这些
+        // neoforge attribute，直接跳过，避免跨测试类的重复注册冲突。
+        if (attributes.getOptional(ResourceLocation.fromNamespaceAndPath("neoforge", "swim_speed")).isPresent()) {
+            neoforgeAttributesRegistered = true;
+            return;
+        }
         Registry.register(attributes,
                 ResourceLocation.fromNamespaceAndPath("neoforge", "swim_speed"),
                 new PercentageAttribute("neoforge.swim_speed", 1.0D, 0.0D, 1024.0D));
@@ -162,6 +168,16 @@ class PluginInstallServiceTest {
         if (fluidTypeRegistryRegistered) {
             return;
         }
+        // 若同一 JVM 内其它测试（如 StateTooltipBuildTest）已注册过
+        // neoforge:fluid_type，直接跳过，避免跨测试类的重复注册冲突。
+        @SuppressWarnings({ "unchecked", "rawtypes" })
+        Registry<Registry<?>> registryOfRegistries = (Registry) BuiltInRegistries.REGISTRY;
+        @SuppressWarnings({ "unchecked", "rawtypes" })
+        ResourceKey<Registry<?>> fluidTypesKey = (ResourceKey) NeoForgeRegistries.Keys.FLUID_TYPES;
+        if (registryOfRegistries.getOptional(fluidTypesKey).isPresent()) {
+            fluidTypeRegistryRegistered = true;
+            return;
+        }
         // GameData.unfreezeData() 只解冻 REGISTRY 内的注册表，REGISTRY 自身
         // 仍是冻结的；向其中注册 fluid_type 前需单独解冻（unfreeze 为
         // protected，测试侧用反射调用）。
@@ -179,10 +195,6 @@ class PluginInstallServiceTest {
                 new FluidType(FluidType.Properties.create().descriptionId("block.minecraft.air")));
         // 注册进 BuiltInRegistries.REGISTRY，使 DeferredHolder 能绑定
         // （unchecked 转换与 BuiltInRegistries 内部注册方式一致）。
-        @SuppressWarnings({ "unchecked", "rawtypes" })
-        Registry<Registry<?>> registryOfRegistries = (Registry) BuiltInRegistries.REGISTRY;
-        @SuppressWarnings({ "unchecked", "rawtypes" })
-        ResourceKey<Registry<?>> fluidTypesKey = (ResourceKey) fluidTypes.key();
         Registry.register(registryOfRegistries, fluidTypesKey, fluidTypes);
         fluidTypeRegistryRegistered = true;
     }

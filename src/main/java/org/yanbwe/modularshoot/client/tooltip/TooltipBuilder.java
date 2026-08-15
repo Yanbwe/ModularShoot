@@ -3,7 +3,6 @@ package org.yanbwe.modularshoot.client.tooltip;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -57,6 +56,16 @@ import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 public final class TooltipBuilder {
     private TooltipBuilder() {
     }
+
+    /**
+     * Bounded short-term cache for the aggregated gun-tooltip sections
+     * (阶段 4 / 任务 4.1). Keyed by stack identity / registry version /
+     * modifier keys / mutable-data version (which folds gun/store data,
+     * per-player state, the viewing-context booleans and viewer identity)
+     * so hovering the same item state reuses the previous build instead of
+     * rebuilding every frame.
+     */
+    private static final TooltipCache CACHE = new TooltipCache();
 
     /**
      * Injects ModularShoot tooltip sections into a gun item's tooltip lines.
@@ -158,36 +167,58 @@ public final class TooltipBuilder {
             return;
         }
 
+        // 1..4 + modifier hints: cached as one aggregate (阶段 4 / 任务 4.1).
+        // Keyed by stack identity / registry version / modifier keys / mutable-data
+        // version so the same item state under the same modifiers reuses the
+        // previous build instead of rebuilding the four sections every frame.
+        // The mutable-data version (see TooltipVersion) folds store + per-player
+        // state + the viewing-context booleans (is-local-main-hand, is-holding-
+        // gun) + the viewer's UUID, so per-player changes and main-hand switches
+        // also invalidate the aggregate.
+        TooltipCacheKey key = TooltipCacheKey.of(stack, registryAccess,
+                ModifierKeys.controlDown(), ModifierKeys.altDown(), ModifierKeys.shiftDown(),
+                TooltipVersion.mutableDataVersion(stack, player));
+        List<Component> bars = CACHE.getOrCompute(key,
+                () -> buildTooltipSections(stack, player, registryAccess));
+        event.getToolTip().addAll(bars);
+    }
+
+    /**
+     * Builds the aggregated gun-tooltip sections in design-document order:
+     * attribute bar, trait bar, state bar, plugin bar, then the modifier-key
+     * hint lines (设计文档 lines 1473-1509, 1506-1508, 1578). This is the
+     * cached compute function for {@link #CACHE}.
+     *
+     * @param stack          the gun item stack
+     * @param player         the viewing player (non-null when we reach here)
+     * @param registryAccess the runtime registry view
+     * @return the aggregated non-empty sections and hints, in display order
+     */
+    private static List<Component> buildTooltipSections(
+            ItemStack stack, Player player, RegistryAccess registryAccess) {
+        List<Component> sections = new ArrayList<>();
+
         // 1. Attribute bar (设计文档 §属性栏; Ctrl 展开全部属性).
-        List<Component> attributeBar = AttributeTooltipBuilder.buildAttributeBar(stack, player, registryAccess);
-        if (!attributeBar.isEmpty()) {
-            event.getToolTip().addAll(attributeBar);
-        }
+        sections.addAll(AttributeTooltipBuilder.buildAttributeBar(stack, player, registryAccess));
 
         // 2. Trait bar (设计文档 §特性栏; Alt 展开特性描述).
-        List<Component> traitBar = TraitTooltipBuilder.buildTraitBar(stack, player, registryAccess);
-        if (!traitBar.isEmpty()) {
-            event.getToolTip().addAll(traitBar);
-        }
+        sections.addAll(TraitTooltipBuilder.buildTraitBar(stack, player, registryAccess));
 
-        // 3. State bar (设计文档 §状态栏; hide_default 过滤). The "状态:"
-        //    header is added by StateTooltipBuilder itself, consistent with
-        //    the attribute/trait/plugin bars which also self-add their headers.
-        List<Component> stateBar = StateTooltipBuilder.buildStateBar(stack, player, registryAccess);
-        if (!stateBar.isEmpty()) {
-            event.getToolTip().addAll(stateBar);
-        }
+        // 3. State bar (设计文档 §状态栏; hide_default 过滤). The "状态:" header
+        //    is added by StateTooltipBuilder itself, consistent with the other
+        //    bars. StateTooltipBuilder self-caches its bar separately.
+        sections.addAll(StateTooltipBuilder.buildStateBar(stack, player, registryAccess));
 
         // 4. Plugin bar (设计文档 §插件栏; A-03 种类降级 + A-04 插件降级;
-        //    Shift 展开插件描述). Plugin slots are always shown per the
-        //    design contract, so an empty state bar does not skip this.
-        List<Component> pluginBar = PluginBarTooltipBuilder.buildPluginBar(stack, player, registryAccess);
-        if (!pluginBar.isEmpty()) {
-            event.getToolTip().addAll(pluginBar);
-        }
+        //    Shift 展开插件描述). Plugin slots are always shown per the design
+        //    contract, so an empty state bar does not skip this.
+        sections.addAll(PluginBarTooltipBuilder.buildPluginBar(stack, player, registryAccess));
 
         // Modifier-key hint lines (设计文档 lines 1506-1508, 1578).
-        addModifierHints(event.getToolTip(), stack, registryAccess);
+        List<Component> hints = new ArrayList<>(3);
+        addModifierHints(hints, stack, registryAccess);
+        sections.addAll(hints);
+        return sections;
     }
 
     /**
@@ -217,9 +248,9 @@ public final class TooltipBuilder {
     private static void addModifierHints(
             List<Component> toolTip, ItemStack stack, RegistryAccess registryAccess) {
         List<Component> hints = new ArrayList<>(3);
-        boolean ctrl = Screen.hasControlDown();
-        boolean alt = Screen.hasAltDown();
-        boolean shift = Screen.hasShiftDown();
+        boolean ctrl = ModifierKeys.controlDown();
+        boolean alt = ModifierKeys.altDown();
+        boolean shift = ModifierKeys.shiftDown();
 
         if (!ctrl && hasAttributeMeta(registryAccess)) {
             hints.add(Component.translatable("modularshoot.tooltip.hint_ctrl_attributes")

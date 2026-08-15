@@ -1,6 +1,7 @@
 package org.yanbwe.modularshoot.client.tooltip;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -66,6 +67,16 @@ import org.yanbwe.modularshoot.plugin.PluginTypeRegistry;
 public final class PluginTooltipBuilder {
     private PluginTooltipBuilder() {
     }
+
+    /**
+     * Reverse index over the plugin / plugin-type registries (阶段 4 /
+     * 任务 4.1): {@code exclusiveGroup -> plugin ids} and
+     * {@code tag -> plugin-type ids}, rebuilt lazily when the registry
+     * version changes (i.e. after a datapack reload). Avoids the per-frame
+     * O(N) full-registry scans for the mutual-exclusion and install-target
+     * lookups.
+     */
+    private static final PluginTooltipIndex INDEX = new PluginTooltipIndex();
 
     /**
      * Injects the "可安装至" line, brief summary, and Shift-expanded tag
@@ -229,14 +240,17 @@ public final class PluginTooltipBuilder {
      */
     private static List<MatchedType> findMatchingTypes(
             List<ResourceLocation> pluginTags, RegistryAccess registryAccess) {
-        Set<ResourceLocation> pluginTagSet = Set.copyOf(pluginTags);
+        // Reverse index (tag -> plugin-type ids) avoids a full O(N) scan of the
+        // plugin-type registry on every frame; the index is built once per
+        // registry version and rebuilt after a datapack reload.
+        Set<ResourceLocation> matchedIds = new LinkedHashSet<>();
+        for (ResourceLocation tag : pluginTags) {
+            matchedIds.addAll(INDEX.pluginTypeIdsByTag(registryAccess, tag));
+        }
         List<MatchedType> matched = new ArrayList<>();
-        for (ResourceLocation typeId : PluginTypeRegistry.getAllPluginTypeIds(registryAccess)) {
-            PluginTypeRegistry.getPluginType(registryAccess, typeId).ifPresent(typeDef -> {
-                if (typeDef.tags().stream().anyMatch(pluginTagSet::contains)) {
-                    matched.add(new MatchedType(typeId, typeDef));
-                }
-            });
+        for (ResourceLocation typeId : matchedIds) {
+            PluginTypeRegistry.getPluginType(registryAccess, typeId).ifPresent(typeDef ->
+                    matched.add(new MatchedType(typeId, typeDef)));
         }
         return matched;
     }
@@ -302,7 +316,9 @@ public final class PluginTooltipBuilder {
         }
         String group = groupOpt.get();
         List<String> names = new ArrayList<>();
-        for (ResourceLocation otherId : PluginRegistry.getAllPluginIds(registryAccess)) {
+        // Reverse index (exclusiveGroup -> plugin ids) avoids a full O(N) scan
+        // of the plugin registry on every frame.
+        for (ResourceLocation otherId : INDEX.pluginIdsByExclusiveGroup(registryAccess, group)) {
             if (otherId.equals(pluginId)) {
                 continue;
             }

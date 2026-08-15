@@ -19,6 +19,7 @@ import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.client.ClientGunDataStore;
+import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.degradation.StateDegradationHandler;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
 import org.yanbwe.modularshoot.state.GunState;
@@ -48,6 +49,20 @@ public final class StateTooltipBuilder {
     }
 
     /**
+     * Bounded short-term cache for the state-bar build result.
+     *
+     * <p><b>Layering with {@link TooltipBuilder} (审查 Low):</b>
+     * {@link TooltipBuilder} caches the <em>aggregate</em> of all four bars, so
+     * on an aggregate hit {@code buildStateBar} is not even called (its cache
+     * is not consulted). This independent state-bar cache exists for the other
+     * callers of {@code buildStateBar} (e.g. a hypothetical standalone state
+     * panel); both derive keys from the identical
+     * {@link TooltipVersion#mutableDataVersion}, so the two caches can never
+     * disagree about whether a build is stale.</p>
+     */
+    private static final TooltipCache CACHE = new TooltipCache();
+
+    /**
      * Builds the state-bar tooltip lines for a gun stack.
      *
      * <p>Algorithm:
@@ -67,6 +82,26 @@ public final class StateTooltipBuilder {
      * </ol>
      * </p>
      *
+     * <p><b>Caching (阶段 4 / 任务 4.1):</b> the result is cached per
+     * {@link TooltipCacheKey} so repeated frames with the same stack /
+     * registry version / modifier keys / mutable-data version reuse the previous
+     * build instead of re-scanning the state registry and re-reading state
+     * values. Registry reloads and component/version changes invalidate via
+     * the key. The heavy part lives in {@link #buildStateBarUncached}.</p>
+     *
+     * <p><b>Per-player state in the key (审查 High fix):</b> the mutable-data
+     * version is derived by {@link TooltipVersion#mutableDataVersion}, which
+     * folds the {@link ClientGunDataStore} version/state <em>and</em> the
+     * viewing player's {@code PLAYER_STATE} attachment (identity-versioned,
+     * cheap O(1) — no recursive hash per frame), <em>and</em> the viewing-context
+     * booleans (whether the hovered stack is the local main hand, whether the
+     * viewer holds a gun) and the viewer's UUID. A per-player state change or a
+     * main-hand switch now produces a fresh key and therefore a rebuild, instead
+     * of returning the previous stale state bar. The stack's {@link GunData}
+     * state is already captured by {@link ItemStack#hashItemAndComponents}
+     * folded into {@link TooltipCacheKey#stackIdentity()}, so only its cheap
+     * {@code modifierVersion} counter is folded here.</p>
+     *
      * @param gunStack       the gun item stack to read per-gun states from
      * @param viewingPlayer  the player viewing the tooltip (for per-player
      *                       states); may be {@code null} (e.g. main menu)
@@ -76,6 +111,21 @@ public final class StateTooltipBuilder {
      *         displayable or the registry is empty
      */
     public static List<Component> buildStateBar(
+            ItemStack gunStack,
+            @Nullable Player viewingPlayer,
+            RegistryAccess registryAccess) {
+        TooltipCacheKey key = TooltipCacheKey.of(gunStack, registryAccess,
+                ModifierKeys.controlDown(), ModifierKeys.altDown(), ModifierKeys.shiftDown(),
+                TooltipVersion.mutableDataVersion(gunStack, viewingPlayer));
+        return CACHE.getOrCompute(key,
+                () -> buildStateBarUncached(gunStack, viewingPlayer, registryAccess));
+    }
+
+    /**
+     * Un-cached state-bar builder (the actual algorithm; see
+     * {@link #buildStateBar}).
+     */
+    private static List<Component> buildStateBarUncached(
             ItemStack gunStack,
             @Nullable Player viewingPlayer,
             RegistryAccess registryAccess) {
