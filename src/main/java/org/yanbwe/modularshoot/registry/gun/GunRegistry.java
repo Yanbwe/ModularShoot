@@ -10,7 +10,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -23,6 +22,7 @@ import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.datapack.RegistrationCoordinator;
 import org.yanbwe.modularshoot.item.ModularShootItems;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
+import org.yanbwe.modularshoot.registry.RegistryLookupCache;
 
 /**
  * Query, factory and registration API for the {@code modularshoot:guns}
@@ -99,6 +99,10 @@ public final class GunRegistry {
      */
     private static final List<GunDefinitionProvider> DEFINITION_PROVIDERS =
             new CopyOnWriteArrayList<>();
+
+    /** Per-{@link net.minecraft.core.Registry} weak-reference datapack lookup cache. */
+    private static final RegistryLookupCache<GunDefinition> LOOKUP_CACHE =
+            new RegistryLookupCache<>();
 
     private GunRegistry() {
     }
@@ -215,8 +219,7 @@ public final class GunRegistry {
                 return provided;
             }
         }
-        return registryAccess.registry(ModularShootRegistries.GUNS_KEY)
-                .flatMap(registry -> registry.getOptional(gunId));
+        return LOOKUP_CACHE.get(registryAccess, ModularShootRegistries.GUNS_KEY, gunId);
     }
 
     /**
@@ -272,9 +275,8 @@ public final class GunRegistry {
      *         entries have been registered
      */
     public static Set<ResourceLocation> getAllGunIds(RegistryAccess registryAccess) {
-        final Set<ResourceLocation> datapackIds = registryAccess.registry(ModularShootRegistries.GUNS_KEY)
-                .map(Registry::keySet)
-                .orElse(Set.of());
+        final Set<ResourceLocation> datapackIds =
+                LOOKUP_CACHE.getAllIds(registryAccess, ModularShootRegistries.GUNS_KEY);
         if (JAVA_API_GUNS.isEmpty()) {
             return datapackIds;
         }

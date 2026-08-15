@@ -2,11 +2,11 @@ package org.yanbwe.modularshoot.plugin;
 
 import java.util.Optional;
 import java.util.Set;
-import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
+import org.yanbwe.modularshoot.registry.RegistryLookupCache;
 
 /**
  * Read-only query API for the {@code modularshoot:plugin_types} dynamic
@@ -39,6 +39,10 @@ public final class PluginTypeRegistry {
     private PluginTypeRegistry() {
     }
 
+    /** Per-{@link net.minecraft.core.Registry} weak-reference lookup cache. */
+    private static final RegistryLookupCache<PluginTypeDefinition> LOOKUP_CACHE =
+            new RegistryLookupCache<>();
+
     /**
      * Looks up a plugin type definition by id in the
      * {@code modularshoot:plugin_types} registry.
@@ -51,8 +55,7 @@ public final class PluginTypeRegistry {
      *         not registered
      */
     public static Optional<PluginTypeDefinition> getPluginType(RegistryAccess registryAccess, ResourceLocation pluginTypeId) {
-        return registryAccess.registry(ModularShootRegistries.PLUGIN_TYPES_KEY)
-                .flatMap(registry -> registry.getOptional(pluginTypeId));
+        return LOOKUP_CACHE.get(registryAccess, ModularShootRegistries.PLUGIN_TYPES_KEY, pluginTypeId);
     }
 
     /**
@@ -76,8 +79,6 @@ public final class PluginTypeRegistry {
      *         registry is absent (e.g. on the main menu)
      */
     public static Set<ResourceLocation> getAllPluginTypeIds(RegistryAccess registryAccess) {
-        return registryAccess.registry(ModularShootRegistries.PLUGIN_TYPES_KEY)
-                .map(Registry::keySet)
-                .orElse(Set.of());
+        return LOOKUP_CACHE.getAllIds(registryAccess, ModularShootRegistries.PLUGIN_TYPES_KEY);
     }
 }

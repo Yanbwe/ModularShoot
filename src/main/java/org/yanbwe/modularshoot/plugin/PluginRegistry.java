@@ -2,7 +2,6 @@ package org.yanbwe.modularshoot.plugin;
 
 import java.util.Optional;
 import java.util.Set;
-import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -11,6 +10,7 @@ import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginData;
 import org.yanbwe.modularshoot.item.ModularShootItems;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
+import org.yanbwe.modularshoot.registry.RegistryLookupCache;
 
 /**
  * Query and factory API for the {@code modularshoot:plugins} dynamic registry.
@@ -47,6 +47,10 @@ public final class PluginRegistry {
     private PluginRegistry() {
     }
 
+    /** Per-{@link net.minecraft.core.Registry} weak-reference lookup cache. */
+    private static final RegistryLookupCache<PluginDefinition> LOOKUP_CACHE =
+            new RegistryLookupCache<>();
+
     /**
      * Looks up a plugin definition by id in the {@code modularshoot:plugins}
      * registry.
@@ -59,8 +63,7 @@ public final class PluginRegistry {
      *         not registered
      */
     public static Optional<PluginDefinition> getPlugin(RegistryAccess registryAccess, ResourceLocation pluginId) {
-        return registryAccess.registry(ModularShootRegistries.PLUGINS_KEY)
-                .flatMap(registry -> registry.getOptional(pluginId));
+        return LOOKUP_CACHE.get(registryAccess, ModularShootRegistries.PLUGINS_KEY, pluginId);
     }
 
     /**
@@ -84,9 +87,7 @@ public final class PluginRegistry {
      *         registry is absent (e.g. on the main menu)
      */
     public static Set<ResourceLocation> getAllPluginIds(RegistryAccess registryAccess) {
-        return registryAccess.registry(ModularShootRegistries.PLUGINS_KEY)
-                .map(Registry::keySet)
-                .orElse(Set.of());
+        return LOOKUP_CACHE.getAllIds(registryAccess, ModularShootRegistries.PLUGINS_KEY);
     }
 
     /**

@@ -7,12 +7,12 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import org.yanbwe.modularshoot.datapack.RegistrationCoordinator;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
+import org.yanbwe.modularshoot.registry.RegistryLookupCache;
 
 /**
  * Query and registration API for the {@code modularshoot:shooters}
@@ -63,6 +63,10 @@ public final class ShooterRegistry {
      */
     private static final Map<ResourceLocation, ShooterDefinition> JAVA_API_SHOOTERS =
             new ConcurrentHashMap<>();
+
+    /** Per-{@link net.minecraft.core.Registry} weak-reference datapack lookup cache. */
+    private static final RegistryLookupCache<ShooterDefinition> LOOKUP_CACHE =
+            new RegistryLookupCache<>();
 
     private ShooterRegistry() {
     }
@@ -141,8 +145,7 @@ public final class ShooterRegistry {
         if (javaApiShooter != null) {
             return Optional.of(javaApiShooter);
         }
-        return registryAccess.registry(ModularShootRegistries.SHOOTERS_KEY)
-                .flatMap(registry -> registry.getOptional(shooterId));
+        return LOOKUP_CACHE.get(registryAccess, ModularShootRegistries.SHOOTERS_KEY, shooterId);
     }
 
     /**
@@ -173,9 +176,7 @@ public final class ShooterRegistry {
      */
     public static Set<ResourceLocation> getAllShooterIds(RegistryAccess registryAccess) {
         final Set<ResourceLocation> datapackIds =
-                registryAccess.registry(ModularShootRegistries.SHOOTERS_KEY)
-                        .map(Registry::keySet)
-                        .orElse(Set.of());
+                LOOKUP_CACHE.getAllIds(registryAccess, ModularShootRegistries.SHOOTERS_KEY);
         if (JAVA_API_SHOOTERS.isEmpty()) {
             return datapackIds;
         }

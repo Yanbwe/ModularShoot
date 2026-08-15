@@ -7,6 +7,7 @@ import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
+import org.yanbwe.modularshoot.registry.RegistryLookupCache;
 
 /**
  * Read-only query API for the {@code modularshoot:states} dynamic registry.
@@ -34,6 +35,10 @@ public final class StateRegistry {
     private StateRegistry() {
     }
 
+    /** Per-{@link net.minecraft.core.Registry} weak-reference lookup cache. */
+    private static final RegistryLookupCache<StateDefinition> LOOKUP_CACHE =
+            new RegistryLookupCache<>();
+
     /**
      * Looks up a state definition by id in the {@code modularshoot:states}
      * registry.
@@ -45,8 +50,7 @@ public final class StateRegistry {
      *         when the registry is absent or the id is not registered
      */
     public static Optional<StateDefinition> getState(RegistryAccess registryAccess, ResourceLocation stateId) {
-        return registryAccess.registry(ModularShootRegistries.STATES_KEY)
-                .flatMap(registry -> registry.getOptional(stateId));
+        return LOOKUP_CACHE.get(registryAccess, ModularShootRegistries.STATES_KEY, stateId);
     }
 
     /**
@@ -84,8 +88,6 @@ public final class StateRegistry {
      *         registry is absent or the id is not registered
      */
     public static boolean isRegistered(RegistryAccess registryAccess, ResourceLocation stateId) {
-        return registryAccess.registry(ModularShootRegistries.STATES_KEY)
-                .map(registry -> registry.containsKey(stateId))
-                .orElse(false);
+        return LOOKUP_CACHE.containsKey(registryAccess, ModularShootRegistries.STATES_KEY, stateId);
     }
 }

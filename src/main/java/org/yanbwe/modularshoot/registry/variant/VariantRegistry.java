@@ -4,6 +4,7 @@ import java.util.Optional;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
+import org.yanbwe.modularshoot.registry.RegistryLookupCache;
 
 /**
  * Query API for the {@code modularshoot:variants} dynamic registry (机制四
@@ -29,6 +30,10 @@ public final class VariantRegistry {
     private VariantRegistry() {
     }
 
+    /** Per-{@link net.minecraft.core.Registry} weak-reference lookup cache. */
+    private static final RegistryLookupCache<VariantDefinition> LOOKUP_CACHE =
+            new RegistryLookupCache<>();
+
     /**
      * Looks up a variant definition by id in the {@code modularshoot:variants}
      * registry.
@@ -41,7 +46,6 @@ public final class VariantRegistry {
      *         is not registered
      */
     public static Optional<VariantDefinition> getVariant(RegistryAccess registryAccess, ResourceLocation variantId) {
-        return registryAccess.registry(ModularShootRegistries.VARIANTS_KEY)
-                .flatMap(registry -> registry.getOptional(variantId));
+        return LOOKUP_CACHE.get(registryAccess, ModularShootRegistries.VARIANTS_KEY, variantId);
     }
 }
