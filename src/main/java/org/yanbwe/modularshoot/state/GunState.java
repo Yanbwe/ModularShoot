@@ -43,8 +43,14 @@ import org.yanbwe.modularshoot.component.ModularShootDataComponents;
  * {@code double→0.0}, {@code float→0.0f}, {@code boolean→false},
  * {@code String→""}, {@code UUID→null}.</p>
  *
- * <p>Instances are lightweight value views; they are not cached and may be
- * created freely via {@link #of}.</p>
+ * <p>Instances are lightweight value views and may be created freely via
+ * {@link #of}. The view itself is not cached across calls. A read-only view
+ * (see {@link #of(CompoundTag, RegistryAccess)}) does, however, lazily cache
+ * the single synthesised {@link GunData} it derives from the wrapped tag, so
+ * repeated {@link #currentGunData()} calls on the <em>same</em> view reuse one
+ * immutable instance (零分配). The wrapped tag reference is fixed for the
+ * view's lifetime — see {@link #currentGunData()} for the stale-reference
+ * caveat.</p>
  *
  * @see StateRegistry
  * @see GunData
@@ -53,6 +59,27 @@ public final class GunState {
     private final @Nullable ItemStack gunStack;
     private final @Nullable CompoundTag stateOverride;
     private final RegistryAccess registryAccess;
+
+    /**
+     * Lazily-cached {@link GunData} synthesised from {@link #stateOverride} in
+     * read-only mode.
+     *
+     * <p>In the read-only view ({@link #of(CompoundTag, RegistryAccess)}) the
+     * synthesised {@link GunData} is immutable (it only wraps the same state
+     * tag), so it can be created once and reused on every access. Caching it
+     * turns {@link #currentGunData()} into a zero-allocation getter instead of
+     * allocating a fresh record per call (审查优化 P: 只读视图不重复分配).</p>
+     *
+     * <p><strong>防御性说明</strong> — the {@link GunState} read-only view is
+     * immutable: {@code stateOverride} is {@code final} and never reassigned,
+     * so this cache can never go stale <em>within a single view</em>. It only
+     * wraps the exact tag captured at construction. If the backing store's tag
+     * is replaced, the caller must build a new view (see
+     * {@link #of(CompoundTag, RegistryAccess)}) — the cache intentionally holds
+     * the original reference and is <em>not</em> invalidated, because the view
+     * has no knowledge of the store.</p>
+     */
+    private @Nullable GunData cachedReadOnlyGunData;
 
     private GunState(ItemStack gunStack, RegistryAccess registryAccess) {
         this.gunStack = gunStack;
@@ -64,6 +91,7 @@ public final class GunState {
         this.gunStack = null;
         this.stateOverride = stateOverride;
         this.registryAccess = registryAccess;
+        this.cachedReadOnlyGunData = null;
     }
 
     /**
@@ -125,6 +153,16 @@ public final class GunState {
      * @param state          the per-gun state compound tag to read from
      * @param registryAccess the runtime registry view (from a loaded world)
      * @return a new read-only {@link GunState}
+     *
+     * <p><strong>固定引用语义</strong> — this view wraps the supplied
+     * {@code state} tag <em>by reference</em> and holds it for the view's
+     * lifetime (the view is immutable: {@code stateOverride} is final and never
+     * reassigned). The lazily-cached {@link GunData} in
+     * {@link #currentGunData()} therefore always wraps the exact tag passed in
+     * here. If the caller swaps the underlying store to a new state tag (e.g. a
+     * {@code ClientGunDataStore} replacement), it must <em>rebuild the
+     * view</em> via this factory — reusing the old view would silently read the
+     * original (stale) tag.</p>
      */
     public static GunState of(CompoundTag state, RegistryAccess registryAccess) {
         return new GunState(state, registryAccess);
@@ -486,12 +524,24 @@ public final class GunState {
      * {@code gunInstanceUuid} and an empty plugin list, which is safe because
      * state-value reads only touch the {@code state} tag.</p>
      *
+     * <p><strong>固定 tag 引用</strong> — for a read-only view this method
+     * always returns a {@link GunData} wrapping the <em>exact</em> tag passed
+     * to {@link #of(CompoundTag, RegistryAccess)} at construction; the view
+     * holds that reference for its lifetime. Across a store replacement the
+     * caller must rebuild the view — reusing the old view returns the original
+     * (stale) tag (3.1 审查 Medium 2).</p>
+     *
      * @return the current {@link GunData}, or {@code null}
      */
     @Nullable
-    private GunData currentGunData() {
+    GunData currentGunData() {
         if (stateOverride != null) {
-            return new GunData(null, null, List.of(), 0, stateOverride);
+            // 防御性：stateOverride 为 final（视图不可变），缓存只会包裹构造时
+            // 传入的 tag；跨 store 替换须重建视图（见 of(CompoundTag, ...)）。
+            if (cachedReadOnlyGunData == null) {
+                cachedReadOnlyGunData = new GunData(null, null, List.of(), 0, stateOverride);
+            }
+            return cachedReadOnlyGunData;
         }
         return gunStack.get(ModularShootDataComponents.GUN_DATA.get());
     }

@@ -378,11 +378,59 @@ public final class PlayerState {
         if (def == null) {
             return;
         }
+        writeIfChanged(currentPlayerData(), stateId, requestedType, registryAccess, value,
+                newData -> player.setData(ModularShootAttachmentTypes.PLAYER_STATE.get(), newData));
+    }
+
+    /**
+     * Persists a single state value only when it actually changed, otherwise
+     * short-circuits without invoking {@code writer}.
+     *
+     * <p>This is the extractable core of {@link #setTypedValue}: it takes the
+     * current payload and a {@code writer} callback so the same-value
+     * short-circuit gate can be tested (and the {@code setData} write-back
+     * asserted absent) without constructing a real {@link Player}
+     * (3.1 审查 Medium 3 — 最小可测 seam). In production {@code writer}
+     * installs the new payload back onto the player via
+     * {@link Player#setData}; tests provide a recording writer.</p>
+     *
+     * <p><strong>行为变化（同值短路）</strong> — when the decoded stored value
+     * equals the value being written, the writer is <em>not</em> invoked and no
+     * new payload is produced. Consequently writing a key's default value to an
+     * <em>absent</em> key (where the decoded value already equals that default)
+     * no longer persists an explicit entry, whereas before the short-circuit it
+     * did. Reads are unaffected (absent + default decode to the same value).
+     * This matches {@code GunState#setTypedValue}'s existing same-value
+     * short-circuit semantics.</p>
+     *
+     * @param data           the current per-player payload (never {@code null})
+     * @param stateId        the state id to write
+     * @param requestedType  the declared type the accessor expects (used for
+     *                       the type-mismatch {@code WARN})
+     * @param registryAccess the runtime registry view
+     * @param value          the value to write; {@code null} is only valid for UUID
+     * @param writer         invoked exactly once with the new payload when the
+     *                       value differs; never invoked when short-circuited
+     * @throws IllegalArgumentException when the value's runtime type does not
+     *         match the registered declared type (thrown from
+     *         {@link PlayerStateData#withStateValue} before {@code writer})
+     */
+    static void writeIfChanged(PlayerStateData data, ResourceLocation stateId,
+            StateValueType requestedType, RegistryAccess registryAccess, @Nullable Object value,
+            java.util.function.Consumer<PlayerStateData> writer) {
+        // 值未变化 → 跳过整次写路径（深层拷贝 + attachment setData + 原版整栈
+        // 同步）。与 GunState 一致的同值短路：高频写相同值（heat 累积等）若每
+        // tick 写相同值，此检查将其降为零成本；值确实变化时才走完整写路径
+        // （与 GunState#setTypedValue 的 Objects.equals 短路保持一致）。
+        final Object previous = data.getStateValue(stateId, registryAccess);
+        if (Objects.equals(previous, value)) {
+            return;
+        }
         try {
-            final PlayerStateData newData = currentPlayerData().withStateValue(stateId, value, registryAccess);
-            player.setData(ModularShootAttachmentTypes.PLAYER_STATE.get(), newData);
+            final PlayerStateData newData = data.withStateValue(stateId, value, registryAccess);
+            writer.accept(newData);
         } catch (IllegalArgumentException ex) {
-            StateWarnLogger.warnTypeMismatch(stateId, def.valueType(), value == null ? null : value.getClass());
+            StateWarnLogger.warnTypeMismatch(stateId, requestedType, value == null ? null : value.getClass());
         }
     }
 

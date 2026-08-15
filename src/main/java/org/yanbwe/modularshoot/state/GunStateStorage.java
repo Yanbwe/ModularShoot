@@ -28,8 +28,14 @@ import org.jetbrains.annotations.Nullable;
  * {@code VALUE_KEY} constants here must stay in sync with
  * {@link StateValueCodecs}.</p>
  *
- * <p>All methods are pure: they never mutate their input tags. Methods
- * that modify state return new {@link CompoundTag} instances.</p>
+ * <p>All methods are pure: they never mutate their input tags. Mutating
+ * methods return a <em>new</em> {@link CompoundTag} instance, except for the
+ * 同值短路: when the value being written is identical to the stored entry, the
+ * <em>same</em> source tag instance is returned (shared, never copied) so
+ * unchanged writes cost zero deep-copies (审查任务 3.1 — 避免每键整表深拷贝的
+ * 落地点). There is intentionally no multi-key batch API: the codebase has no
+ * production multi-key write path, and per the 3.1 review the unfinished
+ * batch API was removed as dead code rather than kept unused.</p>
  *
  * @see StateValueCodecs
  * @see org.yanbwe.modularshoot.component.GunData
@@ -86,7 +92,8 @@ public final class GunStateStorage {
 
     /**
      * Writes a single state value into the state compound tag, returning a
-     * new {@link CompoundTag}.
+     * new {@link CompoundTag} (or the same source tag when the value is
+     * unchanged).
      *
      * <p>The declared type is resolved from the
      * {@code modularshoot:states} registry when the state is registered;
@@ -96,12 +103,20 @@ public final class GunStateStorage {
      * (checked via {@link StateValueCodecs#isTypeMatch}); a mismatch throws
      * {@link IllegalArgumentException}.</p>
      *
+     * <p><strong>同值短路</strong> — when the new encoded entry is identical
+     * to the stored entry (type + encoded value), the source tag is returned
+     * <em>as-is</em> instead of performing a whole-table {@code copy()}. This
+     * avoids the per-write deep-copy of the entire state table when a caller
+     * writes an unchanged value (审查优化 P：同值不深拷贝).</p>
+     *
      * @param stateTag       the source state compound tag (not mutated)
      * @param stateId        the state id to write
      * @param value          the value to write; {@code null} is only valid
      *                       for UUID-typed states
      * @param registryAccess the runtime registry view
-     * @return a new {@link CompoundTag} with the entry updated
+     * @return the source tag unchanged when the value is identical to the
+     *         stored one, otherwise a new {@link CompoundTag} with the entry
+     *         updated
      * @throws IllegalArgumentException when the value's runtime type does
      *         not match the registered declared type
      */
@@ -115,15 +130,38 @@ public final class GunStateStorage {
                             + " does not match value type "
                             + (value == null ? "null" : value.getClass().getName()));
         }
+        final CompoundTag entryTag = encodeEntry(type, value, registryAccess);
+        final String key = stateId.toString();
+        // 同值短路：新旧 entry 完全一致时直接返回源 tag（零深拷贝、零分配）。
+        // 高频写相同值（heat 累积等）若每 tick 写相同值，此检查避免每次
+        // copy() 整张状态表（审查优化 P：同值不深拷贝）。
+        if (stateTag.contains(key, Tag.TAG_COMPOUND)
+                && stateTag.getCompound(key).equals(entryTag)) {
+            return stateTag;
+        }
+        final CompoundTag result = stateTag.copy();
+        result.put(key, entryTag);
+        return result;
+    }
+
+    /**
+     * Encodes a single state value into the per-entry {@link CompoundTag}
+     * ({@code {"type": ..., "value": ...}}).
+     *
+     * @param type           the declared value type
+     * @param value          the value to encode; {@code null} only valid for UUID
+     * @param registryAccess the runtime registry view
+     * @return a fresh {@link CompoundTag} holding the encoded entry
+     */
+    private static CompoundTag encodeEntry(
+            StateValueType type, @Nullable Object value, RegistryAccess registryAccess) {
         final Tag encoded = StateValueCodecs.encodeValue(type, value, registryAccess);
         final CompoundTag entryTag = new CompoundTag();
         entryTag.putString(TYPE_KEY, type.getSerializedName());
         if (encoded != null) {
             entryTag.put(VALUE_KEY, encoded);
         }
-        final CompoundTag result = stateTag.copy();
-        result.put(stateId.toString(), entryTag);
-        return result;
+        return entryTag;
     }
 
     /**
