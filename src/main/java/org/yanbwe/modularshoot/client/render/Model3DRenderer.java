@@ -1,8 +1,6 @@
 package org.yanbwe.modularshoot.client.render;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -27,6 +25,7 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Vector3d;
 import org.joml.Vector4f;
 
 /**
@@ -154,13 +153,66 @@ public final class Model3DRenderer {
     /** Reusable block position for light lookups (render thread only). */
     private static final BlockPos.MutableBlockPos LIGHT_POS = new BlockPos.MutableBlockPos();
 
-    /** Cached baked models keyed by the raw model location from {@link BulletRenderObject}. */
-    private static final Map<ResourceLocation, BakedModel> MODEL_CACHE = new HashMap<>();
+    /**
+     * Upper bound on cached baked models (审查优化: 渲染热路径对象复用). Plugin
+     * installs/uninstalls produce new model paths, so a bounded cache keeps
+     * long-forgotten bullet models from accumulating; each insert over the
+     * limit evicts the least-recently-used entry.
+     */
+    private static final int MODEL_CACHE_MAX_ENTRIES = 64;
+
+    /**
+     * Cached baked models keyed by the raw model location from
+     * {@link BulletRenderObject}, in access-order LRU (审查优化: 渲染热路径对象
+     * 复用). Backed by {@link DynamicGunTextureCache.LruStore} — the same bounded
+     * container used by the texture cache — so a hit refreshes recency and an
+     * insert over {@link #MODEL_CACHE_MAX_ENTRIES} evicts the least-recently-used
+     * entry. {@code BakedModel}s hold no per-entry GPU resource of their own, so
+     * eviction needs no release side-effect. Package-visible for unit testing
+     * the bound; only touched on the render thread.
+     */
+    static final DynamicGunTextureCache.LruStore<ResourceLocation, BakedModel> MODEL_CACHE =
+            new DynamicGunTextureCache.LruStore<>(MODEL_CACHE_MAX_ENTRIES, ignored -> {
+            });
+
+    /**
+     * Shared {@link RandomSource} reused by the translucent draw path instead of
+     * allocating a fresh one per render (审查优化: 渲染热路径对象复用). Vanilla quad
+     * iteration passes a {@link RandomSource} to {@link BakedModel#getQuads}; the
+     * seed is fixed to {@code 42L} to match the original per-call behaviour, so
+     * results are identical to the previous {@code RandomSource.create()} path.
+     * The render thread is single-threaded and the draw is not re-entrant, so a
+     * single shared instance is safe (the caller {@code setSeed(42L)}s before
+     * each {@code getQuads} pass, mirroring vanilla {@code renderModel}).
+     */
+    private static final RandomSource SHARED_RANDOM_SOURCE = RandomSource.create();
 
     /** Reload sentinel: the missing-model reference changes on each resource reload. */
     @Nullable private static BakedModel cachedMissingModel;
 
     private Model3DRenderer() {
+    }
+
+    /**
+     * Returns the single shared {@link RandomSource} used by the translucent
+     * draw path, so it is reused across renders instead of being created per
+     * call (审查优化: 渲染热路径对象复用). Package-private for the allocation
+     * regression test.
+     *
+     * @return the shared random source, never {@code null}
+     */
+    static RandomSource sharedRandomSource() {
+        return SHARED_RANDOM_SOURCE;
+    }
+
+    /**
+     * Returns the {@link #MODEL_CACHE} LRU bound. Package-private for the cache
+     * boundedness regression test.
+     *
+     * @return the maximum number of cached baked models
+     */
+    static int modelCacheMaxEntries() {
+        return MODEL_CACHE_MAX_ENTRIES;
     }
 
     /**
@@ -187,7 +239,9 @@ public final class Model3DRenderer {
      * @param interpolatedPos the bullet's interpolated world position — used
      *                       for the light lookup so lighting tracks the
      *                       drawn (interpolated) position, not the raw tick
-     *                       position (稳健性修复)
+     *                       position (稳健性修复). A JOML {@link Vector3d} from
+     *                       the dispatcher's reusable scratch buffer so the
+     *                       caller does not allocate a {@code Vec3} per bullet.
      * @param distanceAlpha  the distance-based opacity multiplier in
      *                       {@code [0.2, 1]} from
      *                       {@link DistanceAlphaCurve#computeAlpha}
@@ -197,7 +251,7 @@ public final class Model3DRenderer {
             PoseStack poseStack,
             MultiBufferSource bufferSource,
             float partialTick,
-            Vec3 interpolatedPos,
+            Vector3d interpolatedPos,
             float distanceAlpha) {
         ResourceLocation modelLocation = renderObject.getModelLocation();
         if (modelLocation == null) {
@@ -241,7 +295,16 @@ public final class Model3DRenderer {
     private static BakedModel getOrLoadModel(ResourceLocation modelLocation) {
         ModelManager modelManager = Minecraft.getInstance().getModelManager();
         invalidateCacheOnReload(modelManager);
-        return MODEL_CACHE.computeIfAbsent(modelLocation, Model3DRenderer::loadFromManager);
+        // LruStore has no computeIfAbsent; a hit refreshes recency, a miss is
+        // resolved then inserted (an insert over the bound evicts the LRU
+        // entry — see MODEL_CACHE).
+        BakedModel cached = MODEL_CACHE.get(modelLocation);
+        if (cached != null) {
+            return cached;
+        }
+        BakedModel loaded = loadFromManager(modelLocation);
+        MODEL_CACHE.put(modelLocation, loaded);
+        return loaded;
     }
 
     /**
@@ -342,7 +405,7 @@ public final class Model3DRenderer {
      * @param worldPos the bullet's world position
      * @return the packed light value
      */
-    private static int computeLight(Vec3 worldPos) {
+    private static int computeLight(Vector3d worldPos) {
         Level level = Minecraft.getInstance().level;
         if (level == null) {
             return FULL_BRIGHT;
@@ -412,7 +475,11 @@ public final class Model3DRenderer {
             float alpha) {
         VertexConsumer vertexConsumer = bufferSource.getBuffer(TRANSLUCENT_RENDER_TYPE);
         PoseStack.Pose pose = poseStack.last();
-        RandomSource randomSource = RandomSource.create();
+        // Reuse the shared random source (fixed seed 42L) instead of allocating
+        // a new one per render; the render thread is single-threaded and the
+        // draw is not re-entrant, and the seed reset keeps results identical to
+        // the original RandomSource.create() path.
+        RandomSource randomSource = SHARED_RANDOM_SOURCE;
         for (Direction direction : Direction.values()) {
             randomSource.setSeed(42L);
             renderQuadListTranslucent(pose, vertexConsumer, tint, alpha,

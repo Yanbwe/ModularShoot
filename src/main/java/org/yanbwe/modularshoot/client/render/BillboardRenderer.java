@@ -67,6 +67,15 @@ public final class BillboardRenderer {
     /** White identity tint (null-wire sentinel replaced at render time). */
     private static final Vector4f WHITE_TINT = new Vector4f(1.0f, 1.0f, 1.0f, 1.0f);
 
+    /**
+     * Reusable tint scratch (审查优化: 渲染热路径对象复用) for the copy-on-fade
+     * path in {@link #render}, avoiding a fresh {@link Vector4f} per fadable
+     * bullet each frame. The draw is synchronous and consumes the tint
+     * immediately, so reuse is safe on the single-threaded render thread. The
+     * render object's own tint is never mutated.
+     */
+    private static final Vector4f SCRATCH_TINT = new Vector4f(1.0f, 1.0f, 1.0f, 1.0f);
+
     private BillboardRenderer() {
     }
 
@@ -120,8 +129,10 @@ public final class BillboardRenderer {
         Vector4f tint = renderObject.getComposedTint() != null
                 ? renderObject.getComposedTint() : WHITE_TINT;
         if (distanceAlpha < 1.0F) {
-            // Copy-on-fade: never write the fade back into the render object.
-            tint = new Vector4f(tint.x, tint.y, tint.z, tint.w * distanceAlpha);
+            // Copy-on-fade into the reusable scratch: never write the fade back
+            // into the render object, and avoid a fresh Vector4f per bullet.
+            SCRATCH_TINT.set(tint.x, tint.y, tint.z, tint.w * distanceAlpha);
+            tint = SCRATCH_TINT;
         }
         drawBillboard(texture, halfSize, tint, poseStack, bufferSource, partialTick, cameraPos);
     }

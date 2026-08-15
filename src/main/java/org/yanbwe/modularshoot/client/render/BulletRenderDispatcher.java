@@ -14,6 +14,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import org.joml.Vector3d;
 import org.joml.Vector4f;
 
 import org.yanbwe.modularshoot.ModularShoot;
@@ -97,6 +98,23 @@ public final class BulletRenderDispatcher {
      */
     private static final List<BulletRenderObject> SORT_BUFFER = new java.util.ArrayList<>();
 
+    /**
+     * Reusable interpolation output (审查优化: 渲染热路径对象复用): the render
+     * thread is single-threaded and each bullet's interpolated position is
+     * consumed synchronously within its draw, so one shared JOML
+     * {@link Vector3d} avoids the per-frame-per-bullet {@code Vec3.lerp}
+     * allocation. Callers must not retain the object beyond the current draw.
+     */
+    private static final Vector3d INTERP_POS = new Vector3d();
+
+    /**
+     * Reusable tint scratch (审查优化: 渲染热路径对象复用) for the copy-on-fade
+     * layer path in {@link #renderByMode}, avoiding a fresh {@link Vector4f} per
+     * fadable attach_layer each frame. Consumed synchronously by the billboard
+     * draw, so reuse is safe on the single-threaded render thread.
+     */
+    private static final Vector4f SCRATCH_TINT = new Vector4f(1.0f, 1.0f, 1.0f, 1.0f);
+
     private BulletRenderDispatcher() {
     }
 
@@ -168,13 +186,15 @@ public final class BulletRenderDispatcher {
             ClientBulletSnapshot snapshot = renderManager.getSnapshot(renderObject.getBulletId());
             VisualTickHookDispatcher.dispatchVisualTick(snapshot, renderObject);
 
-            Vec3 interpolatedPos = interpolatePosition(renderObject, nowMillis);
+            // Reuse the shared scratch instead of allocating a Vec3 per bullet.
+            Vector3d interpolatedPos = interpolatePosition(renderObject, nowMillis);
             // Distance fade is computed from the interpolated position (more
             // accurate than the raw tick position at high bullet speeds).
             float distanceAlpha = 1.0F;
             if (nearTranslucency) {
                 distanceAlpha = DistanceAlphaCurve.computeAlpha(
-                        interpolatedPos.distanceToSqr(cameraPos), fadeDistance, minOpacity);
+                        interpolatedPos.distanceSquared(cameraPos.x, cameraPos.y, cameraPos.z),
+                        fadeDistance, minOpacity);
             }
             renderByMode(renderObject, poseStack, bufferSource, partialTick, cameraPos,
                     interpolatedPos, distanceAlpha);
@@ -230,12 +250,13 @@ public final class BulletRenderDispatcher {
      * @param renderObject the bullet to interpolate
      * @param nowMillis    the frame's wall-clock time (shared by every bullet
      *                     of the frame, read once in {@link #renderAllBullets})
-     * @return the interpolated world position
+     * @return the shared {@link #INTERP_POS} scratch holding the interpolated
+     *         world position (reused across bullets; consumed synchronously)
      */
-    private static Vec3 interpolatePosition(BulletRenderObject renderObject, long nowMillis) {
+    private static Vector3d interpolatePosition(BulletRenderObject renderObject, long nowMillis) {
         float factor = renderObject.getInterpolationFactor(nowMillis);
         return RenderInterpolation.lerpPosition(
-                renderObject.getPrevPosition(), renderObject.getPosition(), factor);
+                renderObject.getPrevPosition(), renderObject.getPosition(), factor, INTERP_POS);
     }
 
     /**
@@ -261,7 +282,9 @@ public final class BulletRenderDispatcher {
      * @param partialTick     the frame partial tick (passed to renderers for
      *                        any sub-frame animation)
      * @param cameraPos       the camera world position (for billboard orientation)
-     * @param interpolatedPos the bullet's interpolated world position
+     * @param interpolatedPos the bullet's interpolated world position (a
+     *                        reused {@link Vector3d} scratch from
+     *                        {@link #INTERP_POS}; consumed synchronously)
      * @param distanceAlpha   the distance-based opacity multiplier in
      *                        {@code [0.2, 1]} (系统七 §近相机距离透明度);
      *                        applied to the base draw and every attach_layer
@@ -273,7 +296,7 @@ public final class BulletRenderDispatcher {
             MultiBufferSource bufferSource,
             float partialTick,
             Vec3 cameraPos,
-            Vec3 interpolatedPos,
+            Vector3d interpolatedPos,
             float distanceAlpha) {
         String renderMode = renderObject.getRenderMode();
         // Camera-space offset: translate from camera origin to bullet world pos
@@ -304,12 +327,15 @@ public final class BulletRenderDispatcher {
             float effectiveScale = layer.followScale()
                     ? renderObject.getScale() * layer.scale() : layer.scale();
             // tint: null = white identity sentinel; copy-on-fade so the
-            // shared record value is never mutated
+            // shared record value is never mutated. The fade copy reuses the
+            // shared SCRATCH_TINT (never the record value) because the draw is
+            // synchronous and consumes it immediately (审查优化: 对象复用).
             Vector4f layerTint = layer.tint() != null
                     ? layer.tint() : WHITE_TINT;
             if (distanceAlpha < 1.0F) {
-                layerTint = new Vector4f(layerTint.x, layerTint.y, layerTint.z,
+                SCRATCH_TINT.set(layerTint.x, layerTint.y, layerTint.z,
                         layerTint.w * distanceAlpha);
+                layerTint = SCRATCH_TINT;
             }
             if (BulletRenderObject.RENDER_MODE_BILLBOARD.equals(layer.renderMode())
                     && layer.texture() != null) {

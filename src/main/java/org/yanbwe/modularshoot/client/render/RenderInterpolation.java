@@ -1,6 +1,7 @@
 package org.yanbwe.modularshoot.client.render;
 
 import net.minecraft.world.phys.Vec3;
+import org.joml.Vector3d;
 
 /**
  * Pure-function interpolation utilities for bullet rendering
@@ -88,6 +89,33 @@ public final class RenderInterpolation {
      */
     public static Vec3 lerpPosition(Vec3 prev, Vec3 current, float partialTick) {
         return prev.lerp(current, partialTick);
+    }
+
+    /**
+     * Write-into variant of {@link #lerpPosition(Vec3, Vec3, float)}: computes
+     * the same linear blend but writes the three components into the caller's
+     * reusable {@code out} (a JOML {@link Vector3d}) and returns it, avoiding
+     * the per-frame per-bullet {@link Vec3} allocation of {@code Vec3.lerp}
+     * (审查优化: 渲染热路径对象复用).
+     *
+     * <p>The render thread is single-threaded and the result is consumed
+     * synchronously, so the caller may keep one reusable {@code out} and pass
+     * it on every frame.</p>
+     *
+     * @param prev        the previous-tick position
+     * @param current     the current-tick position
+     * @param partialTick the frame interpolation factor in {@code [0, 1]}
+     * @param out         the reusable output vector to write into; never
+     *                    {@code null}
+     * @return {@code out} with its {@code x}/{@code y}/{@code z} set to the
+     *         blended result
+     */
+    public static Vector3d lerpPosition(
+            Vec3 prev, Vec3 current, float partialTick, Vector3d out) {
+        return out.set(
+                lerp(prev.x, current.x, partialTick),
+                lerp(prev.y, current.y, partialTick),
+                lerp(prev.z, current.z, partialTick));
     }
 
     /**
