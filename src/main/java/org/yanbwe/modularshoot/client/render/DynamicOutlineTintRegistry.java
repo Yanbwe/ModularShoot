@@ -116,6 +116,33 @@ public final class DynamicOutlineTintRegistry {
     }
 
     /**
+     * Whether any of the given plugin ids has a registered tint provider.
+     *
+     * <p>Unlike {@link #resolve}, this only checks registration and never
+     * invokes a provider, so it is a cheap existence query with no caller
+     * state or side effects. Used by {@link DynamicGunTextureCache} to decide
+     * whether a white outline mask should be built and uploaded at all: the
+     * mask exists only to be multiplied by a dynamic per-frame tint, so
+     * without a provider for any of the gun's outline-carrying plugins the
+     * mask texture is pure waste (审查优化: 描边 mask 懒生成).</p>
+     *
+     * <p>Package-private: consumed by the texture cache and unit tests.</p>
+     *
+     * @param pluginIds the outline-carrying plugin ids, in install order;
+     *                  must not be {@code null}
+     * @return {@code true} when at least one plugin id has a registered
+     *         provider
+     */
+    static boolean hasTintProvider(List<ResourceLocation> pluginIds) {
+        for (ResourceLocation pluginId : pluginIds) {
+            if (PROVIDERS.containsKey(pluginId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Clears every registered provider.
      *
      * <p>Package-private: used by unit tests to reset the shared static

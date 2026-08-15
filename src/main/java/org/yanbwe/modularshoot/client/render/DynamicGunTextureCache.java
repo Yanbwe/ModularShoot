@@ -410,6 +410,37 @@ public final class DynamicGunTextureCache {
      *         {@code null})
      */
     public TextureHandle getOrCreate(Key key) {
+        return getOrCreate(key, List.of());
+    }
+
+    /**
+     * Returns the registered texture handle for the given key, compositing
+     * and uploading a new dynamic texture on a cache miss.
+     *
+     * <p>This is the gun overload: it additionally receives the ids of the
+     * installed plugins that carry a {@code gun_outline} so the cache can
+     * decide whether to build and upload the dynamic outline mask (审查优化:
+     * 描边 mask 懒生成). The static stroke colours are always baked into the
+     * composite whenever {@code gunOutlines} is non-empty, but the optional
+     * white mask texture — which only serves multiplying a per-frame dynamic
+     * tint — is generated and uploaded <em>only</em> when
+     * {@link DynamicOutlineTintRegistry} actually holds a provider for one of
+     * those plugins. Without a provider there is nothing to tint, so the mask
+     * upload is skipped entirely (no redundant GPU texture), and the renderer
+     * draws the baked static strokes as before.</p>
+     *
+     * <p>Behaviour is otherwise identical to {@link #getOrCreate(Key)}; the
+     * mask-less single-argument form is retained for plugin-item rendering
+     * (which never declares gun outlines).</p>
+     *
+     * @param key                the cache key; must not be {@code null}
+     * @param gunOutlinePluginIds the ids, in install order, of the plugins
+     *                            that contributed a {@code gun_outline};
+     *                            may be empty
+     * @return the texture handle for the composited image (never
+     *         {@code null})
+     */
+    public TextureHandle getOrCreate(Key key, List<ResourceLocation> gunOutlinePluginIds) {
         TextureHandle existing = locations.get(key);
         if (existing != null) {
             return existing;
@@ -453,13 +484,23 @@ public final class DynamicGunTextureCache {
             image.close();
         }
 
+        // Mask upload is gated on the tint provider actually existing: the
+        // static strokes are always baked (below) so the outline stays visible
+        // with its baked colour, but the mask texture is only worthwhile when
+        // a dynamic per-frame tint will multiply it at draw time.
+        boolean buildMask = shouldBuildOutlineMask(key, gunOutlinePluginIds);
         ResourceLocation maskLocation = null;
-        if (!key.gunOutlines().isEmpty()) {
+        if (buildMask) {
             NativeImage maskImage = CompositeTextureBuilder.buildOutlineMask(canvas, key.gunOutlines());
             maskLocation = ResourceLocation.fromNamespaceAndPath(
                     ModularShoot.MODID, "dynamic/gun_mask_" + nextId++);
             DynamicTexture maskTexture = new DynamicTexture(maskImage);
             Minecraft.getInstance().getTextureManager().register(maskLocation, maskTexture);
+        }
+        // The static gun outlines are baked into the composite whenever any
+        // are declared — independently of the dynamic mask — so the baked
+        // stroke colour renders for every gun configuration.
+        if (!key.gunOutlines().isEmpty()) {
             CompositeTextureBuilder.applyGunOutlines(canvas, key.gunOutlines());
         }
 
@@ -476,6 +517,32 @@ public final class DynamicGunTextureCache {
         quads.addAll(SideQuadBuilder.build(canvas, pad, pad, width, height));
         locations.put(key, new TextureHandle(location, maskLocation, width, height, quads));
         return locations.get(key);
+    }
+
+    /**
+     * Decides whether a white outline mask should be built and uploaded for
+     * the given key.
+     *
+     * <p>The mask only exists to be multiplied by a per-frame dynamic tint at
+     * draw time, so it is generated lazily — only when the key declares gun
+     * outlines <em>and</em> {@link DynamicOutlineTintRegistry} actually holds
+     * a provider for one of the gun's outline-carrying plugin ids (审查优化:
+     * 描边 mask 懒生成). An outline-carrying gun with no registered provider
+     * relies solely on the baked static strokes, so the mask would be dead
+     * weight on the GPU.</p>
+     *
+     * <p>Package-private for unit testing; the decision is pure (queries only
+     * provider <em>registration</em>, never invoking any provider).</p>
+     *
+     * @param key                 the cache key; must not be {@code null}
+     * @param gunOutlinePluginIds the ids, in install order, of the plugins
+     *                            that contributed a {@code gun_outline};
+     *                            may be empty
+     * @return {@code true} when a mask should be generated for this key
+     */
+    static boolean shouldBuildOutlineMask(Key key, List<ResourceLocation> gunOutlinePluginIds) {
+        return !key.gunOutlines().isEmpty()
+                && DynamicOutlineTintRegistry.hasTintProvider(gunOutlinePluginIds);
     }
 
     /**

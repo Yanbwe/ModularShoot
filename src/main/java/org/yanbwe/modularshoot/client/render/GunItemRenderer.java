@@ -264,7 +264,8 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer imple
 
         DynamicGunTextureCache.TextureHandle handle = DynamicGunTextureCache.getInstance().getOrCreate(
                 new DynamicGunTextureCache.Key(
-                        renderTexture, renderData.overlays(), renderData.gunOutlines(), modifierVersion));
+                        renderTexture, renderData.overlays(), renderData.gunOutlines(), modifierVersion),
+                renderData.gunOutlinePluginIds());
         // Dynamic outline pass: when any installed outline-carrying plugin has
         // a registered per-frame tint provider, the white outline mask is
         // drawn over the composite tinted with the provider's colour. Without

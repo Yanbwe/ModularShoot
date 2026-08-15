@@ -749,4 +749,46 @@ class CompositeTextureBuilderTest {
             assertPixel(base, 7, 7, OUTLINE_RED, "bottom-right corner carries stroke");
         }
     }
+
+    // --- D1: Chebyshev distance transform (描边算法优化) ---------------------
+
+    @Test
+    void chebyshevTransformMarksExactDistancesFromSinglePixel() {
+        // A single opaque pixel at (0,0) of a 3x3 grid: the Chebyshev distance
+        // max(|dx|,|dy|) to it is 0 at the pixel, 1 at its 8 neighbours, and 2
+        // nowhere on a 3x3 (all cells are within distance 1). Extend to 4x4 so
+        // the far corner lands at distance 2.
+        int[] alpha = new int[16];
+        alpha[0] = 255; // opaque at (0,0)
+        int[] dist = CompositeTextureBuilder.chebyshevDistanceTransform(alpha, 4, 4);
+        int[][] expected = {
+                {0, 1, 2, 3},
+                {1, 1, 2, 3},
+                {2, 2, 2, 3},
+                {3, 3, 3, 3}
+        };
+        for (int y = 0; y < 4; y++) {
+            for (int x = 0; x < 4; x++) {
+                assertEquals(expected[y][x], dist[y * 4 + x],
+                        "Chebyshev distance at (" + x + "," + y + ")");
+            }
+        }
+    }
+
+    @Test
+    void chebyshevTransformZeroesOpaqueAndReachesAllOnSolid() {
+        // Fully transparent image: distance stays at the sentinel (>= w+h).
+        int[] empty = new int[9];
+        int[] dist = CompositeTextureBuilder.chebyshevDistanceTransform(empty, 3, 3);
+        for (int d : dist) {
+            assertTrue(d > 5, "a fully transparent snapshot yields NO valid distance (sentinel)");
+        }
+        // Fully opaque image: every pixel is distance 0.
+        int[] opaque = new int[9];
+        java.util.Arrays.fill(opaque, 255);
+        int[] dist2 = CompositeTextureBuilder.chebyshevDistanceTransform(opaque, 3, 3);
+        for (int d : dist2) {
+            assertEquals(0, d, "opaque pixels are distance 0 everywhere");
+        }
+    }
 }

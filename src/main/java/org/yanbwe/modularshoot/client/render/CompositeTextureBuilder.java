@@ -490,36 +490,77 @@ public final class CompositeTextureBuilder {
     }
 
     /**
-     * Checks whether any pixel within a square neighbourhood of radius
-     * {@code width} around {@code (x, y)} has non-zero alpha (including the
-     * pixel itself). Neighbourhood cells outside the image bounds are skipped.
+     * Computes the Chebyshev (L&infin;) distance of every pixel to the nearest
+     * opaque pixel of an alpha snapshot.
      *
-     * <p>Used by {@link #outlineLayer} to find transparent pixels hugging an
-     * opaque silhouette.</p>
+     * <p>An opaque pixel (alpha &gt; 0) has distance 0; a transparent pixel
+     * gets the minimum max(|&Delta;x|, |&Delta;y|) over all opaque pixels. This
+     * is exactly what decides an outline stroke membership: a transparent
+     * pixel is inside the stroke of width {@code w} iff its Chebyshev distance
+     * is {@code <= w}. The transform runs in O(W·H) with a two-pass
+     * 8-connected (king-move) scan — a forward pass then a backward pass —
+     * replacing the previous O(W·H·width²) per-pixel neighbourhood scan used
+     * by every outline stroke (审查优化: 描边算法优化).</p>
      *
      * <p>Package-private for unit testing; the pixel math is pure.</p>
      *
-     * @param img   the image to sample
-     * @param x     the centre x coordinate
-     * @param y     the centre y coordinate
-     * @param width the neighbourhood radius in pixels
-     * @return {@code true} when an alpha &gt; 0 pixel exists within the
-     *         neighbourhood
+     * @param alpha the per-pixel alpha snapshot, row-major, 0..255
+     * @param w     the snapshot width in pixels
+     * @param h     the snapshot height in pixels
+     * @return a row-major array where each cell holds the Chebyshev distance
+     *         to the nearest opaque pixel (0 for opaque pixels)
      */
-    static boolean hasAlphaNeighbor(NativeImage img, int x, int y, int width) {
-        for (int dy = -width; dy <= width; dy++) {
-            for (int dx = -width; dx <= width; dx++) {
-                int nx = x + dx;
-                int ny = y + dy;
-                if (nx < 0 || ny < 0 || nx >= img.getWidth() || ny >= img.getHeight()) {
-                    continue;
-                }
-                if (FastColor.ABGR32.alpha(img.getPixelRGBA(nx, ny)) > 0) {
-                    return true;
-                }
+    static int[] chebyshevDistanceTransform(int[] alpha, int w, int h) {
+        int[] dist = new int[w * h];
+        int inf = w + h + 1;
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                dist[y * w + x] = alpha[y * w + x] > 0 ? 0 : inf;
             }
         }
-        return false;
+        // Forward pass (top-left → bottom-right): consider the four
+        // already-visited 8-neighbours (up, left, up-left, up-right).
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int idx = y * w + x;
+                int best = dist[idx];
+                if (y > 0) {
+                    best = Math.min(best, dist[(y - 1) * w + x] + 1);
+                }
+                if (x > 0) {
+                    best = Math.min(best, dist[y * w + (x - 1)] + 1);
+                }
+                if (x > 0 && y > 0) {
+                    best = Math.min(best, dist[(y - 1) * w + (x - 1)] + 1);
+                }
+                if (x + 1 < w && y > 0) {
+                    best = Math.min(best, dist[(y - 1) * w + (x + 1)] + 1);
+                }
+                dist[idx] = best;
+            }
+        }
+        // Backward pass (bottom-right → top-left): consider the four remaining
+        // 8-neighbours (down, right, down-right, down-left).
+        for (int y = h - 1; y >= 0; y--) {
+            for (int x = w - 1; x >= 0; x--) {
+                int idx = y * w + x;
+                int best = dist[idx];
+                if (y + 1 < h) {
+                    best = Math.min(best, dist[(y + 1) * w + x] + 1);
+                }
+                if (x + 1 < w) {
+                    best = Math.min(best, dist[y * w + (x + 1)] + 1);
+                }
+                if (x + 1 < w && y + 1 < h) {
+                    best = Math.min(best, dist[(y + 1) * w + (x + 1)] + 1);
+                }
+                if (x > 0 && y + 1 < h) {
+                    best = Math.min(best, dist[(y + 1) * w + (x - 1)] + 1);
+                }
+                dist[idx] = best;
+            }
+        }
+        return dist;
     }
 
     /**
@@ -530,9 +571,9 @@ public final class CompositeTextureBuilder {
      * <p>A non-positive {@code width} logs a warning and paints nothing. The
      * stroke colour is fixed and never participates in tinting — the call
      * order in {@link #composite} (tint first, then outline) guarantees this.
-     * Two passes are used: pass one marks the target pixels based on the
-     * original alpha values, pass two writes the colour, so freshly painted
-     * outline pixels never trigger further marking.</p>
+     * The stroke is decided against the original alpha snapshot only (via a
+     * Chebyshev distance transform), so freshly painted outline pixels never
+     * trigger further marking.</p>
      *
      * <p>Package-private for unit testing; the pixel math is pure.</p>
      *
@@ -543,22 +584,27 @@ public final class CompositeTextureBuilder {
         int w = img.getWidth();
         int h = img.getHeight();
         // The Chebyshev distance between any two pixels of a w×h canvas is at
-        // most max(w,h)-1, so a larger width is clamped with no semantic
-        // change — this also keeps the (2w+1)² neighbourhood scan bounded.
+        // most max(w,h)-1, so a larger width is clamped with no semantic change
+        // (审查优化: 算法替换为距离变换后，宽度不再参与邻域扫描成本，但仍保持
+        // 语义等价——距离不可能超过 max(w,h)-1)。
         int width = Math.min(spec.width(), Math.max(w, h) - 1);
         if (width <= 0) {
             LOGGER.warn("Outline width {} is not positive; outline skipped for layer", spec.width());
             return;
         }
-        boolean[] marks = new boolean[w * h];
+        // Snapshot the original alpha, then compute the Chebyshev distance of
+        // every pixel to the nearest opaque pixel ONCE (O(W·H) two-pass
+        // instead of the per-pixel O((2w+1)²) neighbourhood scan). A
+        // transparent pixel is stroked iff its distance is <= width; painting
+        // only hits originally-transparent pixels, so it can never widen the
+        // silhouette for the reference transform (no cascade).
+        int[] alphaSnapshot = new int[w * h];
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
-                if (FastColor.ABGR32.alpha(img.getPixelRGBA(x, y)) == 0
-                        && hasAlphaNeighbor(img, x, y, width)) {
-                    marks[y * w + x] = true;
-                }
+                alphaSnapshot[y * w + x] = FastColor.ABGR32.alpha(img.getPixelRGBA(x, y));
             }
         }
+        int[] dist = chebyshevDistanceTransform(alphaSnapshot, w, h);
         int color = FastColor.ABGR32.color(
                 clampChannel(Math.round(spec.alpha() * 255.0F)),
                 clampChannel(Math.round(spec.color().z() * 255.0F)),
@@ -566,7 +612,7 @@ public final class CompositeTextureBuilder {
                 clampChannel(Math.round(spec.color().x() * 255.0F)));
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
-                if (marks[y * w + x]) {
+                if (alphaSnapshot[y * w + x] == 0 && dist[y * w + x] <= width) {
                     img.setPixelRGBA(x, y, color);
                 }
             }
@@ -614,6 +660,13 @@ public final class CompositeTextureBuilder {
                 alphaSnapshot[y * w + x] = FastColor.ABGR32.alpha(img.getPixelRGBA(x, y));
             }
         }
+        // One Chebyshev distance transform (O(W·H), two-pass) replaces the
+        // per-spec O((2w+1)²) neighbourhood scan: a transparent pixel belongs
+        // to the stroke of width `width` iff its distance to the nearest
+        // opaque pixel is <= width. The transform is computed once from the
+        // original snapshot and reused by every outline spec — no redundant
+        // re-scanning of the same alpha snapshot (审查优化: 描边算法优化).
+        int[] dist = chebyshevDistanceTransform(alphaSnapshot, w, h);
         // Stable sort by width descending: List.sort is stable, so ties keep
         // the caller's install order and later installs paint over earlier
         // ones.
@@ -621,7 +674,7 @@ public final class CompositeTextureBuilder {
         sorted.sort(Comparator.comparingInt(OutlineSpec::width).reversed());
         for (OutlineSpec spec : sorted) {
             // Clamped to the largest Chebyshev distance on the canvas, exactly
-            // as in outlineLayer; keeps the neighbourhood scan bounded.
+            // as in outlineLayer (distance cannot exceed max(w,h)-1).
             int width = Math.min(spec.width(), Math.max(w, h) - 1);
             if (width <= 0) {
                 LOGGER.warn("Gun outline width {} is not positive; outline skipped", spec.width());
@@ -634,8 +687,7 @@ public final class CompositeTextureBuilder {
                     clampChannel(Math.round(spec.color().x() * 255.0F)));
             for (int y = 0; y < h; y++) {
                 for (int x = 0; x < w; x++) {
-                    if (alphaSnapshot[y * w + x] == 0
-                            && hasAlphaNeighborInSnapshot(alphaSnapshot, w, h, x, y, width)) {
+                    if (alphaSnapshot[y * w + x] == 0 && dist[y * w + x] <= width) {
                         img.setPixelRGBA(x, y, color);
                     }
                 }
@@ -689,68 +741,35 @@ public final class CompositeTextureBuilder {
                 alphaSnapshot[y * w + x] = FastColor.ABGR32.alpha(composited.getPixelRGBA(x, y));
             }
         }
-        // NativeImage's native backing memory is not zero-initialised, so
-        // every pixel is explicitly set to transparent before marking.
-        NativeImage mask = new NativeImage(w, h, false);
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                mask.setPixelRGBA(x, y, 0);
-            }
-        }
+        // The mask is the UNION of every spec's stroke, which is exactly the
+        // set of transparent pixels whose Chebyshev distance to the silhouette
+        // is <= the widest stroke — so one distance transform plus one pass
+        // over the maximum effective width suffices (审查优化: 描边算法优化;
+        // 无需对每个 spec 重复扫描同一 alpha 快照).
+        int[] dist = chebyshevDistanceTransform(alphaSnapshot, w, h);
         List<OutlineSpec> sorted = new ArrayList<>(outlines);
         sorted.sort(Comparator.comparingInt(OutlineSpec::width).reversed());
-        int white = FastColor.ABGR32.color(255, 255, 255, 255);
+        int maxWidth = 0;
         for (OutlineSpec spec : sorted) {
             int width = Math.min(spec.width(), Math.max(w, h) - 1);
             if (width <= 0) {
                 LOGGER.warn("Gun outline width {} is not positive; outline skipped in mask", spec.width());
                 continue;
             }
-            for (int y = 0; y < h; y++) {
-                for (int x = 0; x < w; x++) {
-                    if (alphaSnapshot[y * w + x] == 0
-                            && hasAlphaNeighborInSnapshot(alphaSnapshot, w, h, x, y, width)) {
-                        mask.setPixelRGBA(x, y, white);
-                    }
+            maxWidth = Math.max(maxWidth, width);
+        }
+        // NativeImage's native backing memory is not zero-initialised, so
+        // every pixel is explicitly set to transparent before marking.
+        NativeImage mask = new NativeImage(w, h, false);
+        int white = FastColor.ABGR32.color(255, 255, 255, 255);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                if (alphaSnapshot[y * w + x] == 0 && dist[y * w + x] <= maxWidth) {
+                    mask.setPixelRGBA(x, y, white);
                 }
             }
         }
         return mask;
-    }
-
-    /**
-     * Checks whether any pixel within a square neighbourhood of radius
-     * {@code width} around {@code (x, y)} has non-zero alpha in the given
-     * alpha snapshot (including the pixel itself). Neighbourhood cells
-     * outside the image bounds are skipped.
-     *
-     * <p>Counterpart of {@link #hasAlphaNeighbor} that reads a plain alpha
-     * snapshot array instead of a live {@link NativeImage}, so outline
-     * detection is immune to pixels painted by earlier outline passes.</p>
-     *
-     * @param alpha the per-pixel alpha snapshot, row-major, 0..255
-     * @param w     the snapshot width in pixels
-     * @param h     the snapshot height in pixels
-     * @param x     the centre x coordinate
-     * @param y     the centre y coordinate
-     * @param width the neighbourhood radius in pixels
-     * @return {@code true} when an alpha &gt; 0 pixel exists within the
-     *         neighbourhood
-     */
-    private static boolean hasAlphaNeighborInSnapshot(int[] alpha, int w, int h, int x, int y, int width) {
-        for (int dy = -width; dy <= width; dy++) {
-            for (int dx = -width; dx <= width; dx++) {
-                int nx = x + dx;
-                int ny = y + dy;
-                if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
-                    continue;
-                }
-                if (alpha[ny * w + nx] > 0) {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 
     /**
