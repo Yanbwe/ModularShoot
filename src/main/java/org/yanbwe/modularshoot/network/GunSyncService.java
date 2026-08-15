@@ -366,16 +366,11 @@ public final class GunSyncService {
      *               {@code null}
      */
     private static void refreshInventoryGunModifiers(ServerPlayer player) {
-        RegistryAccess registryAccess = player.registryAccess();
-        for (ItemStack stack : player.getInventory().items) {
-            if (ModularShootAPI.isGun(stack, registryAccess)) {
-                AttributeModifierService.refreshModifiers(stack, registryAccess);
-            }
-        }
-        ItemStack offhand = player.getOffhandItem();
-        if (ModularShootAPI.isGun(offhand, registryAccess)) {
-            AttributeModifierService.refreshModifiers(offhand, registryAccess);
-        }
+        // Single shared inventory-refresh implementation (阶段 5 / 任务 5.2,
+        // 合并刷新路径): ReloadBehaviorHandler's reload path delegates to the
+        // same method, so the reload and login refreshes behave identically.
+        AttributeModifierService.refreshGunModifiersInInventory(
+                player.getInventory().items, player.getOffhandItem(), player.registryAccess());
     }
 
     /**

@@ -8,7 +8,6 @@ import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.ItemStack;
 
 import org.yanbwe.modularshoot.ModularShoot;
-import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.attribute.AttributeModifierService;
 import org.yanbwe.modularshoot.creative.ModularShootCreativeTabs;
 
@@ -151,18 +150,10 @@ public final class ReloadBehaviorHandler {
      * @return the number of gun stacks refreshed
      */
     private static int refreshGunsInInventory(ServerPlayer player, RegistryAccess registryAccess) {
-        int count = 0;
-        for (ItemStack stack : player.getInventory().items) {
-            if (ModularShootAPI.isGun(stack, registryAccess)) {
-                AttributeModifierService.refreshModifiers(stack, registryAccess);
-                count++;
-            }
-        }
-        ItemStack offhand = player.getOffhandItem();
-        if (ModularShootAPI.isGun(offhand, registryAccess)) {
-            AttributeModifierService.refreshModifiers(offhand, registryAccess);
-            count++;
-        }
-        return count;
+        // Single shared inventory-refresh implementation (阶段 5 / 任务 5.2,
+        // 合并刷新路径): GunSyncService's login path delegates to the same
+        // method, so the reload and login refreshes behave identically.
+        return AttributeModifierService.refreshGunModifiersInInventory(
+                player.getInventory().items, player.getOffhandItem(), registryAccess);
     }
 }

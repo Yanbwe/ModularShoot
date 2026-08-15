@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
@@ -19,6 +18,7 @@ import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
 import org.yanbwe.modularshoot.ModularShoot;
+import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginInstance;
@@ -28,6 +28,7 @@ import org.yanbwe.modularshoot.plugin.PluginDefinition;
 import org.yanbwe.modularshoot.plugin.PluginModifier;
 import org.yanbwe.modularshoot.plugin.PluginRegistry;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
+import org.yanbwe.modularshoot.registry.RegistryKeyedCache;
 import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
@@ -68,9 +69,11 @@ import org.yanbwe.modularshoot.registry.gun.GunRegistry;
  *       installed plugin ({@link PluginDefinition#modifiers()}), mapped from
  *       the plugin's {@link PluginModifier.Operation} to the corresponding
  *       vanilla {@link AttributeModifier.Operation}. Every modifier from one
- *       plugin instance shares the stable id derived from that instance's
- *       {@code instanceUuid} so vanilla can match and replace them on
- *       install/uninstall (设计文档 §修饰符 ID 稳定性). Because all modifiers
+ *       plugin instance shares a single id derived stably from the plugin's
+ *       {@code pluginId} plus its install-order occurrence index (设计文档
+ *       §修饰符 ID 稳定性) — a <em>cross-instance stable</em> id, not the
+ *       per-gun {@code instanceUuid}, so identical plugin configurations on
+ *       different guns share one cached result. Because all modifiers
  *       from one instance share a single id, vanilla's
  *       {@code AttributeInstance.addModifier} would throw if two modifiers
  *       targeted the same attribute; {@link #addPluginModifiers} therefore
@@ -88,17 +91,80 @@ import org.yanbwe.modularshoot.registry.gun.GunRegistry;
  * so vanilla can correctly match and replace them on refresh. Different
  * attributes may share this id because vanilla keys modifier identity by the
  * (attribute, id) pair, and each attribute here is distinct. Each plugin's
- * modifiers use the plugin's {@code instanceUuid} as their id, so vanilla can
- * likewise match and replace them when a plugin is installed or removed
- * (设计文档 §修饰符 ID 稳定性). When a plugin definition declares multiple
- * modifiers targeting the same attribute, only the first is mounted; see
- * {@link #addPluginModifiers} for the deduplication rationale.
+ * modifiers use the stable id derived from the plugin's {@code pluginId} plus
+ * its occurrence index (not the per-gun {@code instanceUuid}), so identical
+ * plugin configurations on different gun copies share the same modifier ids
+ * and thus the same cached component (设计文档 §修饰符 ID 稳定性). When a
+ * plugin definition declares multiple modifiers targeting the same attribute,
+ * only the first is mounted; see {@link #addPluginModifiers} for the
+ * deduplication rationale.
  */
 public final class AttributeModifierService {
 
     /** Stable modifier id for gun base values (设计文档 §修饰符 ID 稳定性). */
     public static final ResourceLocation GUN_BASE_MODIFIER_ID =
             ResourceLocation.parse("modularshoot:gun_base");
+
+    /**
+     * Immutable cache key for one computed modifier set (阶段 5 / 任务 5.2).
+     *
+     * <p>The result of {@link #computeAllModifiers} depends only on (a) the
+     * {@link GunDefinition} actually passed in (its {@code stats} directly
+     * determine the gun base values), (b) the {@code modifierVersion},
+     * (c) the <em>ordered pluginId list</em> (duplicates preserved, not the
+     * full {@link PluginInstance}s) and (d) the {@code attribute_meta}
+     * registry instance. Deliberately <em>not</em> including the per-instance
+     * {@code instanceUuid}s lets two players holding otherwise-identical guns
+     * (same gun definition, same plugin list, same version) share one cached
+     * result — the full-table recomputation is avoided across players and
+     * across gun copies. The {@code attribute_meta} registry instance is part
+     * of the key (identity-based equality) so a {@code /reload} that swaps in a
+     * new instance is a guaranteed miss even in the degenerate case where the
+     * {@code plugins} token is reused.</p>
+     *
+     * @param metaRegistry    the {@code attribute_meta} registry instance that
+     *                        supplied the base-modifier table
+     * @param gunDef          the gun definition actually passed to
+     *                        {@link #computeAllModifiers}; its {@code stats}
+     *                        drive the base values, so it is part of the key
+     * @param gunId           the gun definition id
+     * @param modifierVersion the anti-cheat version counter; incremented on
+     *                        install/uninstall/lock so those events invalidate
+     *                        the cache naturally
+     * @param pluginIds       the installed plugin ids in install order
+     *                        (duplicates preserved); the result depends on
+     *                        which plugin definitions are present and in what
+     *                        order they are mounted
+     */
+    private record ModifierCacheKey(
+            Registry<AttributeMeta> metaRegistry,
+            GunDefinition gunDef,
+            ResourceLocation gunId,
+            int modifierVersion,
+            List<ResourceLocation> pluginIds) {
+    }
+
+    /**
+     * Weak-keyed cache of computed {@code ATTRIBUTE_MODIFIERS} (阶段 5 /
+     * 任务 5.2, reload 在线玩家刷新缓存).
+     *
+     * <p>Reuses the {@link RegistryKeyedCache} pattern already used by
+     * {@link org.yanbwe.modularshoot.plugin.TraitMergeService} and
+     * {@link org.yanbwe.modularshoot.plugin.PluginExtraValueService}: the outer
+     * weak key is the {@code modularshoot:plugins} {@link Registry}
+     * <em>instance</em>, so a {@code /reload} that swaps in a new instance is
+     * a guaranteed cache miss and never serves stale results from the old one.
+     * The {@code guns} registry is covered through the {@code gunDef} field in
+     * the key (callers resolve it from the current guns registry each call, so
+     * a reloaded gun definition yields a new key), and the
+     * {@code attribute_meta} registry is likewise carried in the key. Within
+     * one registry instance, two players holding identical guns (same
+     * definition, same ordered plugin ids, same {@code modifierVersion}) share
+     * one computed result; a plugin install/uninstall/lock increments
+     * {@code modifierVersion} and thus misses the cache too.</p>
+     */
+    private static final RegistryKeyedCache<ModifierCacheKey, ItemAttributeModifiers> MODIFIER_CACHE =
+            new RegistryKeyedCache<>();
 
     private AttributeModifierService() {
     }
@@ -145,8 +211,9 @@ public final class AttributeModifierService {
      *
      * <p>Base values are added first (one {@code ADD_VALUE} per
      * {@code attribute_meta} entry, id {@link #GUN_BASE_MODIFIER_ID}); plugin
-     * modifiers are added
-     * afterwards, each keyed by its plugin instance's {@code instanceUuid}.
+     * modifiers are added afterwards, each keyed by a stable id derived from
+     * the plugin's {@code pluginId} and its occurrence index (cross-instance
+     * shareable, see {@link #pluginModifierId}).
      * Modifiers targeting an attribute that is not registered in the vanilla
      * {@code ATTRIBUTE} registry are silently skipped. Plugins whose
      * definition can no longer be found in the {@code modularshoot:plugins}
@@ -160,6 +227,34 @@ public final class AttributeModifierService {
      *         entries for base values and plugin modifiers, tooltip hidden
      */
     public static ItemAttributeModifiers computeAllModifiers(
+            GunDefinition gunDef, GunData gunData, RegistryAccess registryAccess) {
+        Registry<AttributeMeta> metaRegistry =
+                registryAccess.registry(ModularShootRegistries.ATTRIBUTE_META_KEY).orElse(null);
+        Registry<PluginDefinition> pluginsRegistry =
+                registryAccess.registry(ModularShootRegistries.PLUGINS_KEY).orElse(null);
+        if (metaRegistry == null || pluginsRegistry == null) {
+            // 任一决定输入对应的注册表缺失 → 走降级语义直接计算（无缓存），
+            // 避免 null 键在多 RegistryAccess 间串扰（降级语义不变）。
+            return computeAllModifiersUncached(gunDef, gunData, registryAccess);
+        }
+        ModifierCacheKey key = new ModifierCacheKey(
+                metaRegistry,
+                gunDef,
+                gunData.gunId(),
+                gunData.modifierVersion(),
+                gunData.installedPlugins().stream().map(PluginInstance::pluginId).toList());
+        return MODIFIER_CACHE.computeIfAbsent(
+                pluginsRegistry,
+                key,
+                () -> computeAllModifiersUncached(gunDef, gunData, registryAccess));
+    }
+
+    /**
+     * Uncached form of {@link #computeAllModifiers}: merges gun base values and
+     * every installed plugin's modifiers into one immutable
+     * {@link ItemAttributeModifiers} with tooltip hidden.
+     */
+    private static ItemAttributeModifiers computeAllModifiersUncached(
             GunDefinition gunDef, GunData gunData, RegistryAccess registryAccess) {
         ItemAttributeModifiers.Builder builder = ItemAttributeModifiers.builder();
         addBaseModifiers(builder, gunDef, registryAccess);
@@ -216,6 +311,50 @@ public final class AttributeModifierService {
         } else {
             gunStack.set(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.EMPTY);
         }
+    }
+
+    /**
+     * Refreshes the {@code ATTRIBUTE_MODIFIERS} component on every gun stack
+     * in a player's main inventory ({@code inventory}) and offhand slot,
+     * silently skipping non-gun stacks.
+     *
+     * <p>This is the <em>single shared</em> inventory-refresh implementation
+     * (阶段 5 / 任务 5.2, 合并刷新路径): both the {@code /reload} online-player
+     * refresh ({@code ReloadBehaviorHandler}) and the player-login lazy
+     * refresh ({@code GunSyncService}) delegate here, so the two paths behave
+     * identically rather than maintaining two copies of the scan. The 36-slot
+     * main inventory and the offhand slot are scanned; armor slots are skipped
+     * since a gun cannot be equipped there (设计文档 §惰性刷新路径 K2).</p>
+     *
+     * @param inventory       the player's main inventory slots
+     *                        ({@code ServerPlayer#getInventory().items}); may
+     *                        contain non-gun stacks, which are passed over
+     * @param offhand         the player's offhand slot item
+     * @param registryAccess  the runtime registry view
+     * @return the number of gun stacks whose modifiers were refreshed
+     */
+    public static int refreshGunModifiersInInventory(
+            Iterable<ItemStack> inventory, ItemStack offhand, RegistryAccess registryAccess) {
+        int count = 0;
+        for (ItemStack stack : inventory) {
+            count += refreshIfGun(stack, registryAccess);
+        }
+        count += refreshIfGun(offhand, registryAccess);
+        return count;
+    }
+
+    /**
+     * Refreshes a single stack's modifiers when it is a gun, returning {@code 1}
+     * when refreshed and {@code 0} when it is not a gun.
+     */
+    private static int refreshIfGun(ItemStack stack, RegistryAccess registryAccess) {
+        // 阶段 6.1 待迁移：本方法通过 ModularShootAPI.isGun 判定枪械。此处暂借
+        // 公共 API 判定，6.1 会将 isGun 下沉到内部工具类后移除该依赖（不阻塞）。
+        if (ModularShootAPI.isGun(stack, registryAccess)) {
+            refreshModifiers(stack, registryAccess);
+            return 1;
+        }
+        return 0;
     }
 
     /**
@@ -302,10 +441,18 @@ public final class AttributeModifierService {
      * each plugin's {@link PluginDefinition} in the
      * {@code modularshoot:plugins} registry, and appends one
      * {@link AttributeModifier} per declared {@link PluginModifier}. All
-     * modifiers from one plugin instance share the id derived from that
-     * instance's {@code instanceUuid} (设计文档 §修饰符 ID 稳定性). Plugins
-     * whose definition is missing and modifiers whose target attribute is not
-     * registered are silently skipped.</p>
+     * modifiers from one plugin instance share a single id derived stably from
+     * the plugin's {@code pluginId} and its install-order occurrence index
+     * (设计文档 §修饰符 ID 稳定性). This id is <em>cross-instance
+     * shareable</em>: two guns carrying the same ordered plugin list produce
+     * identical modifier ids, which is what lets
+     * {@link #computeAllModifiers}' cache be shared across players and gun
+     * copies. The {@code occurrenceIndex} is taken against the <em>full</em>
+     * installed-plugin list (before degradation filtering), so it stays stable
+     * under the same plugin list and the cache key (which also captures all
+     * installed plugin ids) remains correct even when a plugin is degraded.
+     * Plugins whose definition is missing and modifiers whose target attribute
+     * is not registered are silently skipped.</p>
      *
      * <p><strong>Duplicate-attribute guard (W3 fix).</strong> Because all
      * modifiers from one plugin instance share a single id, vanilla's
@@ -336,14 +483,21 @@ public final class AttributeModifierService {
      */
     private static void addPluginModifiers(
             ItemAttributeModifiers.Builder builder, GunData gunData, RegistryAccess registryAccess) {
-        List<PluginInstance> validPlugins =
-                PluginDegradationHandler.filterValidPlugins(gunData.installedPlugins(), registryAccess);
-        for (PluginInstance instance : validPlugins) {
-            Optional<PluginDefinition> pluginDef = PluginRegistry.getPlugin(registryAccess, instance.pluginId());
-            if (pluginDef.isEmpty()) {
+        List<PluginInstance> installed = gunData.installedPlugins();
+        // Keep the degradation-filtered set for O(1) membership, but derive the
+        // occurrence index from the FULL installed list so the modifier id is
+        // stable for the cache key (which also contains every installed plugin
+        // id, degraded or not).
+        Set<PluginInstance> valid = new HashSet<>(
+                PluginDegradationHandler.filterValidPlugins(installed, registryAccess));
+        for (int occurrenceIndex = 0; occurrenceIndex < installed.size(); occurrenceIndex++) {
+            PluginInstance instance = installed.get(occurrenceIndex);
+            if (!valid.contains(instance)) {
                 continue;
             }
-            addSinglePluginModifiers(builder, instance, pluginDef.get());
+            int index = occurrenceIndex;
+            PluginRegistry.getPlugin(registryAccess, instance.pluginId()).ifPresent(pluginDef ->
+                    addSinglePluginModifiers(builder, instance, index, pluginDef));
         }
     }
 
@@ -352,21 +506,29 @@ public final class AttributeModifierService {
      * instance to a builder, skipping duplicate attribute targets.
      *
      * <p>Extracted from {@link #addPluginModifiers} so the per-instance loop
-     * body stays under 50 lines. All modifiers from this instance share the
-     * id derived from {@code instance.instanceUuid()}. When the plugin
-     * definition declares multiple modifiers targeting the same attribute,
-     * only the first is mounted; subsequent duplicates are skipped with a
-     * {@code WARN} log to prevent vanilla's
+     * body stays under 50 lines. All modifiers from this instance share one
+     * id derived stably from {@code instance.pluginId()} and its
+     * {@code occurrenceIndex} in the installed list — a cross-instance stable
+     * id (not the per-gun {@code instanceUuid}), so identical plugin
+     * configurations across guns share the same cached modifiers. When the
+     * plugin definition declares multiple modifiers targeting the same
+     * attribute, only the first is mounted; subsequent duplicates are skipped
+     * with a {@code WARN} log to prevent vanilla's
      * {@code AttributeInstance.addModifier} from throwing
      * {@code IllegalArgumentException} (W3 fix).</p>
      *
-     * @param builder    the builder to append entries to
-     * @param instance   the installed plugin instance providing the id
-     * @param pluginDef  the plugin definition supplying declared modifiers
+     * @param builder         the builder to append entries to
+     * @param instance        the installed plugin instance
+     * @param occurrenceIndex the index of this instance in the full installed
+     *                        plugin list (drives the stable id)
+     * @param pluginDef       the plugin definition supplying declared modifiers
      */
     private static void addSinglePluginModifiers(
-            ItemAttributeModifiers.Builder builder, PluginInstance instance, PluginDefinition pluginDef) {
-        ResourceLocation modifierId = pluginModifierId(instance.instanceUuid());
+            ItemAttributeModifiers.Builder builder,
+            PluginInstance instance,
+            int occurrenceIndex,
+            PluginDefinition pluginDef) {
+        ResourceLocation modifierId = pluginModifierId(instance.pluginId(), occurrenceIndex);
         Set<String> seenAttributes = new HashSet<>();
         for (PluginModifier mod : pluginDef.modifiers()) {
             if (!seenAttributes.add(mod.attribute())) {
@@ -420,25 +582,59 @@ public final class AttributeModifierService {
     }
 
     /**
-     * Builds the stable modifier id for a plugin instance from its
-     * {@code instanceUuid}.
+     * Builds the stable modifier id for one plugin instance from its
+     * {@code pluginId} and its occurrence index in the installed plugin list.
      *
-     * <p>The uuid is placed in the path segment under the
-     * {@code modularshoot} namespace, yielding ids such as
-     * {@code modularshoot:550e8400-e29b-41d4-a716-446655440000}. Vanilla keys
-     * modifier identity by the (attribute, id) pair, so all modifiers from one
-     * plugin instance can share this single id as long as they target distinct
-     * attributes (设计文档 §修饰符 ID 稳定性). When a plugin definition
-     * declares two modifiers targeting the same attribute, the runtime
-     * deduplication guard in {@link #addSinglePluginModifiers} ensures only
-     * the first is mounted, preventing vanilla's
-     * {@code AttributeInstance.addModifier} from throwing
+     * <p>The id is intentionally <em>cross-instance stable</em>: it is derived
+     * from the plugin's {@code pluginId} and its position, <em>not</em> from
+     * the per-gun {@code instanceUuid}. This is what lets
+     * {@link #computeAllModifiers}' cache be shared between two players or two
+     * copies of the same gun carrying an identical plugin configuration — the
+     * id is identical for both, so the same cached
+     * {@link ItemAttributeModifiers} is correct for both. The occurrence
+     * index (rather than the bare pluginId) also keeps two copies of the same
+     * plugin on one gun distinct: they occupy different positions and thus get
+     * different ids, so their modifiers never collide on the same attribute.
+     * Vanilla keys modifier identity by the (attribute, id) pair, so all
+     * modifiers from one plugin instance can share this single id as long as
+     * they target distinct attributes (设计文档 §修饰符 ID 稳定性). When a
+     * plugin definition declares two modifiers targeting the same attribute,
+     * the runtime deduplication guard in
+     * {@link #addSinglePluginModifiers} ensures only the first is mounted,
+     * preventing vanilla's {@code AttributeInstance.addModifier} from throwing
      * {@code IllegalArgumentException}.
      *
-     * @param instanceUuid the plugin instance's stable uuid
+     * <p><strong>Unambiguous encoding (5.2 加固).</strong> The id is encoded
+     * with <em>length prefixes</em> so that distinct
+     * {@code (namespace, path, occurrenceIndex)} triples can never collide:
+     * the namespace and path lengths are written explicitly before their
+     * content, so the parser always knows exactly how many characters each
+     * field spans even when the namespace/path themselves contain {@code _}
+     * or digits. The bare concatenation {@code plugin_<ns>_<path>_<idx>} was
+     * ambiguous — e.g. ids {@code a:b_c} (ns = {@code a}, path = {@code b_c})
+     * and {@code a_b:c} (ns = {@code a_b}, path = {@code c}) both collapsed to
+     * {@code plugin_a_b_c_<idx>}. Under the hardened scheme they instead
+     * encode as {@code plugin_1_a_3_b_c_<idx>} and
+     * {@code plugin_3_a_b_1_c_<idx>}, which are distinct. Because the lengths
+     * are explicit and the {@code occurrenceIndex} is a trailing integer after
+     * the fixed-length path, the encoding is a prefix-free field encoding and
+     * therefore collision-free for every legal {@link ResourceLocation}
+     * namespace/path. All characters used ({@code a-z}, {@code 0-9},
+     * {@code _}) are valid in a {@link ResourceLocation} path.</p>
+     *
+     * @param pluginId         the plugin definition id
+     * @param occurrenceIndex the index of the plugin instance in the full
+     *                        installed plugin list (stable across guns with
+     *                        the same plugin list)
      * @return a {@link ResourceLocation} under the {@code modularshoot} namespace
      */
-    private static ResourceLocation pluginModifierId(UUID instanceUuid) {
-        return ResourceLocation.fromNamespaceAndPath(ModularShoot.MODID, instanceUuid.toString());
+    private static ResourceLocation pluginModifierId(ResourceLocation pluginId, int occurrenceIndex) {
+        String namespace = pluginId.getNamespace();
+        String path = pluginId.getPath();
+        String encoded = "plugin_"
+                + namespace.length() + "_" + namespace + "_"
+                + path.length() + "_" + path + "_"
+                + occurrenceIndex;
+        return ResourceLocation.fromNamespaceAndPath(ModularShoot.MODID, encoded);
     }
 }
