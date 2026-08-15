@@ -63,8 +63,11 @@ import org.jetbrains.annotations.Nullable;
  * {@link BulletS2CPacket#delta(List, List, List) delta packet}:</p>
  * <ul>
  *   <li>new bullets (not in client state) → {@link BulletS2CPacket.FullBulletEntry}</li>
- *   <li>changed bullets (position/direction moved beyond epsilon) →
- *       {@link BulletS2CPacket.DeltaBulletEntry}</li>
+ *   <li>changed bullets (position/direction moved past a fixed-point
+ *       1/128-block quantization cell, and the distance band allows an
+ *       update this tick) →
+ *       {@link BulletS2CPacket.DeltaBulletEntry}; sub-quantum / sub-pixel
+ *       drift no longer produces a packet every tick (阶段 2 / 任务 2.2)</li>
  *   <li>removed bullets (in client state but no longer active) →
  *       {@link BulletS2CPacket#removedBulletIds()}</li>
  * </ul>
@@ -127,12 +130,12 @@ public final class BulletSyncService {
     private static final long FULL_SYNC_INTERVAL_TICKS = 100L;
 
     /**
-     * Floating-point comparison epsilon for position/direction change
-     * detection. Values smaller than this are treated as unchanged to avoid
-     * spamming delta entries for sub-pixel jitter.
+     * Change detection and per-tick update frequency are delegated to the pure
+     * {@link BulletDeltaQuantizer} rules (阶段 2 / 任务 2.2): positions are
+     * diffed on a fixed-point 1/128-block grid, so sub-quantum / sub-pixel
+     * drift no longer spams a delta entry every tick; and bullets beyond the
+     * close distance band are decimated to a lower maximum update frequency.
      */
-    private static final double STATE_EPSILON = 1.0e-6;
-
     /**
      * Per-client sync state: for each player, a map of bullet id → last
      * synced position/direction. Used to compute the new/updated/removed
@@ -342,12 +345,13 @@ public final class BulletSyncService {
             ServerLevel serverLevel,
             Map<Integer, BulletS2CPacket.FullBulletEntry> fullEntryCache) {
         double syncRadius = getSyncRadius(player);
+        long currentTick = serverLevel.getGameTime();
         List<BulletS2CPacket.FullBulletEntry> entries = new ArrayList<>();
         Set<Integer> seenIds = new HashSet<>();
         playerStates.clear();
-        collectCreatedThisTick(createdThisTick, player, syncRadius, serverLevel,
+        collectCreatedThisTick(createdThisTick, player, syncRadius, serverLevel, currentTick,
                 entries, playerStates, seenIds, fullEntryCache);
-        collectActiveFullEntries(visibleBullets, player, syncRadius, serverLevel,
+        collectActiveFullEntries(visibleBullets, player, syncRadius, serverLevel, currentTick,
                 entries, playerStates, seenIds, fullEntryCache);
         PacketDistributor.sendToPlayer(player, BulletS2CPacket.fullSync(entries));
     }
@@ -361,6 +365,8 @@ public final class BulletSyncService {
      * @param player       the player to sync to
      * @param syncRadius   the cull radius in blocks
      * @param serverLevel  the server level (for gun-registry lookups)
+     * @param currentTick  the current server game time (ticks); recorded as
+     *                     the last-sent tick for each bullet's state
      * @param entries      the full-entry list to populate
      * @param playerStates the player's per-bullet sync state (updated)
      * @param seenIds      ids already added (updated)
@@ -371,6 +377,7 @@ public final class BulletSyncService {
             ServerPlayer player,
             double syncRadius,
             ServerLevel serverLevel,
+            long currentTick,
             List<BulletS2CPacket.FullBulletEntry> entries,
             Map<Integer, BulletState> playerStates,
             Set<Integer> seenIds,
@@ -381,7 +388,7 @@ public final class BulletSyncService {
                 continue;
             }
             entries.add(toFullBulletEntry(bullet, serverLevel, fullEntryCache));
-            playerStates.put(bulletId, toBulletState(bullet));
+            playerStates.put(bulletId, toBulletState(bullet, currentTick));
             seenIds.add(bulletId);
         }
     }
@@ -407,6 +414,7 @@ public final class BulletSyncService {
             ServerLevel serverLevel,
             Map<Integer, BulletS2CPacket.FullBulletEntry> fullEntryCache) {
         double syncRadius = getSyncRadius(player);
+        long currentTick = serverLevel.getGameTime();
 
         // Nothing to diff and no client state to clean up — skip the
         // per-player collection allocations entirely (no bullets, no
@@ -423,12 +431,12 @@ public final class BulletSyncService {
 
         // 1. Short-life guarantee: this tick's creations get full entries
         //    even if already removed by collision (D-03).
-        collectCreatedThisTick(createdThisTick, player, syncRadius, serverLevel,
+        collectCreatedThisTick(createdThisTick, player, syncRadius, serverLevel, currentTick,
                 newBullets, playerStates, createdIds, fullEntryCache);
 
         // 2. Diff active bullets against client state.
         Set<Integer> activeIds = collectActiveBulletDeltas(
-                visibleBullets, player, syncRadius, serverLevel,
+                visibleBullets, player, syncRadius, serverLevel, currentTick,
                 newBullets, updatedBullets, playerStates, createdIds, fullEntryCache);
 
         // 3. Removed bullets: in client state but no longer active and not
@@ -451,6 +459,8 @@ public final class BulletSyncService {
      * @param player          the player to sync to
      * @param syncRadius      the cull radius in blocks
      * @param serverLevel     the server level (for gun-registry lookups)
+     * @param currentTick     the current server game time (ticks); recorded as
+     *                        the last-sent tick for each bullet's state
      * @param newBullets      the new-bullets bucket to populate
      * @param playerStates    the player's per-bullet sync state (updated)
      * @param createdIds      the set of created-this-tick ids (populated)
@@ -461,6 +471,7 @@ public final class BulletSyncService {
             ServerPlayer player,
             double syncRadius,
             ServerLevel serverLevel,
+            long currentTick,
             List<BulletS2CPacket.FullBulletEntry> newBullets,
             Map<Integer, BulletState> playerStates,
             Set<Integer> createdIds,
@@ -474,7 +485,7 @@ public final class BulletSyncService {
             }
             int bulletId = bullet.getBulletId();
             newBullets.add(toFullBulletEntry(bullet, serverLevel, fullEntryCache));
-            playerStates.put(bulletId, toBulletState(bullet));
+            playerStates.put(bulletId, toBulletState(bullet, currentTick));
             createdIds.add(bulletId);
         }
     }
@@ -489,6 +500,9 @@ public final class BulletSyncService {
      * @param player        the player to sync to
      * @param syncRadius    the cull radius in blocks
      * @param serverLevel   the server level (for gun-registry lookups)
+     * @param currentTick   the current server game time (ticks) — used both to
+     *                      enforce the distance-band update frequency and to
+     *                      record the last-sent tick when a delta is emitted
      * @param newBullets    the new-bullets bucket to populate
      * @param updatedBullets the updated-bullets bucket to populate
      * @param playerStates  the player's per-bullet sync state (updated)
@@ -501,6 +515,7 @@ public final class BulletSyncService {
             ServerPlayer player,
             double syncRadius,
             ServerLevel serverLevel,
+            long currentTick,
             List<BulletS2CPacket.FullBulletEntry> newBullets,
             List<BulletS2CPacket.DeltaBulletEntry> updatedBullets,
             Map<Integer, BulletState> playerStates,
@@ -518,14 +533,20 @@ public final class BulletSyncService {
                 // destroys render objects via removedBulletIds/full-sync.
                 continue;
             }
+            // A bullet inside the visible subset stays "active" (never removed)
+            // even when this tick's update is throttled, so a skipped delta
+            // cannot make the client destroy the bullet's render object.
             activeIds.add(bulletId);
             BulletState prevState = playerStates.get(bulletId);
             if (prevState == null) {
                 newBullets.add(toFullBulletEntry(bullet, serverLevel, fullEntryCache));
-                playerStates.put(bulletId, toBulletState(bullet));
-            } else if (stateChanged(bullet, prevState)) {
+                playerStates.put(bulletId, toBulletState(bullet, currentTick));
+            } else if (stateChanged(bullet, prevState)
+                    && BulletDeltaQuantizer.isUpdateEligible(
+                            horizontalDistanceToPlayer(bullet, player),
+                            currentTick, prevState.lastSentTick())) {
                 updatedBullets.add(toDeltaBulletEntry(bullet));
-                playerStates.put(bulletId, toBulletState(bullet));
+                playerStates.put(bulletId, toBulletState(bullet, currentTick));
             }
         }
         return activeIds;
@@ -590,22 +611,44 @@ public final class BulletSyncService {
     }
 
     /**
-     * Returns whether the bullet's position or direction has changed beyond
-     * {@link #STATE_EPSILON} since the last sync.
+     * Returns the bullet's horizontal (x-z) Euclidean distance to the player
+     * in blocks, used by the distance-band update-frequency decimation
+     * ({@link BulletDeltaQuantizer}). Unlike culling (which uses the Chebyshev
+     * metric to match the square chunk-view), decimation is driven by the
+     * natural visual distance, so the mid/far band thresholds read as real
+     * block distances.
+     *
+     * @param bullet the bullet to measure
+     * @param player the player at the centre
+     * @return the horizontal Euclidean distance in blocks
+     */
+    private static double horizontalDistanceToPlayer(BulletRecord bullet, ServerPlayer player) {
+        Vec3 playerPos = player.position();
+        Vec3 bulletPos = bullet.getPosition();
+        double dx = playerPos.x - bulletPos.x;
+        double dz = playerPos.z - bulletPos.z;
+        return Math.sqrt(dx * dx + dz * dz);
+    }
+
+    /**
+     * Returns whether the bullet's position or direction has changed on the
+     * fixed-point grid since the last sync, per {@link BulletDeltaQuantizer}
+     * (阶段 2 / 任务 2.2). Sub-quantum (sub-pixel) drift does not count as a
+     * change, so it stops spamming delta entries every tick.
      *
      * @param bullet     the current bullet state
-     * @param prevState  the last-synced state
-     * @return {@code true} if a delta entry should be sent
+     * @param prevState  the last-synced state (full-precision comparison base)
+     * @return {@code true} if a delta entry should be considered for sending
      */
     private static boolean stateChanged(BulletRecord bullet, BulletState prevState) {
         Vec3 pos = bullet.getPosition();
         Vec3 dir = bullet.getDirection();
-        return Math.abs(pos.x - prevState.posX()) > STATE_EPSILON
-                || Math.abs(pos.y - prevState.posY()) > STATE_EPSILON
-                || Math.abs(pos.z - prevState.posZ()) > STATE_EPSILON
-                || Math.abs(dir.x - prevState.dirX()) > STATE_EPSILON
-                || Math.abs(dir.y - prevState.dirY()) > STATE_EPSILON
-                || Math.abs(dir.z - prevState.dirZ()) > STATE_EPSILON;
+        return BulletDeltaQuantizer.positionChanged(
+                        pos.x, pos.y, pos.z,
+                        prevState.posX(), prevState.posY(), prevState.posZ())
+                || BulletDeltaQuantizer.directionChanged(
+                        dir.x, dir.y, dir.z,
+                        prevState.dirX(), prevState.dirY(), prevState.dirZ());
     }
 
     // --- Entry conversion -----------------------------------------------
@@ -748,13 +791,16 @@ public final class BulletSyncService {
      * Captures the current position/direction of a bullet into a
      * {@link BulletState} for client-state tracking.
      *
-     * @param bullet the bullet record to snapshot
-     * @return a snapshot of the bullet's current position/direction
+     * @param bullet   the bullet record to snapshot
+     * @param sendTick the server game time (ticks) at which this state is
+     *                 being recorded (the last actual send tick)
+     * @return a snapshot of the bullet's current position/direction and the
+     *         send tick
      */
-    private static BulletState toBulletState(BulletRecord bullet) {
+    private static BulletState toBulletState(BulletRecord bullet, long sendTick) {
         Vec3 pos = bullet.getPosition();
         Vec3 dir = bullet.getDirection();
-        return new BulletState(pos.x, pos.y, pos.z, dir.x, dir.y, dir.z);
+        return new BulletState(pos.x, pos.y, pos.z, dir.x, dir.y, dir.z, sendTick);
     }
 
     /**
@@ -806,15 +852,22 @@ public final class BulletSyncService {
     // --- Internal records ------------------------------------------------
 
     /**
-     * Last-synced position/direction for a single bullet id, used to compute
-     * the new/updated/removed diff each tick.
+     * Last-synced position/direction for a single bullet id, plus the server
+     * tick the last delta was actually sent, used to compute the
+     * new/updated/removed diff each tick. The position/direction keep full
+     * server precision as the comparison base (阶段 2 / 任务 2.2); the
+     * {@link BulletDeltaQuantizer} decides whether the quantized grid changed
+     * and whether the distance band allows this tick's update.
      *
-     * @param posX last-synced world-space x
-     * @param posY last-synced world-space y
-     * @param posZ last-synced world-space z
-     * @param dirX last-synced direction x
-     * @param dirY last-synced direction y
-     * @param dirZ last-synced direction z
+     * @param posX        last-synced world-space x (full precision)
+     * @param posY        last-synced world-space y (full precision)
+     * @param posZ        last-synced world-space z (full precision)
+     * @param dirX        last-synced direction x
+     * @param dirY        last-synced direction y
+     * @param dirZ        last-synced direction z
+     * @param lastSentTick the server game time (ticks) when the last delta was
+     *                     actually sent for this bullet to this player; used by
+     *                     the distance-band frequency decimation
      */
     private record BulletState(
             double posX,
@@ -822,6 +875,7 @@ public final class BulletSyncService {
             double posZ,
             double dirX,
             double dirY,
-            double dirZ) {
+            double dirZ,
+            long lastSentTick) {
     }
 }
