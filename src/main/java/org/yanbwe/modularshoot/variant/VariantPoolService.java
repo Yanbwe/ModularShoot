@@ -131,11 +131,12 @@ public class VariantPoolService {
 
     /**
      * Assembles the per-shot variant pool (审查优化 P3/P4: 每发一次, 逐弹丸
-     * 复用). The pool is deterministic for a given (gun definition, installed
-     * plugins, contributor set), so the shooting engine builds it once per
-     * shot and rolls per pellet via {@link #rollFromPool} — previously the
-     * whole pool (contributor collection, per-plugin registry lookups,
-     * weight computation) was rebuilt for every pellet of a shot.
+     * 复用). The pool is re-assembled on every call (no cross-shot cache;
+     * contributors may depend on player/time/world state), but within one
+     * shot the shooting engine builds it once and rolls per pellet via
+     * {@link #rollFromPool} — previously the whole pool (contributor
+     * collection, per-plugin registry lookups, weight computation) was
+     * rebuilt for every pellet of a shot.
      *
      * @param ra      the runtime registry view
      * @param gunDef  the gun definition declaring {@code variants}
@@ -273,6 +274,15 @@ public class VariantPoolService {
      * ({@link #NORMAL_FALLBACK_WEIGHT}) when the gun declares no
      * {@code variants} (规格 §6.4).
      *
+     * <p>Every shot reassembles its own pool from scratch. There is no
+     * cross-shot cache here: {@link VariantContributor#contribute} receives no
+     * per-shot context and third-party contributors may legitimately depend on
+     * external per-shot/per-player state (player, time, world), so a pool
+     * cached across shots or players would serve stale weights. The
+     * "assemble once per shot" optimization lives at the call site (see
+     * {@code ShootingEngine#registerPellets}), which builds one pool per shot
+     * and reuses it only for the multiple pellets of that same shot.</p>
+     *
      * @param ra      the runtime registry view
      * @param gunDef  the gun definition declaring {@code variants}
      * @param gunData the gun data carrying the installed plugin list
@@ -300,7 +310,7 @@ public class VariantPoolService {
         if (normalFallback) {
             total += NORMAL_FALLBACK_WEIGHT;
         }
-        return new PoolBuild(candidates, total, normalFallback);
+        return new PoolBuild(List.copyOf(candidates), total, normalFallback);
     }
 
     /**
@@ -444,7 +454,8 @@ public class VariantPoolService {
      * Built once per shot by {@link #buildPool} and rolled per pellet by
      * {@link #rollFromPool}.
      *
-     * @param candidates     the positive-weight candidates, in declaration order
+     * @param candidates     the positive-weight candidates, in declaration
+     *                       order; an unmodifiable list ({@link List#copyOf})
      * @param total          the total roll weight (fallback included)
      * @param normalFallback whether the normal-bullet fallback interval is
      *                       part of {@code total} (gun declared no variants)

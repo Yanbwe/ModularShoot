@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -11,6 +12,8 @@ import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginInstance;
 import org.yanbwe.modularshoot.degradation.PluginDegradationHandler;
+import org.yanbwe.modularshoot.registry.ModularShootRegistries;
+import org.yanbwe.modularshoot.registry.RegistryKeyedCache;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 
@@ -42,6 +45,24 @@ import org.yanbwe.modularshoot.registry.gun.GunRegistry;
  * {@code player.registryAccess()} or equivalent.</p>
  */
 public final class PluginExtraValueService {
+
+    /**
+     * Cached gun-stack aggregate keyed weakly by the plugins {@link Registry}
+     * instance and then by {@code (gunId, modifierVersion, ordered plugin ids,
+     * base values)}. The resolved gun definition's {@code extra_values} enter
+     * the key so a Java-API/provider change to the base is picked up even
+     * though the datapack registry instance stays the same (see task 1.3).
+     */
+    private static final RegistryKeyedCache<ExtraValueKey, Map<ResourceLocation, Double>> GUN_EXTRA_CACHE =
+            new RegistryKeyedCache<>();
+
+    /** Immutable key for the gun-stack aggregate (duplicates preserved). */
+    private record ExtraValueKey(
+            ResourceLocation gunId,
+            int modifierVersion,
+            List<ResourceLocation> pluginIds,
+            Map<ResourceLocation, Double> baseValues) {
+    }
 
     private PluginExtraValueService() {
     }
@@ -137,13 +158,28 @@ public final class PluginExtraValueService {
         if (gunData == null) {
             return Map.of();
         }
-        List<PluginDefinition> definitions = collectValidDefinitions(gunData.installedPlugins(), registryAccess);
         // 枪械定义基础值并入总和；定义缺失（降级）时基础值不参与，
         // 与插件降级过滤同一口径。
         Map<ResourceLocation, Double> baseValues = GunRegistry.getGun(registryAccess, gunData.gunId())
                 .map(GunDefinition::extraValues)
                 .orElseGet(Map::of);
-        return aggregateWithBase(baseValues, definitions);
+        // 任务 1.3：相同 (ItemStack 内容, modifierVersion, Registry 实例) 的聚合
+        // 结果直接复用，不再从零解析全部插件定义。以 plugins Registry 实例为弱键
+        // （reload 换实例即失效），键内投影有序 pluginId 列表（重复保留）+ 版本 +
+        // 枪械基础值快照，覆盖安装/卸载/锁定/枪械定义变化。
+        Registry<PluginDefinition> pluginsRegistry =
+                registryAccess.registry(ModularShootRegistries.PLUGINS_KEY).orElse(null);
+        if (pluginsRegistry != null) {
+            ExtraValueKey key = new ExtraValueKey(
+                    gunData.gunId(),
+                    gunData.modifierVersion(),
+                    gunData.installedPlugins().stream().map(PluginInstance::pluginId).toList(),
+                    Map.copyOf(baseValues));
+            return GUN_EXTRA_CACHE.computeIfAbsent(pluginsRegistry, key,
+                    () -> uncachedAggregate(gunData.installedPlugins(), baseValues, registryAccess));
+        }
+        // 注册表缺失时按原语义降级：所有插件失效 → 仅剩枪械基础值。
+        return uncachedAggregate(gunData.installedPlugins(), baseValues, registryAccess);
     }
 
     /**
@@ -163,6 +199,21 @@ public final class PluginExtraValueService {
      */
     public static double get(ItemStack gunStack, ResourceLocation key, RegistryAccess registryAccess) {
         return aggregate(gunStack, registryAccess).getOrDefault(key, 0.0);
+    }
+
+    /**
+     * Uncacheable core of the gun-stack aggregate: collects valid plugin
+     * definitions and sums them with the given base values.
+     *
+     * @param instances      the installed plugin instances
+     * @param baseValues     the gun definition's base {@code extra_values}
+     * @param registryAccess the runtime registry view
+     * @return an immutable map of key &rarr; base + accumulated sum
+     */
+    private static Map<ResourceLocation, Double> uncachedAggregate(
+            List<PluginInstance> instances, Map<ResourceLocation, Double> baseValues,
+            RegistryAccess registryAccess) {
+        return aggregateWithBase(baseValues, collectValidDefinitions(instances, registryAccess));
     }
 
     /**

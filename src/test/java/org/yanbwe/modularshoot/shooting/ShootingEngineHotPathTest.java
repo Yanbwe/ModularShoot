@@ -257,11 +257,14 @@ class ShootingEngineHotPathTest {
         CountingRegistryAccess access = new CountingRegistryAccess(raw);
 
         GunData gunData = gunDataWithPlugins(List.of(PLUGIN_A, PLUGIN_B));
-        // 一次池构建：每个已安装插件只解析一次 PluginDefinition。
+        // 一次池构建：每个已安装插件只解析一次 PluginDefinition。任务 1.3 已移除
+        // 跨发缓存（buildPool 每次射击都重新组装），因此 plugins 注册表视图只会为
+        // 每个已安装插件各获取一次（getPlugin 内部），没有额外的"缓存弱键 token"
+        // 获取。计数与真实行为一致：无额外硬编码。
         VariantPoolService.buildPool(access, gunWithNoVariants(), gunData);
 
-        assertEquals(2, access.pluginRegistryCalls.get(),
-                "组装变体池时每个已安装插件只应解析一次 PluginDefinition（先一次性收集再复用）");
+        assertEquals(gunData.installedPlugins().size(), access.pluginRegistryCalls.get(),
+                "组装变体池时每个已安装插件只应解析一次 PluginDefinition，且无多余的注册表视图获取");
 
         // 行为不变：两个插件的 adds_variants 都按声明合并进池（预览走同一 assemble 路径）。
         CountingRegistryAccess previewAccess = new CountingRegistryAccess(raw);

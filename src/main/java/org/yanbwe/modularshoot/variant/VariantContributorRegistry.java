@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicLong;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 
@@ -32,7 +33,27 @@ public final class VariantContributorRegistry {
      */
     private static final List<VariantContributor> CONTRIBUTORS = new CopyOnWriteArrayList<>();
 
+    /**
+     * Monotonic contributor-set version: incremented on every register/clear.
+     * Observability signal only — {@link VariantPoolService} assembles the pool
+     * anew on every shot (contributors may depend on per-player/per-time state),
+     * so no cache consumes this version; it remains as an easy change detector.
+     */
+    private static final AtomicLong VERSION = new AtomicLong();
+
     private VariantContributorRegistry() {
+    }
+
+    /**
+     * Returns the current contributor-set version.
+     *
+     * <p>Increments on {@link #register} and {@link #clear} (test isolation),
+     * so a change is always observable without iterating the contributors.</p>
+     *
+     * @return a non-negative monotonically increasing version
+     */
+    public static long version() {
+        return VERSION.get();
     }
 
     /**
@@ -51,6 +72,7 @@ public final class VariantContributorRegistry {
     public static void register(VariantContributor contributor) {
         Objects.requireNonNull(contributor, "contributor");
         CONTRIBUTORS.add(contributor);
+        VERSION.incrementAndGet();
     }
 
     /**
@@ -83,5 +105,6 @@ public final class VariantContributorRegistry {
      */
     static void clear() {
         CONTRIBUTORS.clear();
+        VERSION.incrementAndGet();
     }
 }

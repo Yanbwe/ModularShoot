@@ -5,6 +5,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -12,6 +13,8 @@ import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.component.PluginInstance;
 import org.yanbwe.modularshoot.degradation.PluginDegradationHandler;
+import org.yanbwe.modularshoot.registry.ModularShootRegistries;
+import org.yanbwe.modularshoot.registry.RegistryKeyedCache;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 
@@ -57,6 +60,35 @@ import org.yanbwe.modularshoot.registry.gun.GunRegistry;
  * instantiable.</p>
  */
 public final class TraitMergeService {
+
+    /**
+     * Cached, merged trait results keyed weakly by the plugins
+     * {@link Registry} instance and then by
+     * {@code (gunDefinition, gunId, modifierVersion, ordered plugin ids)}.
+     *
+     * <p>See class Javadoc for why this cache can never go stale: the plugin
+     * registry <em>instance</em> is the weak key, so {@code /reload} (which
+     * swaps the instance) is a guaranteed cache miss, and
+     * {@code modifierVersion} + the ordered plugin-id list invalidate on every
+     * install/uninstall/lock change. The returned map is unmodifiable and thus
+     * safe to share across callers.</p>
+     */
+    private static final RegistryKeyedCache<TraitCacheKey, Map<ResourceLocation, Boolean>> TRAIT_CACHE =
+            new RegistryKeyedCache<>();
+
+    /**
+     * Immutable composite key identifying one merge result. Deliberately
+     * derived from the result-determining inputs only — the ordered plugin ids
+     * (duplicates preserved) rather than full {@link PluginInstance}s, whose
+     * per-instance {@code instanceUuid}s would fragment the cache across
+     * otherwise-identical guns.
+     */
+    private record TraitCacheKey(
+            GunDefinition gunDefinition,
+            ResourceLocation gunId,
+            int modifierVersion,
+            List<ResourceLocation> pluginIds) {
+    }
 
     private TraitMergeService() {
     }
@@ -113,6 +145,38 @@ public final class TraitMergeService {
         if (gunData == null) {
             return Map.of();
         }
+        // 任务 1.3：相同 (GunData 内容, modifierVersion, Registry 实例) 的结果
+        // 直接复用，不再重新解析每个插件定义 + 排序合并。缓存键以 plugins
+        // Registry 实例为弱键（reload 换实例即失效），插件成员仅投影出有序
+        // pluginId 列表（重复保留），配合 modifierVersion 覆盖安装/卸载/锁定。
+        Registry<PluginDefinition> pluginsRegistry =
+                registryAccess.registry(ModularShootRegistries.PLUGINS_KEY).orElse(null);
+        if (pluginsRegistry != null) {
+            TraitCacheKey key = new TraitCacheKey(
+                    gunDefinition,
+                    gunData.gunId(),
+                    gunData.modifierVersion(),
+                    gunData.installedPlugins().stream().map(PluginInstance::pluginId).toList());
+            return TRAIT_CACHE.computeIfAbsent(pluginsRegistry, key,
+                    () -> computeUncached(gunData, gunDefinition, registryAccess));
+        }
+        // 注册表缺失（主菜单 / EMPTY 视图）时按原语义降级：所有插件被视为失效，
+        // 仅保留枪械固有 traits。
+        return computeUncached(gunData, gunDefinition, registryAccess);
+    }
+
+    /**
+     * Uncacheable core of {@link #computeTraits(ItemStack, RegistryAccess,
+     * GunDefinition)}: resolves + sorts plugins and merges their traits with
+     * the gun's inherent traits.
+     *
+     * @param gunData       the non-null gun data carrying the installed plugins
+     * @param gunDefinition the non-null gun definition carrying the inherent traits
+     * @param registryAccess the runtime registry view used to resolve plugins
+     * @return an unmodifiable map of trait id → final boolean value
+     */
+    private static Map<ResourceLocation, Boolean> computeUncached(
+            GunData gunData, GunDefinition gunDefinition, RegistryAccess registryAccess) {
         List<PluginDefinition> sortedPlugins = sortPluginsByPriority(gunData.installedPlugins(), registryAccess);
         Map<ResourceLocation, Boolean> merged = mergePluginTraits(sortedPlugins);
         merged.putAll(gunDefinition.traits());
