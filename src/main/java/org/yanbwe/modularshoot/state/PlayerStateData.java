@@ -24,9 +24,15 @@ import org.jetbrains.annotations.Nullable;
  * <p>Persisted on the player's save data through a NeoForge
  * {@link net.neoforged.neoforge.attachment.AttachmentType} (see
  * {@link ModularShootAttachmentTypes#PLAYER_STATE}), with {@link #CODEC}
- * for NBT serialisation and {@link #STREAM_CODEC} for client
- * synchronisation. {@code copyOnDeath} is enabled on the attachment so the
- * payload survives respawn (设计文档 §持久化与同步 — per-player).</p>
+ * for NBT serialisation. {@code copyOnDeath} is enabled on the attachment so
+ * the payload survives respawn (设计文档 §持久化与同步 — per-player).</p>
+ *
+ * <p><strong>同步节流（任务 3.3）：</strong> the attachment is deliberately
+ * <em>not</em> auto-synced (no {@code .sync(...)} handler). Client
+ * synchronisation happens through
+ * {@link org.yanbwe.modularshoot.network.PlayerStateS2CPacket}, which uses
+ * {@link #STREAM_CODEC}, at most once per
+ * {@link PlayerStateThrottleManager#THROTTLE_INTERVAL_TICKS} ticks.</p>
  *
  * <p>All mutating operations return a new {@link PlayerStateData}; the
  * instance is effectively immutable. Callers must treat the
@@ -145,6 +151,11 @@ public final class PlayerStateData {
      * <p>Writes the backing {@link CompoundTag} with
      * {@code writeNbt} and reads it back with {@code readNbt}. A null read
      * (empty payload on the wire) yields an empty {@link PlayerStateData}.</p>
+     *
+     * <p><strong>Usage (任务 3.3):</strong> no longer wired into the attachment's
+     * automatic {@code .sync(...)} (removed to enable throttling). It is reused
+     * by {@link org.yanbwe.modularshoot.network.PlayerStateS2CPacket} for the
+     * throttled manual sync channel.</p>
      */
     public static final StreamCodec<RegistryFriendlyByteBuf, PlayerStateData> STREAM_CODEC =
             StreamCodec.of(PlayerStateData::encode, PlayerStateData::decode);

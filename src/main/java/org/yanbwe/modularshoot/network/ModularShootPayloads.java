@@ -11,6 +11,7 @@ import org.yanbwe.modularshoot.client.event.ClientBulletHitEvent;
 import org.yanbwe.modularshoot.client.PlayerShootStateManager;
 import org.yanbwe.modularshoot.client.render.BulletRenderManager;
 import org.yanbwe.modularshoot.shooting.ShootPacketHandler;
+import org.yanbwe.modularshoot.state.ModularShootAttachmentTypes;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.server.level.ServerPlayer;
@@ -95,6 +96,7 @@ public final class ModularShootPayloads {
         registerBulletHitBatchS2C(registrar);
         registerGunSyncS2C(registrar);
         registerShootAnimS2C(registrar);
+        registerPlayerStateS2C(registrar);
     }
 
     /**
@@ -214,6 +216,16 @@ public final class ModularShootPayloads {
      */
     private static void registerShootAnimS2C(PayloadRegistrar registrar) {
         registrar.playToClient(ShootAnimS2CPacket.TYPE, ShootAnimS2CPacket.STREAM_CODEC, handleShootAnimS2C());
+    }
+
+    /**
+     * Registers {@link PlayerStateS2CPacket} as a play-phase, client-bound
+     * payload (S→C direction) and binds its handler.
+     *
+     * @param registrar the payload registrar to register through
+     */
+    private static void registerPlayerStateS2C(PayloadRegistrar registrar) {
+        registrar.playToClient(PlayerStateS2CPacket.TYPE, PlayerStateS2CPacket.STREAM_CODEC, handlePlayerStateS2C());
     }
 
     // ------------------------------------------------------------------
@@ -360,6 +372,30 @@ public final class ModularShootPayloads {
     private static IPayloadHandler<ShootAnimS2CPacket> handleShootAnimS2C() {
         return (payload, context) -> {
             context.enqueueWork(() -> PlayerShootStateManager.getInstance().handlePacket(payload));
+        };
+    }
+
+    /**
+     * Builds the handler for {@link PlayerStateS2CPacket}.
+     *
+     * <p>Applies the throttled per-player state sync on the main client thread
+     * via {@link IPayloadContext#enqueueWork(Runnable)}: the received
+     * {@link org.yanbwe.modularshoot.state.PlayerStateData} is installed onto
+     * the local player through {@code setData}, so subsequent
+     * {@code PlayerState.of(player)} reads reflect the server's
+     * eventually-consistent state (任务 3.3 — PlayerState 同步节流).</p>
+     *
+     * @return the payload handler
+     */
+    private static IPayloadHandler<PlayerStateS2CPacket> handlePlayerStateS2C() {
+        return (payload, context) -> {
+            context.enqueueWork(() -> {
+                Minecraft mc = Minecraft.getInstance();
+                if (mc.player != null) {
+                    mc.player.setData(
+                            ModularShootAttachmentTypes.PLAYER_STATE.get(), payload.data());
+                }
+            });
         };
     }
 }

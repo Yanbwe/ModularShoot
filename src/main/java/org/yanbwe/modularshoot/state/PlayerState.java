@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import org.jetbrains.annotations.Nullable;
 
@@ -28,7 +29,7 @@ import org.jetbrains.annotations.Nullable;
  * always present (unlike the optional {@code GunData} component on a gun
  * stack).</p>
  *
- * <p><strong>Error handling</strong> — every accessor degrades gracefully
+ * <p><strong>错误处理</strong> — every accessor degrades gracefully
  * and never throws (设计文档 §错误处理):
  * <ul>
  *   <li>Unregistered state id → returns the type's zero value (get) or
@@ -49,6 +50,16 @@ import org.jetbrains.annotations.Nullable;
  *
  * <p>Instances are lightweight value views; they are not cached and may be
  * created freely via {@link #of}.</p>
+ *
+ * <p><strong>同步节流（任务 3.3）</strong> — genuine writes still call
+ * {@link Player#setData} immediately so local reads and NBT persistence stay
+ * correct, but the {@code PLAYER_STATE} attachment is no longer auto-synced to
+ * clients on every {@code setData}. Instead the write path flags the player
+ * through {@link PlayerStateThrottleManager#markDirty}; the throttled flush
+ * (at most once per {@link PlayerStateThrottleManager#THROTTLE_INTERVAL_TICKS}
+ * ticks) is driven by {@link PlayerStateSyncTickHandler}. Same-value writes are
+ * short-circuited by {@link #writeIfChanged} and therefore never reach
+ * {@code setData} nor {@code markDirty}.</p>
  *
  * @see StateRegistry
  * @see PlayerStateData
@@ -290,6 +301,7 @@ public final class PlayerState {
     public void clearState(ResourceLocation stateId) {
         final PlayerStateData newData = currentPlayerData().clearStateValue(stateId);
         player.setData(ModularShootAttachmentTypes.PLAYER_STATE.get(), newData);
+        markDirtyIfServer();
     }
 
     // ------------------------------------------------------------------
@@ -369,6 +381,13 @@ public final class PlayerState {
      * {@link IllegalArgumentException} can escape even on an unexpected
      * type mismatch.</p>
      *
+     * <p><strong>同步节流（任务 3.3）：</strong> the {@code setData} writer is
+     * chained with {@link #markDirtyIfServer()} so a genuine change schedules a
+     * throttled client sync instead of NeoForge's automatic per-{@code setData}
+     * attachment sync (which has been removed from
+     * {@link ModularShootAttachmentTypes#PLAYER_STATE}). Same-value writes are
+     * short-circuited by {@link #writeIfChanged} and never reach this writer.</p>
+     *
      * @param stateId       the state id to write
      * @param requestedType the declared type the accessor expects
      * @param value         the value to write; {@code null} is only valid for UUID
@@ -379,7 +398,23 @@ public final class PlayerState {
             return;
         }
         writeIfChanged(currentPlayerData(), stateId, requestedType, registryAccess, value,
-                newData -> player.setData(ModularShootAttachmentTypes.PLAYER_STATE.get(), newData));
+                newData -> {
+                    player.setData(ModularShootAttachmentTypes.PLAYER_STATE.get(), newData);
+                    markDirtyIfServer();
+                });
+    }
+
+    /**
+     * Flags the wrapped player for a throttled synchronization on the server.
+     *
+     * <p>No-op on the client (there is no server tick handler to flush it,
+     * and client-side writes should not accumulate throttle entries). The
+     * {@link PlayerStateThrottleManager} is a server-side runtime map.</p>
+     */
+    private void markDirtyIfServer() {
+        if (player instanceof ServerPlayer) {
+            PlayerStateThrottleManager.getInstance().markDirty(player.getUUID());
+        }
     }
 
     /**
@@ -418,10 +453,11 @@ public final class PlayerState {
     static void writeIfChanged(PlayerStateData data, ResourceLocation stateId,
             StateValueType requestedType, RegistryAccess registryAccess, @Nullable Object value,
             java.util.function.Consumer<PlayerStateData> writer) {
-        // 值未变化 → 跳过整次写路径（深层拷贝 + attachment setData + 原版整栈
-        // 同步）。与 GunState 一致的同值短路：高频写相同值（heat 累积等）若每
-        // tick 写相同值，此检查将其降为零成本；值确实变化时才走完整写路径
-        // （与 GunState#setTypedValue 的 Objects.equals 短路保持一致）。
+        // 值未变化 → 跳过整次写路径（深层拷贝 + attachment setData + 网络同步）。
+        // 与 GunState 一致的同值短路：高频写相同值（heat 累积等）若每 tick 写相同
+        // 值，此检查将其降为零成本；值确实变化时才走完整写路径（与
+        // GunState#setTypedValue 的 Objects.equals 短路保持一致），并在此之后
+        // 由调用方标记 dirty 以进入节流同步。
         final Object previous = data.getStateValue(stateId, registryAccess);
         if (Objects.equals(previous, value)) {
             return;
