@@ -20,6 +20,7 @@ import org.yanbwe.modularshoot.attribute.AttributeResolver;
 import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 import org.yanbwe.modularshoot.component.GunData;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
+import org.yanbwe.modularshoot.shooting.FireRateMath;
 
 /**
  * Client-side fire-rate predictor that mirrors the server's
@@ -100,7 +101,7 @@ public final class ClientFireRatePredictor {
             return false;
         }
         long currentTick = player.level().getGameTime();
-        int interval = org.yanbwe.modularshoot.shooting.FireRateMath.computeInterval(fireRate);
+        int interval = FireRateMath.computeInterval(fireRate);
         Long lastTick = getRecordedLastShootTick(player.getUUID(), gunId);
         if (lastTick != null && currentTick - lastTick < interval) {
             return false;
@@ -123,25 +124,6 @@ public final class ClientFireRatePredictor {
         }
         GunData gunData = mainHand.get(ModularShootDataComponents.GUN_DATA.get());
         return gunData == null ? null : gunData.gunId();
-    }
-
-    /**
-     * Computes the fire-rate interval in ticks:
-     * {@code max(1, round(20 / fireRate))}.
-     *
-     * <p>Delegates to the shared
-     * {@link org.yanbwe.modularshoot.shooting.FireRateMath#computeInterval}
-     * so the client's predicted cadence matches the server's actual cadence
-     * with a single formula (计划 §阶段 6 / 任务 6.4). The maths (rounding,
-     * clamping to a minimum of 1 tick, and the effective-rate cap at the
-     * 20 ticks/s server tick rate) live in {@code FireRateMath} and are shared
-     * with {@code FireRateController}.</p>
-     *
-     * @param fireRate the fire-rate attribute value (shots per second); must be {@code > 0}
-     * @return the minimum number of ticks between two predicted shots
-     */
-    private static int computeInterval(double fireRate) {
-        return org.yanbwe.modularshoot.shooting.FireRateMath.computeInterval(fireRate);
     }
 
     /**

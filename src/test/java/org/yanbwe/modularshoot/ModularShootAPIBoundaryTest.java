@@ -39,10 +39,6 @@ import static org.junit.jupiter.api.Assertions.fail;
  *   <li>Everything under a {@code client} or {@code command} package (including
  *       {@code mixin/client}) is the outward-facing peripheral layer and is out
  *       of scope for 6.1. Those classes legitimately speak to the facade.</li>
- *   <li>{@code network/ModularShootPayloads.java} still calls
- *       {@code ModularShootAPI.isGun}; it is deferred to Task 6.2 and excluded
- *       here deliberately (not silently dropped) so the guard does not fail
- *       until that task lands.</li>
  * </ul>
  */
 @Execution(ExecutionMode.SAME_THREAD)
@@ -75,8 +71,7 @@ class ModularShootAPIBoundaryTest {
 
     /**
      * Walks the framework source package and returns every common (non-client /
-     * non-command, non-facade, not-yet-migrated) {@code .java} file whose
-     * boundary is checked.
+     * non-command / non-facade) {@code .java} file whose boundary is checked.
      *
      * @param pkgRoot the {@code org/yanbwe/modularshoot} source directory
      * @return the list of source files to scan
@@ -116,11 +111,6 @@ class ModularShootAPIBoundaryTest {
             return true;
         }
         if (rel.contains("/command/") || rel.startsWith("command/")) {
-            return true;
-        }
-        // network/ModularShootPayloads still calls ModularShootAPI.isGun;
-        // deferred to Task 6.2. Excluded explicitly (documented), not silently.
-        if (rel.equals("network/ModularShootPayloads.java")) {
             return true;
         }
         return false;

@@ -1,10 +1,10 @@
 package org.yanbwe.modularshoot.network;
 
 import org.yanbwe.modularshoot.ModularShoot;
-import org.yanbwe.modularshoot.ModularShootAPI;
 import org.yanbwe.modularshoot.api.event.ActionEvent;
 import org.yanbwe.modularshoot.client.ClientPayloadHandlers;
 import org.yanbwe.modularshoot.shooting.ShootPacketHandler;
+import org.yanbwe.modularshoot.util.GunRecognition;
 
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
@@ -53,6 +53,14 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
  * must be switched to {@code FMLEnvironment.dist} (see the architecture-guard
  * test in {@code network}), which is why this deviation is recorded explicitly
  * rather than silently mirrored.</p>
+ *
+ * <p><b>Known cleanup (阶段 6):</b> this class (common network) currently
+ * imports {@link org.yanbwe.modularshoot.client.ClientPayloadHandlers} (client)
+ * to bind the S&rarr;C handlers. This predates the common&rarr;client
+ * separation drive and is recorded here as a known follow-up item — it is not
+ * migrated in this change to avoid scope creep, and dedicated-server safety is
+ * preserved via the lazily-invoked lambda bodies described above. No logic
+ * changes are implied.</p>
  */
 @EventBusSubscriber(modid = ModularShoot.MODID)
 public final class ModularShootPayloads {
@@ -164,7 +172,7 @@ public final class ModularShootPayloads {
         return (payload, context) -> {
             ServerPlayer player = (ServerPlayer) context.player();
             ItemStack mainHand = player.getMainHandItem();
-            if (!ModularShootAPI.isGun(mainHand, player.registryAccess())) {
+            if (!GunRecognition.isGun(mainHand, player.registryAccess())) {
                 return;
             }
             NeoForge.EVENT_BUS.post(new ActionEvent(player, mainHand));

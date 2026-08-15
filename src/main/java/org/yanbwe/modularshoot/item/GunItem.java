@@ -26,6 +26,13 @@ import org.yanbwe.modularshoot.component.ModularShootDataComponents;
  *       registered gun definition's display name at runtime; falls back to the gun id
  *       path when the definition is absent (主菜单 / reload 过渡状态).</li>
  * </ul>
+ *
+ * <p><b>Known cleanup (阶段 6):</b> {@code GunItem} (common) currently imports
+ * {@link org.yanbwe.modularshoot.client.ItemNameResolver} (client) for its
+ * display-name resolution in {@link #getName(ItemStack)}. This predates the
+ * common&rarr;client separation drive and is recorded here as a known
+ * follow-up item — it is not migrated in this change to avoid scope creep.
+ * No logic changes are implied.</p>
  */
 public class GunItem extends Item {
 

@@ -85,6 +85,18 @@ import org.yanbwe.modularshoot.util.GunRecognition;
  *       {@code PostPluginInstallEvent} and play their own sound.</li>
  * </ul>
  *
+ * <p><b>Known cleanup (阶段 6):</b> this class (common plugin) currently
+ * imports {@code net.minecraft.client.Minecraft} and
+ * {@code net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen}
+ * (client) for the creative-menu detection in
+ * {@link #isCreativeMenuClick(Player)}. This predates the common&rarr;client
+ * separation drive and is recorded here as a known follow-up item — it is not
+ * migrated in this change to avoid scope creep. Dedicated-server safety is
+ * preserved because the server never resolves these client references: the
+ * callers short-circuit on {@code player.level().isClientSide()} first, so the
+ * lazy/short-circuit resolution never evaluates them server-side (as explained
+ * above). No logic changes are implied.</p>
+ *
  * @see PluginInstallService
  */
 public final class PluginInstallEventHandler {

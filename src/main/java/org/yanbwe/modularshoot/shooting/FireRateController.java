@@ -83,23 +83,6 @@ public final class FireRateController {
     }
 
     /**
-     * Computes the fire-rate interval in ticks:
-     * {@code max(1, round(20 / fireRate))}.
-     *
-     * <p>Delegates to the shared {@link FireRateMath#computeInterval(double)}
-     * so the server gate and the client predictor use exactly one formula
-     * (计划 §阶段 6 / 任务 6.4). The maths (rounding, clamping to a minimum of
-     * 1 tick, and the effective-rate cap at the 20 ticks/s server tick rate)
-     * are documented there.</p>
-     *
-     * @param fireRate the fire-rate attribute value (shots per second); must be {@code > 0}
-     * @return the minimum number of ticks between two shots
-     */
-    private static int computeInterval(double fireRate) {
-        return FireRateMath.computeInterval(fireRate);
-    }
-
-    /**
      * Returns the last recorded shoot tick for the given player and gun, or
      * {@code null} when the player has never fired this gun.
      *

@@ -61,6 +61,13 @@ import org.yanbwe.modularshoot.trait.RemoveReason;
  * {@link BulletRecord#setPosition}) and as bullets are removed (see
  * {@link #removeBullet}).
  *
+ * <p><b>Known cleanup (阶段 6):</b> {@code BulletManager} (common) currently
+ * imports {@link org.yanbwe.modularshoot.client.render.BulletRenderManager}
+ * (client) to resolve the client-side render manager in
+ * {@link #getClientLevel(Level)}. This predates the common&rarr;client
+ * separation drive and is recorded here as a known follow-up item — it is not
+ * migrated in this change to avoid scope creep. No logic changes are implied.</p>
+ *
  * <p><b>Concurrency:</b> every index mutation ({@link #addBullet},
  * {@link #removeBullet}, cross-chunk re-bucketing via the position listener)
  * happens on the server's main thread. The {@code ConcurrentHashMap} bucket
