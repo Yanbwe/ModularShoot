@@ -1,6 +1,12 @@
 # 更新记录 / Changelog
 
-## [0.1.8] - 2026-08-14
+## [0.2.0] - 2026-08-14
+
+### 破坏性变更 / Breaking Changes
+
+- **移除 5 个已废弃的 `ModularShootAPI` 重载**：显式 `RegistryAccess` 版本的卸载系列与不刷新属性的 `setPluginLocked` 已删除；请改用无 `RegistryAccess` 的推荐重载，或直接调用 `PluginUninstallService` / `PluginLockService`。
+- **移除 `BulletManager#fireBullet`**：独立发弹请改用 `ModularShootAPI.fireBullet` 或新的 `CreationCoordinator`。
+- **网络协议版本升级到 3**：0.2.0 与旧版客户端/服务端不互通，联机需两端同时升级。
 
 ### 性能 / Performance
 

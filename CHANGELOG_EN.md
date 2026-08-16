@@ -1,6 +1,12 @@
 # Changelog
 
-## [0.1.8] - 2026-08-14
+## [0.2.0] - 2026-08-14
+
+### Breaking Changes
+
+- **Removed 5 deprecated `ModularShootAPI` overloads**: the explicit `RegistryAccess` uninstall overloads and the non-refreshing `setPluginLocked` have been removed. Use the recommended player-derived overloads, or call `PluginUninstallService` / `PluginLockService` directly.
+- **Removed `BulletManager#fireBullet`**: use `ModularShootAPI.fireBullet` or the new `CreationCoordinator` for standalone firing.
+- **Network protocol bumped to 3**: 0.2.0 is not interoperable with older clients/servers; both sides must update together.
 
 ### Performance
 
