@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.1.8] - 2026-08-14
+
+### Performance
+
+- **Cached registry lookups everywhere**: hot paths no longer re-resolve gun/plugin/state definitions repeatedly, speeding up shooting, install/uninstall and tooltips.
+- **Much lighter bullet sync**: spatial indexing, position quantization and distance-based downsampling, plus content-addressed full sync and gun-state diffs, cut bandwidth and CPU on populated servers.
+- **Faster state handling**: same-value writes short-circuit, fast NBT codec paths, and player-state throttling reduce copies and sync traffic for high-frequency states.
+- **Leaner rendering and tooltips**: per-frame tooltip caching, reverse indexes, cached texture-key hashes, lazy outline masks and render-object reuse lower per-frame cost.
+- **Faster reloads**: shared registry snapshots and cached modifier results prevent repeated full-table recomputation on large packs.
+- **Batched broadcasts**: hit and firing-animation updates are merged per tick, reducing packet counts and player scans.
+
+### Architecture
+
+- **One-way public API**: item recognition moved into an internal utility; internal services no longer depend on the facade.
+- **Cleaner client/server split**: client payload handling moved into the client package; common code no longer imports Minecraft client classes.
+- **Clearer responsibilities**: the bullet manager was split into storage, creation and network-marking layers; the fire-rate formula is now a single shared source of truth.
+
+### Robustness
+
+- Added empty-handler short-circuits, throttled error logging, defensive packet decoding, no-op state-clear short-circuits and cache lifecycle cleanup.
+
+### Testing
+
+- Full suite: **673** tests pass.
+
 ## [0.1.7] - 2026-08-14
 
 ### Added
