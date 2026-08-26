@@ -294,6 +294,28 @@ class BulletS2CPacketCodecTest {
                 () -> BulletS2CPacket.STREAM_CODEC.decode(buf));
     }
 
+    @Test
+    void oversizedSnapshotStatMapCountIsRejectedInsteadOfPreallocating() {
+        // 审查 E5 后续：快照 stats map 计数同样设防——畸形计数不得触发巨型
+        // HashMap 预分配，必须与外层条目计数一样抛出解码异常。
+        RegistryFriendlyByteBuf buf = buffer();
+        buf.writeVarInt(Integer.MAX_VALUE); // stat-map count far beyond the payload
+        buf.readerIndex(0);
+        assertThrows(io.netty.handler.codec.DecoderException.class,
+                () -> ClientBulletSnapshot.STREAM_CODEC.decode(buf));
+    }
+
+    @Test
+    void oversizedSnapshotTraitMapCountIsRejectedInsteadOfPreallocating() {
+        // stats map 解码通过后，畸形计数落在 traits map 上同样必须被拒绝。
+        RegistryFriendlyByteBuf buf = buffer();
+        buf.writeVarInt(0); // empty stats map
+        buf.writeVarInt(Integer.MAX_VALUE); // trait-map count far beyond the payload
+        buf.readerIndex(0);
+        assertThrows(io.netty.handler.codec.DecoderException.class,
+                () -> ClientBulletSnapshot.STREAM_CODEC.decode(buf));
+    }
+
     // --- defensive render-mode decode (阶段 7 / 任务 7.1) -----------------
 
     @Test

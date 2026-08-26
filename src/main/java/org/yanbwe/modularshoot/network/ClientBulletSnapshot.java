@@ -174,7 +174,7 @@ public record ClientBulletSnapshot(
      *         {@code Map.copyOf} (single defensive copy on the decode path)
      */
     private static Map<ResourceLocation, Double> decodeStatMap(RegistryFriendlyByteBuf buf) {
-        int count = buf.readVarInt();
+        int count = BulletS2CPacket.readBoundedCount(buf, "snapshot-stat-map");
         Map<ResourceLocation, Double> map = new HashMap<>(count);
         for (int i = 0; i < count; i++) {
             ResourceLocation key = buf.readResourceLocation();
@@ -207,7 +207,7 @@ public record ClientBulletSnapshot(
      *         {@code Map.copyOf} (single defensive copy on the decode path)
      */
     private static Map<ResourceLocation, Boolean> decodeTraitMap(RegistryFriendlyByteBuf buf) {
-        int count = buf.readVarInt();
+        int count = BulletS2CPacket.readBoundedCount(buf, "snapshot-trait-map");
         Map<ResourceLocation, Boolean> map = new HashMap<>(count);
         for (int i = 0; i < count; i++) {
             ResourceLocation key = buf.readResourceLocation();

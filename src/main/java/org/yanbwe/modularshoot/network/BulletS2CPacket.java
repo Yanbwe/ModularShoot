@@ -181,13 +181,16 @@ public record BulletS2CPacket(
      * malicious packet claiming a huge count is rejected instead of
      * pre-allocating a giant list.
      *
+     * <p>Package-private so the embedded {@link ClientBulletSnapshot} map
+     * codecs share the single source of truth for this bound.</p>
+     *
      * @param buf  the source buffer
      * @param what human-readable bucket name for the error message
      * @return the validated entry count
      * @throws DecoderException when the count is negative or exceeds the
      *                          remaining payload size
      */
-    private static int readBoundedCount(RegistryFriendlyByteBuf buf, String what) {
+    static int readBoundedCount(RegistryFriendlyByteBuf buf, String what) {
         int count = buf.readVarInt();
         int remaining = buf.readableBytes();
         if (count < 0 || count > remaining) {
