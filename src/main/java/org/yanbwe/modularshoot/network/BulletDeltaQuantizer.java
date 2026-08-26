@@ -51,6 +51,12 @@ final class BulletDeltaQuantizer {
      * tick; the mid band allows at most one update every
      * {@link #MID_INTERVAL_TICKS} ticks; beyond the mid band at most one
      * every {@link #FAR_INTERVAL_TICKS} ticks.
+     *
+     * <p>These are the <em>defaults</em>; at runtime the sync service passes
+     * the live config values from
+     * {@link org.yanbwe.modularshoot.config.ModularShootCommonConfig} through
+     * the parameterised overloads (审查 O7). Unit tests exercise the default
+     * constants via the parameter-less methods.</p>
      */
     static final double CLOSE_DISTANCE = 32.0;
     static final double MID_DISTANCE = 64.0;
@@ -130,13 +136,33 @@ final class BulletDeltaQuantizer {
      * @return the minimum tick interval between delta sends for this bullet
      */
     static int updateIntervalTicks(double distance) {
-        if (distance <= CLOSE_DISTANCE) {
+        return updateIntervalTicks(distance,
+                CLOSE_DISTANCE, MID_DISTANCE, MID_INTERVAL_TICKS, FAR_INTERVAL_TICKS);
+    }
+
+    /**
+     * Parameterised variant of {@link #updateIntervalTicks(double)} accepting
+     * the live config values (审查 O7). Same band semantics: close band
+     * updates every tick, mid band every {@code midIntervalTicks}, far band
+     * every {@code farIntervalTicks}.
+     *
+     * @param distance         the bullet's distance to the player in blocks
+     * @param closeDistance    close-band radius (config)
+     * @param midDistance      mid-band radius (config)
+     * @param midIntervalTicks mid-band minimum interval (config)
+     * @param farIntervalTicks far-band minimum interval (config)
+     * @return the minimum tick interval between delta sends for this bullet
+     */
+    static int updateIntervalTicks(
+            double distance, double closeDistance, double midDistance,
+            int midIntervalTicks, int farIntervalTicks) {
+        if (distance <= closeDistance) {
             return 1;
         }
-        if (distance <= MID_DISTANCE) {
-            return MID_INTERVAL_TICKS;
+        if (distance <= midDistance) {
+            return midIntervalTicks;
         }
-        return FAR_INTERVAL_TICKS;
+        return farIntervalTicks;
     }
 
     /**
@@ -152,5 +178,27 @@ final class BulletDeltaQuantizer {
      */
     static boolean isUpdateEligible(double distance, long currentTick, long lastSentTick) {
         return (currentTick - lastSentTick) >= updateIntervalTicks(distance);
+    }
+
+    /**
+     * Parameterised variant of
+     * {@link #isUpdateEligible(double, long, long)} accepting the live
+     * config values (审查 O7).
+     *
+     * @param distance         the bullet's distance to the player in blocks
+     * @param currentTick      the current server game time (ticks)
+     * @param lastSentTick     the server tick when the last delta was sent
+     * @param closeDistance    close-band radius (config)
+     * @param midDistance      mid-band radius (config)
+     * @param midIntervalTicks mid-band minimum interval (config)
+     * @param farIntervalTicks far-band minimum interval (config)
+     * @return {@code true} when the interval for this distance band has elapsed
+     */
+    static boolean isUpdateEligible(
+            double distance, long currentTick, long lastSentTick,
+            double closeDistance, double midDistance,
+            int midIntervalTicks, int farIntervalTicks) {
+        return (currentTick - lastSentTick) >= updateIntervalTicks(
+                distance, closeDistance, midDistance, midIntervalTicks, farIntervalTicks);
     }
 }

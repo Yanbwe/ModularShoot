@@ -80,7 +80,9 @@ import org.yanbwe.modularshoot.util.GunRecognition;
  *   <li>{@link PrePluginUninstallEvent} &mdash; cancelable; if cancelled the
  *       plugin is <strong>not</strong> removed and no post event fires;</li>
  *   <li>the plugin is removed from the {@code gun_data} component and
- *       {@link AttributeModifierService#refreshModifiers} is called;</li>
+ *       {@link AttributeModifierService#refreshModifiers} is called
+ *       (deferred to the end of a batch uninstall, see
+ *       {@link PostPluginUninstallEvent} javadoc, 审查 O6);</li>
  *   <li>{@link PostPluginUninstallEvent} &mdash; not cancelable.</li>
  * </ol>
  * <p>In batch operations a cancelled plugin is skipped and the framework

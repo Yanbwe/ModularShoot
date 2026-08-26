@@ -32,7 +32,7 @@ public final class ShootEffectRegistry {
     /**
      * Thread-safe list of effects registered by third-party mods.
      */
-    private static final List<ShootEffect> EFFECTS = new CopyOnWriteArrayList<>();
+    private static final CopyOnWriteArrayList<ShootEffect> EFFECTS = new CopyOnWriteArrayList<>();
 
     private ShootEffectRegistry() {
     }
@@ -45,6 +45,11 @@ public final class ShootEffectRegistry {
      * application (规格 §5.1). Effects run in registration order; later
      * effects see earlier snapshot mutations.</p>
      *
+     * <p>Registration is idempotent (审查 E6): registering the same effect
+     * instance again is a silent no-op, so hot-reloaded mod environments and
+     * duplicated init paths cannot stack identical effects. Effects without a
+     * custom {@code equals} are compared by identity.</p>
+     *
      * <p>Safe to call during mod common-setup; the underlying list is
      * thread-safe.</p>
      *
@@ -52,7 +57,7 @@ public final class ShootEffectRegistry {
      */
     public static void register(ShootEffect effect) {
         Objects.requireNonNull(effect, "effect");
-        EFFECTS.add(effect);
+        EFFECTS.addIfAbsent(effect);
     }
 
     /**

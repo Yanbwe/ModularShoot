@@ -98,12 +98,8 @@ public final class PluginBarTooltipBuilder {
             ItemStack gunStack,
             @Nullable Player viewingPlayer,
             RegistryAccess registryAccess) {
-        ResourceLocation gunId = ModularShootAPI.getGunId(gunStack);
-        if (gunId == null) {
-            return List.of();
-        }
-        Optional<GunDefinition> gunDefOpt =
-                ModularShootAPI.getGunDefinition(registryAccess, gunId);
+        Optional<GunDefinition> gunDefOpt = ModularShootAPI.getGunId(gunStack)
+                .flatMap(gunId -> ModularShootAPI.getGunDefinition(registryAccess, gunId));
         if (gunDefOpt.isEmpty()) {
             // Gun definition missing: TooltipBuilder already replaced the
             // tooltip with the degraded name; no plugin bar is rendered.

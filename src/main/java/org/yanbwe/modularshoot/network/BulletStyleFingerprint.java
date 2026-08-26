@@ -1,30 +1,32 @@
 package org.yanbwe.modularshoot.network;
 
-import java.util.Map;
-import java.util.TreeMap;
 import net.minecraft.resources.ResourceLocation;
 import org.yanbwe.modularshoot.network.BulletS2CPacket.FullBulletEntry.LayerEntryFull;
 
 /**
- * Stable fingerprint for the "flight-invariant" bullet style payload
- * ({@link BulletStyleData}), used by {@link BulletStyleContentAddresser} to
- * decide whether a changed style must be re-sent over the wire (阶段 2 /
- * 任务 2.3).
+ * Stable fingerprint for the "flight-invariant" bullet <em>visual</em> style
+ * payload ({@link BulletStyleData}), used by
+ * {@link BulletStyleContentAddresser} to decide whether a changed style must
+ * be re-sent over the wire (阶段 2 / 任务 2.3).
  *
  * <p>The fingerprint is a deterministic, content-derived string over every
- * field of the style payload — visual style fields plus the stats/traits
- * snapshot. The per-bullet <em>shooter</em> is deliberately excluded (审查修复:
- * 跨玩家共享): it is a per-bullet dynamic identity carried inline by
- * {@link BulletS2CPacket.FullBulletEntry#shooterEntityId()}, not a property of
- * the shared style. Two bullets with identical style content produce equal
- * fingerprints; any change (a different texture, a different composed tint,
- * a different stat value, a different activated trait, …) produces a
- * different fingerprint, which in turn makes the content addresser assign a
- * fresh wire id and re-send the full payload exactly once.</p>
+ * <em>visual</em> field of the style payload. The per-bullet
+ * stats/traits/gun-id snapshot is deliberately excluded (审查 E5): it travels
+ * inline on {@link BulletS2CPacket.FullBulletEntry#snapshot()} because
+ * variant pools and third-party effects legitimately vary stats between
+ * bullets sharing one visual style — hashing it used to degenerate content
+ * addressing into a per-bullet full-payload re-send. The per-bullet
+ * <em>shooter</em> is likewise excluded (审查修复: 跨玩家共享): it is a
+ * per-bullet dynamic identity carried inline by
+ * {@link BulletS2CPacket.FullBulletEntry#shooterEntityId()}, not a property
+ * of the shared style. Two bullets with identical visual content produce
+ * equal fingerprints; any visual change (a different texture, a different
+ * composed tint, …) produces a different fingerprint, which in turn makes the
+ * content addresser assign a fresh wire id and re-send the full payload
+ * exactly once.</p>
  *
- * <p>Map entries (stats / traits) are rendered in sorted key order so the
- * fingerprint is independent of map iteration order. Floats are rendered via
- * their raw bit pattern so NaN / signed-zero distinctions survive.</p>
+ * <p>Floats are rendered via their raw bit pattern so NaN / signed-zero
+ * distinctions survive.</p>
  */
 public final class BulletStyleFingerprint {
 
@@ -66,24 +68,7 @@ public final class BulletStyleFingerprint {
                     .append(Float.floatToIntBits(l.tintA()))
                     .append(']');
         }
-        sb.append('|');
-        appendSnapshot(sb, style.snapshot());
         return sb.toString();
-    }
-
-    private static void appendSnapshot(StringBuilder sb, ClientBulletSnapshot snapshot) {
-        appendNullable(sb, snapshot.gunId());
-        sb.append('|');
-        // Stats, sorted by key for iteration-order independence.
-        TreeMap<ResourceLocation, Double> stats = new TreeMap<>(snapshot.stats());
-        for (Map.Entry<ResourceLocation, Double> e : stats.entrySet()) {
-            sb.append('(').append(e.getKey()).append('=').append(e.getValue()).append(')');
-        }
-        sb.append('|');
-        TreeMap<ResourceLocation, Boolean> traits = new TreeMap<>(snapshot.traits());
-        for (Map.Entry<ResourceLocation, Boolean> e : traits.entrySet()) {
-            sb.append('(').append(e.getKey()).append('=').append(e.getValue()).append(')');
-        }
     }
 
     private static void appendNullable(StringBuilder sb, ResourceLocation loc) {

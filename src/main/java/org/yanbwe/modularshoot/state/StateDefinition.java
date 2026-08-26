@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 import org.yanbwe.modularshoot.bullet.StateConditionEvaluator;
 import org.yanbwe.modularshoot.registry.gun.Modifier;
 
@@ -70,10 +71,55 @@ public record StateDefinition(
      * {@code visualModifiers} argument and copy the list into an immutable
      * snapshot so callers cannot mutate the record's internal state after
      * construction (设计规格 §3.4: aggregated style values frozen at
-     * creation time).
+     * creation time). Also coerces {@code defaultValue} onto the declared
+     * {@code valueType} (审查 R4 — see {@link #coerceDefaultValue}).
      */
     public StateDefinition {
         visualModifiers = visualModifiers == null ? List.of() : List.copyOf(visualModifiers);
+        defaultValue = coerceDefaultValue(valueType, defaultValue);
+    }
+
+    /**
+     * Converges a default value onto the declared value type (审查 R4).
+     *
+     * <p>The {@code default_value} decode chain tries codecs in order with
+     * DOUBLE before FLOAT, so a JSON {@code value_type: "float"} with
+     * {@code default_value: 2.5} decodes as a {@link Double}. Typed readers
+     * ({@code getFloat} etc.) would then see the wrong runtime type and
+     * degrade to zero. Lossless numeric widening/narrowing (Number
+     * conversions) repairs INT/LONG/DOUBLE/FLOAT defaults; anything not
+     * coercible (e.g. a string default for an int state) falls back to the
+     * type's zero value instead of surfacing a mistyped default later.</p>
+     *
+     * @param valueType the declared value type
+     * @param value     the decoded or caller-supplied default value
+     * @return a value whose runtime type matches {@code valueType}
+     */
+    private static Object coerceDefaultValue(StateValueType valueType, @Nullable Object value) {
+        if (value == null) {
+            return valueType.zeroValue();
+        }
+        if (matchesType(valueType, value)) {
+            return value;
+        }
+        return switch (valueType) {
+            case LONG -> value instanceof Integer i ? i.longValue() : valueType.zeroValue();
+            case DOUBLE -> value instanceof Number n ? n.doubleValue() : valueType.zeroValue();
+            case FLOAT -> value instanceof Number n ? n.floatValue() : valueType.zeroValue();
+            default -> valueType.zeroValue();
+        };
+    }
+
+    private static boolean matchesType(StateValueType type, Object value) {
+        return switch (type) {
+            case INT -> value instanceof Integer;
+            case LONG -> value instanceof Long;
+            case DOUBLE -> value instanceof Double;
+            case FLOAT -> value instanceof Float;
+            case BOOLEAN -> value instanceof Boolean;
+            case STRING -> value instanceof String;
+            case UUID -> value instanceof UUID;
+        };
     }
 
     /**

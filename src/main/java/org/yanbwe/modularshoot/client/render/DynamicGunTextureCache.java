@@ -1,6 +1,7 @@
 package org.yanbwe.modularshoot.client.render;
 
 import com.mojang.blaze3d.platform.NativeImage;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.logging.LogUtils;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -8,6 +9,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
@@ -58,8 +60,12 @@ import org.yanbwe.modularshoot.plugin.OutlineSpec;
  * reload re-reads the (possibly changed) PNGs from disk.</p>
  *
  * <p><b>Threading:</b> all access happens on the main render thread (the
- * renderers are only invoked from the vanilla item pipeline). The singleton
- * instance is lazily created on first render, matching
+ * renderers are only invoked from the vanilla item pipeline), with one
+ * exception: {@link #invalidateFromAnyThread()} may be called from any
+ * thread (e.g. mod-constructor registration of outline tint providers) and
+ * defers the actual {@link #clear()} — which releases GPU textures — to the
+ * next render-thread access (审查 R7). The singleton instance is lazily
+ * created on first render, matching
  * {@link org.yanbwe.modularshoot.client.render.BulletRenderManager}.</p>
  *
  * @see CompositeTextureBuilder
@@ -93,6 +99,16 @@ public final class DynamicGunTextureCache {
     private final LruStore<Key, TextureHandle> locations =
             new LruStore<>(MAX_ENTRIES, DynamicGunTextureCache::releaseHandle);
     private int nextId;
+
+    /**
+     * Pending render-thread clear flag (审查 R7): {@link #clear()} releases
+     * GPU textures via {@code TextureManager.release} and must run on the
+     * render thread, but provider registration happens during client mod
+     * initialisation on the main thread. {@link #invalidateFromAnyThread()}
+     * raises this flag and the next render-thread {@link #getOrCreate}
+     * performs the clear.
+     */
+    private final AtomicBoolean pendingClear = new AtomicBoolean();
 
     private DynamicGunTextureCache() {
     }
@@ -441,6 +457,12 @@ public final class DynamicGunTextureCache {
      *         {@code null})
      */
     public TextureHandle getOrCreate(Key key, List<ResourceLocation> gunOutlinePluginIds) {
+        // Apply a cross-thread invalidation raised by invalidateFromAnyThread
+        // before serving any entry (审查 R7): GPU texture release must stay
+        // on the render thread.
+        if (pendingClear.compareAndSet(true, false)) {
+            clear();
+        }
         TextureHandle existing = locations.get(key);
         if (existing != null) {
             return existing;
@@ -575,6 +597,24 @@ public final class DynamicGunTextureCache {
             releaseHandle(handle);
         }
         locations.clear();
+    }
+
+    /**
+     * Thread-safe invalidation entry point (审查 R7).
+     *
+     * <p>When already on the render thread this clears the cache
+     * immediately; otherwise it raises a pending flag that the next
+     * render-thread {@link #getOrCreate} applies, because
+     * {@code TextureManager.release} must not run outside the render
+     * thread. Used by {@link DynamicOutlineTintRegistry#register}, which
+     * third-party mods call during client initialisation.</p>
+     */
+    public void invalidateFromAnyThread() {
+        if (RenderSystem.isOnRenderThread()) {
+            clear();
+        } else {
+            pendingClear.set(true);
+        }
     }
 
     /**

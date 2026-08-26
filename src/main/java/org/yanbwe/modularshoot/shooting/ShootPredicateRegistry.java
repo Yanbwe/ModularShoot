@@ -30,7 +30,7 @@ public final class ShootPredicateRegistry {
     /**
      * Thread-safe list of predicates registered by third-party mods.
      */
-    private static final List<ShootPredicate> PREDICATES = new CopyOnWriteArrayList<>();
+    private static final CopyOnWriteArrayList<ShootPredicate> PREDICATES = new CopyOnWriteArrayList<>();
 
     private ShootPredicateRegistry() {
     }
@@ -42,6 +42,11 @@ public final class ShootPredicateRegistry {
      * after the framework's fire-rate control passes. The first predicate
      * that returns a failing {@link ShootPredicateResult} aborts the shot.</p>
      *
+     * <p>Registration is idempotent (审查 E6): registering the same predicate
+     * instance again is a silent no-op, so hot-reloaded mod environments and
+     * duplicated init paths cannot stack identical predicates. Predicates
+     * without a custom {@code equals} are compared by identity.</p>
+     *
      * <p>Safe to call during mod common-setup; the underlying list is
      * thread-safe.</p>
      *
@@ -49,7 +54,7 @@ public final class ShootPredicateRegistry {
      */
     public static void register(ShootPredicate predicate) {
         Objects.requireNonNull(predicate, "predicate");
-        PREDICATES.add(predicate);
+        PREDICATES.addIfAbsent(predicate);
     }
 
     /**

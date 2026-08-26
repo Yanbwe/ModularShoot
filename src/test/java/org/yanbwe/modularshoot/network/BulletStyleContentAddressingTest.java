@@ -1,8 +1,6 @@
 package org.yanbwe.modularshoot.network;
 
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 import net.minecraft.resources.ResourceLocation;
 import org.joml.Vector4f;
 import org.junit.jupiter.api.Test;
@@ -33,6 +31,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li>a client that does not know an already-assigned id still receives the
  *       full style (the "once per client" guarantee).</li>
  * </ul>
+ *
+ * <p>The per-bullet stats/traits snapshot is structurally excluded from the
+ * style payload and fingerprint (审查 E5): it rides inline on
+ * {@code FullBulletEntry#snapshot()}, so stat-varying bullets sharing one
+ * visual style keep one wire id by construction.</p>
  */
 class BulletStyleContentAddressingTest {
 
@@ -40,14 +43,6 @@ class BulletStyleContentAddressingTest {
 
     private static ResourceLocation tex(String path) {
         return ResourceLocation.parse(path);
-    }
-
-    private static ClientBulletSnapshot snapshot() {
-        return new ClientBulletSnapshot(
-                Map.of(tex("modularshoot:hit_damage"), 6.0, tex("modularshoot:fire_rate"), 4.0),
-                Map.of(tex("modularshoot:example_flame"), true),
-                tex("modularshoot:composite_cane"),
-                UUID.fromString("6e8a2f4a-1b2c-3d4e-5f6a-7b8c9d0e1f2a"));
     }
 
     private static BulletStyleData defaultStyle() {
@@ -61,8 +56,7 @@ class BulletStyleContentAddressingTest {
                         new LayerEntryFull(
                                 "3d", null, tex("modularshoot:item/ice_shard"),
                                 false, true, -1.0f, 2.0f, -3.0f, 0.25f,
-                                1.0f, 0.9f, 0.8f, 0.5f)),
-                snapshot());
+                                1.0f, 0.9f, 0.8f, 0.5f)));
     }
 
     @Test
@@ -81,35 +75,12 @@ class BulletStyleContentAddressingTest {
                 defaultStyle().renderMode(),
                 defaultStyle().renderScale(),
                 defaultStyle().composedTint(),
-                defaultStyle().layers(),
-                defaultStyle().snapshot());
+                defaultStyle().layers());
 
         assertNotEquals(
                 BulletStyleFingerprint.of(defaultStyle()),
                 BulletStyleFingerprint.of(changed),
                 "a changed texture must change the fingerprint so a new wire id is issued");
-    }
-
-    @Test
-    void changedSnapshotProducesDifferentFingerprint() {
-        ClientBulletSnapshot otherSnapshot = new ClientBulletSnapshot(
-                Map.of(tex("modularshoot:hit_damage"), 6.0, tex("modularshoot:fire_rate"), 5.0),
-                Map.of(tex("modularshoot:example_flame"), true),
-                tex("modularshoot:composite_cane"),
-                UUID.fromString("6e8a2f4a-1b2c-3d4e-5f6a-7b8c9d0e1f2a"));
-        BulletStyleData changed = new BulletStyleData(
-                defaultStyle().texture(),
-                defaultStyle().modelLocation(),
-                defaultStyle().renderMode(),
-                defaultStyle().renderScale(),
-                defaultStyle().composedTint(),
-                defaultStyle().layers(),
-                otherSnapshot);
-
-        assertNotEquals(
-                BulletStyleFingerprint.of(defaultStyle()),
-                BulletStyleFingerprint.of(changed),
-                "a changed stats/traits snapshot must change the fingerprint");
     }
 
     // ---- Content addresser ---------------------------------------------
@@ -152,7 +123,7 @@ class BulletStyleContentAddressingTest {
                 tex("modularshoot:textures/bullet/other.png"),
                 null, "billboard", 0.75f,
                 new Vector4f(0.1f, 0.2f, 0.3f, 0.9f),
-                List.of(), snapshot());
+                List.of());
 
         BulletStyleContentAddresser.BulletStyleRef a =
                 addresser.resolve(defaultStyle(), BulletStyleFingerprint.of(defaultStyle()), false);
@@ -218,35 +189,25 @@ class BulletStyleContentAddressingTest {
 
     @Test
     void shooterDoesNotAffectFingerprintOrWireId() {
-        // 审查修复（Medium）: shooter 是每子弹动态身份（由 FullBulletEntry 内联携带），
-        // 不应进入内容键。同一视觉样式 + 不同 shooter 必须共享同一 fingerprint / wire id。
-        BulletStyleData withShooterA = new BulletStyleData(
-                defaultStyle().texture(), defaultStyle().modelLocation(),
-                defaultStyle().renderMode(), defaultStyle().renderScale(),
-                defaultStyle().composedTint(), defaultStyle().layers(),
-                new ClientBulletSnapshot(
-                        snapshot().stats(), snapshot().traits(), snapshot().gunId(),
-                        UUID.fromString("11111111-1111-1111-1111-111111111111")));
-        BulletStyleData withShooterB = new BulletStyleData(
-                defaultStyle().texture(), defaultStyle().modelLocation(),
-                defaultStyle().renderMode(), defaultStyle().renderScale(),
-                defaultStyle().composedTint(), defaultStyle().layers(),
-                new ClientBulletSnapshot(
-                        snapshot().stats(), snapshot().traits(), snapshot().gunId(),
-                        UUID.fromString("22222222-2222-2222-2222-222222222222")));
+        // 审查修复（Medium）+ 审查 E5: shooter 是每子弹动态身份（由 FullBulletEntry
+        // 内联携带），快照也已从样式载荷解耦——同一视觉样式的子弹无论来自哪个射手、
+        // 携带什么快照，都必须共享同一 fingerprint / wire id。样式载荷不再携带任何
+        // 每子弹字段，该不变式由类型系统保证；此测试兼作回归护栏。
+        BulletStyleData first = defaultStyle();
+        BulletStyleData second = defaultStyle();
 
         assertEquals(
-                BulletStyleFingerprint.of(withShooterA),
-                BulletStyleFingerprint.of(withShooterB),
-                "a different shooter must NOT change the fingerprint (shooter is excluded from the content key)");
+                BulletStyleFingerprint.of(first),
+                BulletStyleFingerprint.of(second),
+                "identical visual content must fingerprint equal (no per-bullet fields in the style payload)");
 
         BulletStyleContentAddresser addresser = new BulletStyleContentAddresser();
         BulletStyleContentAddresser.BulletStyleRef a =
-                addresser.resolve(withShooterA, BulletStyleFingerprint.of(withShooterA), false);
+                addresser.resolve(first, BulletStyleFingerprint.of(first), false);
         BulletStyleContentAddresser.BulletStyleRef b =
-                addresser.resolve(withShooterB, BulletStyleFingerprint.of(withShooterB), false);
+                addresser.resolve(second, BulletStyleFingerprint.of(second), false);
         assertEquals(a.styleId(), b.styleId(),
-                "the same visual style must share one wire id across different shooters");
+                "the same visual style must share one wire id across bullets");
     }
 
     // ---- Bounded LRU eviction -------------------------------------------
@@ -310,6 +271,6 @@ class BulletStyleContentAddressingTest {
                 tex("modularshoot:textures/bullet/style_" + n + ".png"),
                 null, "billboard", 0.5f,
                 new Vector4f(0.1f, 0.1f, 0.1f, 1.0f),
-                List.of(), snapshot());
+                List.of());
     }
 }

@@ -44,7 +44,7 @@ public final class StateWarnLogger {
      *                {@code modularshoot:states} registry
      */
     public static void warnUnregistered(ResourceLocation stateId) {
-        warn(stateId, "State '" + stateId + "' is not registered in the modularshoot:states registry; "
+        warn(stateId.toString(), "State '" + stateId + "' is not registered in the modularshoot:states registry; "
                 + "returning zero value / skipping write.");
     }
 
@@ -58,7 +58,7 @@ public final class StateWarnLogger {
      *                 {@code null} when the caller supplied a {@code null} value
      */
     public static void warnTypeMismatch(ResourceLocation stateId, StateValueType expected, @Nullable Class<?> actual) {
-        warn(stateId, "State '" + stateId + "' is declared as '" + expected.getSerializedName()
+        warn(stateId.toString(), "State '" + stateId + "' is declared as '" + expected.getSerializedName()
                 + "' but was accessed as '" + (actual == null ? "null" : actual.getSimpleName())
                 + "'; returning zero value / skipping write.");
     }
@@ -72,24 +72,42 @@ public final class StateWarnLogger {
      * @param actual   the domain the state is registered under
      */
     public static void warnDomainMismatch(ResourceLocation stateId, StateDomain expected, StateDomain actual) {
-        warn(stateId, "State '" + stateId + "' belongs to domain '" + actual.getSerializedName()
+        warn(stateId.toString(), "State '" + stateId + "' belongs to domain '" + actual.getSerializedName()
                 + "' but was accessed via a '" + expected.getSerializedName() + "' accessor; "
                 + "returning zero value / skipping write.");
     }
 
     /**
-     * Emits {@code LOGGER.warn(message)} at most once per state id per
+     * Emits a rate-limited {@code WARN} for a stored NBT entry whose tag
+     * type does not match the registered {@link StateValueType} (审查 R4).
+     * The read path degrades to the zero value instead of throwing, so a
+     * corrupted or retyped datapack entry cannot crash tooltip / render /
+     * shooting reads.
+     *
+     * @param stateId   the state id that was read, or {@code null} when the
+     *                  caller has no id context (generic rate-limit bucket)
+     * @param expected  the declared {@link StateValueType} from the registry
+     * @param actualTag human-readable NBT tag type found in the entry
+     */
+    public static void warnDecodeTagMismatch(
+            @Nullable ResourceLocation stateId, StateValueType expected, String actualTag) {
+        final String key = stateId == null ? "<unknown-state>" : stateId.toString();
+        warn(key, "State '" + key + "' stores a " + actualTag + " but is declared as '"
+                + expected.getSerializedName() + "'; degrading to the zero value.");
+    }
+
+    /**
+     * Emits {@code LOGGER.warn(message)} at most once per rate-limit key per
      * minute bucket.
      *
      * <p>Uses {@code System.currentTimeMillis() / WARN_INTERVAL_MS} as the
      * bucket key so that repeated identical misuse within the same minute
-     * is suppressed. The map is keyed by the state id's string form.</p>
+     * is suppressed. The key is typically the state id's string form.</p>
      *
-     * @param stateId the state id used to derive the rate-limit key
+     * @param key     the rate-limit key
      * @param message the warning text
      */
-    private static void warn(ResourceLocation stateId, String message) {
-        final String key = stateId.toString();
+    private static void warn(String key, String message) {
         final long currentBucket = System.currentTimeMillis() / WARN_INTERVAL_MS;
         final Long last = LAST_WARN_BUCKETS.get(key);
         if (last != null && last.longValue() == currentBucket) {

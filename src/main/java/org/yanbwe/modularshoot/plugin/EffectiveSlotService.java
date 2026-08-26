@@ -154,6 +154,10 @@ public final class EffectiveSlotService {
      * <p>枪械定义缺失时保守放行（{@code false}）——容量无法证明，不阻塞卸载。
      * 已装插件定义缺失（降级）按贡献 0 参与判定。</p>
      *
+     * <p><strong>口径说明（审查 O6）：</strong>定义缺失时卸载放行与安装硬拦是刻意不对称：
+     * 损坏/降级的插件必须始终可被移除，而安装新插件在定义缺失时被
+     * {@code PluginInstallService} 以专用错误（{@code missing_definition}）拒绝。</p>
+     *
      * @param gunData  the gun's current data component
      * @param target   the plugin instance about to be removed
      * @param access   the runtime registry view

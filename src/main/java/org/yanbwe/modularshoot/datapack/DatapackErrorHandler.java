@@ -12,12 +12,17 @@ import org.yanbwe.modularshoot.ModularShoot;
  * (lines 2362&ndash;2383):</p>
  *
  * <ul>
- *   <li><b>Parse failure</b> &mdash; a single JSON entry failed to parse
- *       (syntax error, missing required field, wrong field type). The entry
- *       is skipped (not written to the registry) and an {@code ERROR} is
- *       logged with the file path, cause, and line number when locatable.
- *       Other entries are unaffected because each JSON is isolated by its
- *       own try-catch at the call site (设计文档 line 2383).</li>
+ *   <li><b>Parse failure</b> &mdash; a JSON entry failed to parse (syntax
+ *       error, missing required field, wrong field type). <strong>Actual
+ *       behaviour (审查 R6, doc fix):</strong> all ten framework tables load
+ *       through the vanilla {@code RegistryDataLoader}, so a single parse
+ *       failure aborts the <em>entire</em> registry load with an
+ *       {@code IllegalStateException} &mdash; entries are <em>not</em>
+ *       skipped individually, and this listener never produces a summary for
+ *       that registry. The {@link #logParseError} methods exist for the
+ *       framework's own pre-/post-load validation paths where a file path is
+ *       available; vanilla parse failures surface with the vanilla pipeline's
+ *       own diagnostics (which include the failing file).</li>
  *   <li><b>Reference invalidation</b> &mdash; the entry registered fine, but
  *       a reference it carries cannot be resolved at runtime (e.g. a
  *       plugin's {@code tags} match no registered category). A {@code WARN}
@@ -44,14 +49,18 @@ public final class DatapackErrorHandler {
     /**
      * Logs an {@code ERROR} for a single JSON entry that failed to parse.
      *
-     * <p>The entry should already have been skipped by the caller (not
-     * written to the registry). The throwable's stack trace &mdash; which
-     * carries source line numbers when locatable &mdash; is attached to the
-     * log record so operators can pinpoint the failing line
-     * (设计文档 line 2368). SLF4J treats a trailing {@link Throwable}
-     * argument as the throwable to attach, so the {@code {}} placeholders
-     * are filled by {@code filePath} and the exception message while the
-     * full stack trace is printed alongside.</p>
+     * <p>Note (审查 R6): framework tables load through the vanilla
+     * {@code RegistryDataLoader}, where a single parse failure aborts the
+     * whole registry load &mdash; this method does <em>not</em> mean the
+     * entry was skipped while siblings survived. It is used by the
+     * framework's own validation paths that can attribute a failure to a
+     * specific file. The throwable's stack trace &mdash; which carries
+     * source line numbers when locatable &mdash; is attached to the log
+     * record so operators can pinpoint the failing line (设计文档 line 2368).
+     * SLF4J treats a trailing {@link Throwable} argument as the throwable to
+     * attach, so the {@code {}} placeholders are filled by {@code filePath}
+     * and the exception message while the full stack trace is printed
+     * alongside.</p>
      *
      * @param filePath the datapack file path that failed to parse (e.g.
      *                 {@code data/modularshoot/guns/foo.json})

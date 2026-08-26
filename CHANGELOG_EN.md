@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.3.0] - 2026-08-26
+
+### Breaking Changes
+
+- **Network protocol bumped to 4**: delta positions now travel at double precision, per-bullet stat/trait snapshots ride inline with each bullet (content addressing keeps pure visuals only), and bullet entries gained a third-party extension field. 0.3.0 is not interoperable with older clients/servers; both sides must update together.
+- **Unified query return types**: `getGunId` and `getState` now return `Optional` (consistent with the other queries) instead of `null`.
+- **Pre-install event enhancement**: the plugin install pre-event now carries the framework-selected slot type and supports listener-supplied custom cancellation reasons (constructor change).
+
+### Added
+
+- **Plugin Java registration and dynamic providers**: symmetric to the gun side, plugin definitions can now be registered programmatically (random loot affixes and similar gameplay are no longer a dead end).
+- **Bullet sync extension channel**: third parties can attach custom bytes to every bullet and read them from the client render object (custom rotation/orientation fields no longer need bespoke networking).
+- **Tunable bullet sync**: distance bands, per-band update frequency and the full-sync interval moved into `modularshoot-common.toml` so servers can trade bandwidth to taste.
+- **Dedicated "plugin definition missing" install error**: a missing datapack entry after reload no longer misreports as "no slot".
+- **Extension-point catalogue in the facade javadoc**: every registration/event/hook entry listed by subsystem for one-stop discovery.
+
+### Changed
+
+- **Trait hooks dispatch only for bullets carrying their trait**: removes the misleading "register once, self-filter per bullet" semantics and cuts dispatch overhead under heavy bullet counts.
+- **Idempotent predicate/effect registration**: re-registering the same instance no longer stacks it.
+- **Outline tint registration is thread-safe**: GPU texture release is deferred to the render thread when registered elsewhere.
+- **Batch-uninstall event docs corrected**: attribute refresh is deferred to the end of a batch.
+- **Binding index re-registration repairs stale entries**: moving a key to a different item cleans the old reverse index.
+- **Facade class javadoc corrected**: it describes the full framework surface (previously claimed plugins only).
+- **Two duplicated item-binding indexes collapsed into one generic implementation**.
+- **Render texture cache keys reused across frames** instead of rebuilding and re-hashing per draw.
+
+### Fixed
+
+- **Ammo damage-type presets no longer silently ignored**: presets written through the state system are now read by the shooting pipeline.
+- **Corrupted/malicious bullet sync packets can no longer trigger giant allocations**: entry counts and extension lengths are bounded on decode.
+- **Far-coordinate bullet precision**: incremental positions no longer degrade to float, removing drift beyond |16M| and the first-delta position step.
+- **Cleared state no longer shows stale values on the client**: clears now flag the throttled sync too.
+- **Corrupted/retyped state data no longer crashes tooltip and render reads**: decode failures degrade to zero values with rate-limited warnings.
+- **State default-value type drift**: a JSON default for `value_type: float` is no longer decoded as a double and read back as zero.
+- **Datapack error-handling docs corrected**: they now state that a single bad JSON aborts the whole registry load (vanilla pipeline behaviour).
+
+### Testing
+
+- Full suite: **694** tests pass (21 new: sync extension channel, plugin Java registration, damage preset reads, decode defence, binding index repair, default coercion, hook filtering).
+
 ## [0.2.0] - 2026-08-14
 
 ### Breaking Changes

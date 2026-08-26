@@ -256,6 +256,16 @@ public final class PluginInstallService {
     private static SelectionOutcome validateAndSelect(
             ItemStack gun, ResourceLocation pluginId, @Nullable ResourceLocation preferredTypeId,
             Player player, RegistryAccess registryAccess) {
+        // a. Explicit definition-presence gate (审查 O6): a missing
+        //    definition (e.g. the datapack entry disappeared after /reload)
+        //    used to surface as the misleading no_slot error because
+        //    getMatchingTypes yields no candidates for it; report it
+        //    distinctly so operators can locate the problem.
+        Optional<PluginDefinition> pluginDef = PluginRegistry.getPlugin(registryAccess, pluginId);
+        if (pluginDef.isEmpty()) {
+            return new SelectionOutcome(ValidationResult.error(
+                    Component.translatable("modularshoot.install.error.missing_definition")), null);
+        }
         // b. Find matching categories that still have a free slot.
         //    Each candidate carries its registry id alongside the definition,
         //    so no reverse-lookup is needed after selection.
@@ -275,11 +285,8 @@ public final class PluginInstallService {
             return new SelectionOutcome(ValidationResult.error(
                     Component.translatable("modularshoot.install.error.no_slot")), null);
         }
-        // e. Look up the plugin definition for the exclusive-group check.
-        //    The definition is guaranteed to exist here: getMatchingTypes
-        //    only yields a candidate when the definition is present, so an
-        //    empty Optional is unreachable (b 步已排除定义缺失路径).
-        Optional<PluginDefinition> pluginDef = PluginRegistry.getPlugin(registryAccess, pluginId);
+        // e. The plugin definition was resolved by gate a; reuse it for the
+        //    exclusive-group check (no second registry query).
         // f. Exclusive-group conflict check.
         ValidationResult exclusiveResult =
                 PluginValidationService.checkExclusiveGroup(gun, pluginDef.get(), registryAccess);
@@ -292,12 +299,18 @@ public final class PluginInstallService {
         if (customResult.isPresent()) {
             return new SelectionOutcome(customResult.get(), null);
         }
-        // h. Pre-install event (cancelable); a canceled event aborts the install.
-        PrePluginInstallEvent preEvent = new PrePluginInstallEvent(player, gun, pluginId);
+        // h. Pre-install event (cancelable); a canceled event aborts the
+        //    install. The event carries the selected category id, and a
+        //    listener may attach a custom cancellation reason that is
+        //    surfaced instead of the generic "blocked" message (审查 E3).
+        PrePluginInstallEvent preEvent =
+                new PrePluginInstallEvent(player, gun, pluginId, selectedTypeId.get());
         NeoForge.EVENT_BUS.post(preEvent);
         if (preEvent.isCanceled()) {
-            return new SelectionOutcome(ValidationResult.error(
-                    Component.translatable("modularshoot.install.error.blocked")), null);
+            Component reason = preEvent.getCancelReason() != null
+                    ? preEvent.getCancelReason()
+                    : Component.translatable("modularshoot.install.error.blocked");
+            return new SelectionOutcome(ValidationResult.error(reason), null);
         }
         return new SelectionOutcome(ValidationResult.success(), selectedTypeId.get());
     }

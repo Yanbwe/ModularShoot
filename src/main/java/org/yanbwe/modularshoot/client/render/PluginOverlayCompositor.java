@@ -95,20 +95,87 @@ public final class PluginOverlayCompositor {
      * Render inputs collected from a gun's installed plugins: the sorted overlay
      * layers and the whole-gun outlines (in installation order).
      *
-     * @param overlays            the sorted overlay layers, bottom-to-top
-     * @param gunOutlines         the whole-gun outline specs, in installation
-     *                            order; sorting by width is the compositor's
-     *                            responsibility
-     * @param gunOutlinePluginIds the plugin ids that contributed a
-     *                            {@code gun_outline}, in installation order —
-     *                            index-aligned with {@code gunOutlines}; used
-     *                            by {@link DynamicOutlineTintRegistry} to
-     *                            resolve per-frame dynamic outline tints
+     * <p>Implemented as a plain final class rather than a record so it can
+     * carry the render-thread-only texture-key memo (审查 O5); records cannot
+     * declare instance fields. Instances are cached in
+     * {@link #RENDER_DATA_CACHE} and reused across frames by identity.</p>
      */
-    public record OverlayRenderData(
-            List<CompositeTextureBuilder.OverlayLayer> overlays,
-            List<OutlineSpec> gunOutlines,
-            List<ResourceLocation> gunOutlinePluginIds) {
+    public static final class OverlayRenderData {
+
+        /** The sorted overlay layers, bottom-to-top. */
+        private final List<CompositeTextureBuilder.OverlayLayer> overlays;
+
+        /**
+         * The whole-gun outline specs, in installation order; sorting by
+         * width is the compositor's responsibility.
+         */
+        private final List<OutlineSpec> gunOutlines;
+
+        /**
+         * The plugin ids that contributed a {@code gun_outline}, in
+         * installation order — index-aligned with {@code gunOutlines}; used
+         * by {@link DynamicOutlineTintRegistry} to resolve per-frame dynamic
+         * outline tints.
+         */
+        private final List<ResourceLocation> gunOutlinePluginIds;
+
+        OverlayRenderData(
+                List<CompositeTextureBuilder.OverlayLayer> overlays,
+                List<OutlineSpec> gunOutlines,
+                List<ResourceLocation> gunOutlinePluginIds) {
+            this.overlays = overlays;
+            this.gunOutlines = gunOutlines;
+            this.gunOutlinePluginIds = gunOutlinePluginIds;
+        }
+
+        /** Returns the sorted overlay layers, bottom-to-top. */
+        public List<CompositeTextureBuilder.OverlayLayer> overlays() {
+            return overlays;
+        }
+
+        /** Returns the whole-gun outline specs in installation order. */
+        public List<OutlineSpec> gunOutlines() {
+            return gunOutlines;
+        }
+
+        /** Returns the outline-carrying plugin ids in installation order. */
+        public List<ResourceLocation> gunOutlinePluginIds() {
+            return gunOutlinePluginIds;
+        }
+
+        // 审查 O5: 单槽位 memo 的 {@link DynamicGunTextureCache.Key}。render data
+        // 实例本身被 LRU 缓存、跨帧复用，将缓存键（含其重量级 hash）挂在实例上可避免
+        // 每次物品绘制都重建 Key 并重算全部散列。renderTexture/modifierVersion
+        // 在本类外部解析，因此作为 memo 守卫的一部分。仅渲染线程访问。
+        private ResourceLocation memoTexture;
+        private int memoVersion = Integer.MIN_VALUE;
+        private DynamicGunTextureCache.Key memoKey;
+
+        /**
+         * Returns the texture-cache key for this render data combined with the
+         * externally resolved base texture and modifier version, reusing the
+         * memoized {@link DynamicGunTextureCache.Key} when the guard matches
+         * (审查 O5).
+         *
+         * @param renderTexture   the resolved gun base texture
+         * @param modifierVersion the gun's current modifier version
+         * @return the texture-cache key; identical instance across frames for
+         *         an unchanged configuration
+         */
+        public DynamicGunTextureCache.Key textureKey(
+                ResourceLocation renderTexture, int modifierVersion) {
+            DynamicGunTextureCache.Key cached = memoKey;
+            if (cached != null && modifierVersion == memoVersion
+                    && java.util.Objects.equals(renderTexture, memoTexture)) {
+                return cached;
+            }
+            DynamicGunTextureCache.Key key = new DynamicGunTextureCache.Key(
+                    renderTexture, overlays, gunOutlines, modifierVersion);
+            memoTexture = renderTexture;
+            memoVersion = modifierVersion;
+            memoKey = key;
+            return key;
+        }
     }
 
     /**

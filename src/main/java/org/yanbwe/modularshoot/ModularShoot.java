@@ -2,6 +2,7 @@ package org.yanbwe.modularshoot;
 
 import org.yanbwe.modularshoot.attribute.ModularShootAttributes;
 import org.yanbwe.modularshoot.component.ModularShootDataComponents;
+import org.yanbwe.modularshoot.config.ModularShootCommonConfig;
 import org.yanbwe.modularshoot.creative.ModularShootCreativeTabs;
 import org.yanbwe.modularshoot.item.ModularShootItems;
 import org.yanbwe.modularshoot.plugin.PluginInstallEventHandler;
@@ -16,6 +17,7 @@ import net.minecraft.world.item.CreativeModeTab;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
@@ -34,6 +36,10 @@ public class ModularShoot {
         ITEMS.register(modEventBus);
         ModularShootCreativeTabs.init();
         CREATIVE_MODE_TABS.register(modEventBus);
+
+        // Common config (modularshoot-common.toml): server-side bullet-sync
+        // tuning (审查 O7).
+        modContainer.registerConfig(ModConfig.Type.COMMON, ModularShootCommonConfig.SPEC);
 
         // Register plugin install handler on the game bus (Apotheosis pattern).
         NeoForge.EVENT_BUS.register(new PluginInstallEventHandler());

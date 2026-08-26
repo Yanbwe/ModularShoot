@@ -82,8 +82,7 @@ class BulletS2CPacketCodecTest {
                 "3d",
                 0.75f,
                 new Vector4f(0.1f, 0.2f, 0.3f, 0.9f),
-                List.of(billboardLayer(), threeDLayer()),
-                snapshot());
+                List.of(billboardLayer(), threeDLayer()));
     }
 
     /** A full entry carrying a full style payload (first transmission). */
@@ -93,6 +92,7 @@ class BulletS2CPacketCodecTest {
                 1.5, 2.5, 3.5,
                 0.0, 1.0, 0.0,
                 42,
+                snapshot(),
                 styleId,
                 styleData());
     }
@@ -104,6 +104,7 @@ class BulletS2CPacketCodecTest {
                 1.5, 2.5, 3.5,
                 0.0, 1.0, 0.0,
                 42,
+                snapshot(),
                 styleId,
                 null);
     }
@@ -134,8 +135,8 @@ class BulletS2CPacketCodecTest {
                 "render mode tag survives the enum-ordinal wire encoding");
         assertEquals(0.75f, out.style().renderScale(), 0.0f);
         assertEquals(styleData().composedTint(), out.style().composedTint());
-        assertEquals(styleData().snapshot(), out.style().snapshot(),
-                "ClientBulletSnapshot projection (stats/traits/gunId/shooter) round-trips intact");
+        assertEquals(snapshot(), out.snapshot(),
+                "the per-bullet ClientBulletSnapshot projection (stats/traits/gunId/shooter) rides inline on the entry and round-trips intact (审查 E5)");
         assertEquals(2, out.style().layers().size(),
                 "variable-length layer list round-trips in source order");
         assertEquals(styleData().layers(), out.style().layers());
@@ -161,25 +162,24 @@ class BulletS2CPacketCodecTest {
                 "3d",
                 0.5f,
                 new Vector4f(1.0f, 1.0f, 1.0f, 1.0f),
-                List.of(),
-                new ClientBulletSnapshot(
-                        Map.of(ResourceLocation.parse("modularshoot:hit_damage"), 3.0),
-                        Map.of(),
-                        null, // independent firing has no gun id
-                        null) // ownerless shooter uuid
-        );
+                List.of());
+        ClientBulletSnapshot ownerlessSnapshot = new ClientBulletSnapshot(
+                Map.of(ResourceLocation.parse("modularshoot:hit_damage"), 3.0),
+                Map.of(),
+                null, // independent firing has no gun id
+                null); // ownerless shooter uuid
         FullBulletEntry entry = new FullBulletEntry(
-                2, -10.0, 64.0, 200.0, 0.0, 0.0, -1.0, -1, 7, ownerless);
+                2, -10.0, 64.0, 200.0, 0.0, 0.0, -1.0, -1, ownerlessSnapshot, 7, ownerless);
 
         BulletS2CPacket decoded = roundTrip(
                 BulletS2CPacket.delta(List.of(entry), List.of(), List.of()));
 
-        BulletStyleData out = decoded.newBullets().get(0).style();
-        assertNull(out.texture(), "null texture must survive as null");
-        assertNull(out.modelLocation(), "null modelLocation must survive as null");
+        FullBulletEntry out = decoded.newBullets().get(0);
+        assertNull(out.style().texture(), "null texture must survive as null");
+        assertNull(out.style().modelLocation(), "null modelLocation must survive as null");
         assertNull(out.snapshot().gunId(), "null snapshot gunId must survive as null");
         assertNull(out.snapshot().shooter(), "null snapshot shooter uuid must survive as null");
-        assertTrue(out.layers().isEmpty(), "empty layer list survives");
+        assertTrue(out.style().layers().isEmpty(), "empty layer list survives");
     }
 
     @Test
@@ -190,10 +190,10 @@ class BulletS2CPacketCodecTest {
                 "billboard",
                 1.0f,
                 null, // white identity sentinel
-                List.of(),
-                new ClientBulletSnapshot(Map.of(), Map.of(), null, null));
+                List.of());
         FullBulletEntry entry = new FullBulletEntry(
-                3, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, -1, 1, billboard);
+                3, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, -1,
+                new ClientBulletSnapshot(Map.of(), Map.of(), null, null), 1, billboard);
 
         BulletS2CPacket decoded = roundTrip(
                 BulletS2CPacket.delta(List.of(entry), List.of(), List.of()));
@@ -220,8 +220,9 @@ class BulletS2CPacketCodecTest {
     }
 
     @Test
-    void deltaFloatCompressionKeepsSubPixelPrecision() {
-        // 审查优化 P3: delta 条目在线路上以 float 传输（52 → ~26 字节）。
+    void deltaPositionsRoundTripAtFullDoublePrecision() {
+        // 审查 R3: delta 条目位置在线路上以 double 传输（与 full 条目精度一致，
+        // 远坐标不降级）；方向分量仍为 float。
         DeltaBulletEntry delta = new DeltaBulletEntry(
                 1001, 1000.1, 64.7, -200.3, 0.1, 0.2, -0.3);
 
@@ -230,9 +231,9 @@ class BulletS2CPacketCodecTest {
 
         DeltaBulletEntry out = decoded.updatedBullets().get(0);
         assertEquals(1001, out.bulletId());
-        assertEquals(delta.posX(), out.posX(), 1.0e-4);
-        assertEquals(delta.posY(), out.posY(), 1.0e-4);
-        assertEquals(delta.posZ(), out.posZ(), 1.0e-4);
+        assertEquals(delta.posX(), out.posX(), 0.0);
+        assertEquals(delta.posY(), out.posY(), 0.0);
+        assertEquals(delta.posZ(), out.posZ(), 0.0);
         assertEquals(delta.dirX(), out.dirX(), 1.0e-4);
         assertEquals(delta.dirY(), out.dirY(), 1.0e-4);
         assertEquals(delta.dirZ(), out.dirZ(), 1.0e-4);
@@ -278,6 +279,19 @@ class BulletS2CPacketCodecTest {
                 "full-sync bucket carries the complete bullet set");
         assertTrue(decoded.updatedBullets().isEmpty(), "full-sync ignores delta bucket");
         assertTrue(decoded.removedBulletIds().isEmpty(), "full-sync ignores removal bucket");
+    }
+
+    // --- defensive decode bounds (审查 R2) ------------------------------
+
+    @Test
+    void oversizedEntryCountIsRejectedInsteadOfPreallocating() {
+        // A corrupted/malicious packet claiming a huge entry count with a
+        // near-empty payload must throw instead of pre-allocating a giant list.
+        RegistryFriendlyByteBuf buf = buffer();
+        buf.writeVarInt(1_000_000); // full-entry count far beyond the payload
+        buf.readerIndex(0);
+        assertThrows(io.netty.handler.codec.DecoderException.class,
+                () -> BulletS2CPacket.STREAM_CODEC.decode(buf));
     }
 
     // --- defensive render-mode decode (阶段 7 / 任务 7.1) -----------------

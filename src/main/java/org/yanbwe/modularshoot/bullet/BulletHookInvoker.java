@@ -25,11 +25,14 @@ import org.yanbwe.modularshoot.trait.TraitHookType;
  * trait ids that registered only for other hook types, eliminating wasted
  * map lookups at high bullet counts (S4).</p>
  *
- * <p>The framework fires registered hooks unconditionally — callbacks are
- * responsible for checking
- * {@link BulletSnapshot#getTrait(ResourceLocation)} to decide whether their
- * trait is active on the bullet, so a single registration serves all bullets
- * (设计文档 §特性钩子注册 API).</p>
+ * <p>The framework fires a hook only when its registering trait is
+ * <em>active</em> on the bullet: before dispatching, the invoker checks
+ * {@link BulletSnapshot#getTrait(ResourceLocation)} for the hook's trait id
+ * and skips inactive traits (审查 E2 — 注册即只作用于携带该特性的子弹).
+ * This both removes the previous "register and self-filter" trap for
+ * third-party mods and eliminates the per-bullet-per-hook-type wasted
+ * dispatch at high bullet counts. Callbacks no longer need to re-check
+ * their own trait flag.</p>
  *
  * <p>Later callbacks observe modifications made by earlier callbacks to the
  * shared {@link BulletSnapshot}, enabling chain effects such as ramping
@@ -63,6 +66,10 @@ public final class BulletHookInvoker {
         BulletSnapshot snapshot = bullet.getSnapshot();
         Set<ResourceLocation> traitIds = TraitHookRegistry.getTraitIdsForHookType(TraitHookType.ON_TICK);
         for (ResourceLocation traitId : traitIds) {
+            // 审查 E2: 只对携带该特性的子弹派发，钩子无需自查。
+            if (!snapshot.getTrait(traitId)) {
+                continue;
+            }
             List<TraitCallbacks.TraitTickCallback> hooks = TraitHookRegistry.getHooks(
                     traitId, TraitHookType.ON_TICK, TraitCallbacks.TraitTickCallback.class);
             for (TraitCallbacks.TraitTickCallback hook : hooks) {
@@ -91,6 +98,10 @@ public final class BulletHookInvoker {
         BulletSnapshot snapshot = bullet.getSnapshot();
         Set<ResourceLocation> traitIds = TraitHookRegistry.getTraitIdsForHookType(TraitHookType.ON_HIT);
         for (ResourceLocation traitId : traitIds) {
+            // 审查 E2: 只对携带该特性的子弹派发，钩子无需自查。
+            if (!snapshot.getTrait(traitId)) {
+                continue;
+            }
             List<TraitCallbacks.TraitHitCallback> hooks = TraitHookRegistry.getHooks(
                     traitId, TraitHookType.ON_HIT, TraitCallbacks.TraitHitCallback.class);
             for (TraitCallbacks.TraitHitCallback hook : hooks) {
@@ -118,6 +129,10 @@ public final class BulletHookInvoker {
         BulletSnapshot snapshot = bullet.getSnapshot();
         Set<ResourceLocation> traitIds = TraitHookRegistry.getTraitIdsForHookType(TraitHookType.ON_BLOCK_HIT);
         for (ResourceLocation traitId : traitIds) {
+            // 审查 E2: 只对携带该特性的子弹派发，钩子无需自查。
+            if (!snapshot.getTrait(traitId)) {
+                continue;
+            }
             List<TraitCallbacks.TraitBlockHitCallback> hooks = TraitHookRegistry.getHooks(
                     traitId, TraitHookType.ON_BLOCK_HIT, TraitCallbacks.TraitBlockHitCallback.class);
             for (TraitCallbacks.TraitBlockHitCallback hook : hooks) {
@@ -146,6 +161,10 @@ public final class BulletHookInvoker {
         BulletSnapshot snapshot = bullet.getSnapshot();
         Set<ResourceLocation> traitIds = TraitHookRegistry.getTraitIdsForHookType(TraitHookType.ON_EXPIRE);
         for (ResourceLocation traitId : traitIds) {
+            // 审查 E2: 只对携带该特性的子弹派发，钩子无需自查。
+            if (!snapshot.getTrait(traitId)) {
+                continue;
+            }
             List<TraitCallbacks.TraitExpireCallback> hooks = TraitHookRegistry.getHooks(
                     traitId, TraitHookType.ON_EXPIRE, TraitCallbacks.TraitExpireCallback.class);
             for (TraitCallbacks.TraitExpireCallback hook : hooks) {
@@ -174,6 +193,10 @@ public final class BulletHookInvoker {
         BulletSnapshot snapshot = bullet.getSnapshot();
         Set<ResourceLocation> traitIds = TraitHookRegistry.getTraitIdsForHookType(TraitHookType.ON_REMOVE);
         for (ResourceLocation traitId : traitIds) {
+            // 审查 E2: 只对携带该特性的子弹派发，钩子无需自查。
+            if (!snapshot.getTrait(traitId)) {
+                continue;
+            }
             List<TraitCallbacks.TraitRemoveCallback> hooks = TraitHookRegistry.getHooks(
                     traitId, TraitHookType.ON_REMOVE, TraitCallbacks.TraitRemoveCallback.class);
             for (TraitCallbacks.TraitRemoveCallback hook : hooks) {

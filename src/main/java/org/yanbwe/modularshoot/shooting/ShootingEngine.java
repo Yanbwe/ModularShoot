@@ -113,8 +113,18 @@ public final class ShootingEngine {
     /** 单发弹丸数上限；超限 clamp + WARN（规格 §3.3）。 */
     private static final int MAX_PELLETS = 32;
 
-    /** Per-gun state key for the reserved ammo-damage-type preset (设计文档 §伤害类型预设机制一). */
-    private static final String AMMO_DAMAGE_TYPE_STATE_KEY = "modularshoot:ammo_damage_type";
+    /**
+     * Reserved ammo-damage-type preset state id (设计文档 §伤害类型预设机制一).
+     *
+     * <p>The framework pre-registers <strong>zero</strong> states; this id is a
+     * convention that upper-layer mods register themselves (STRING type, gun
+     * domain). Reads therefore go through the typed state accessor
+     * ({@link GunData#getStateValue}) instead of raw tag access: the backing
+     * tag stores each entry as a {@code {type, value}} compound, so a raw
+     * {@code CompoundTag.getString} would always see {@code ""} (审查 R1).</p>
+     */
+    private static final ResourceLocation AMMO_DAMAGE_TYPE_STATE_ID =
+            ResourceLocation.parse("modularshoot:ammo_damage_type");
 
     /** Sound slot name for the shoot sound (设计文档 §音效系统). */
     private static final String SHOOT_SOUND_SLOT = "shoot";
@@ -368,7 +378,7 @@ public final class ShootingEngine {
      * @return the resolved damage type holder; never {@code null}
      */
     private static Holder<DamageType> resolveDamageType(ServerPlayer player, GunData gunData) {
-        String damageTypeId = gunData.state().getString(AMMO_DAMAGE_TYPE_STATE_KEY);
+        String damageTypeId = readDamageTypePreset(gunData, player.registryAccess());
         if (damageTypeId.isEmpty()) {
             return ModularShootDamageTypes.holderOrThrow(player.registryAccess());
         }
@@ -391,6 +401,32 @@ public final class ShootingEngine {
                 "Damage type {} not found in registry; falling back to default.",
                 damageTypeId);
         return ModularShootDamageTypes.holderOrThrow(player.registryAccess());
+    }
+
+    /**
+     * 纯函数 seam（TDD / 审查 R1）：经类型化状态访问器读取伤害类型预设。
+     *
+     * <p>必须走 {@link GunData#getStateValue} 而非原始 tag 的 {@code getString}：
+     * backing tag 的每个条目是 {@code {type, value}} 嵌套 compound，原始读取恒为
+     * {@code ""}，预设会永远失效。状态 id 未注册（上层模组未自行注册该约定状态）
+     * 或值为空时返回 {@code ""}；值存在但类型不是 String（上层模组误注册了其它类型）
+     * 时降级为 {@code ""} + WARN，不炸射击路径。</p>
+     *
+     * @param gunData        the gun data (carries the per-gun state)
+     * @param registryAccess the runtime registry view
+     * @return the preset damage-type id string, or {@code ""} when absent/invalid
+     */
+    static String readDamageTypePreset(GunData gunData, RegistryAccess registryAccess) {
+        Object raw = gunData.getStateValue(AMMO_DAMAGE_TYPE_STATE_ID, registryAccess);
+        if (raw instanceof String s) {
+            return s;
+        }
+        if (raw != null) {
+            ModularShoot.LOGGER.warn(
+                    "State {} holds a non-string value ({}); ignoring the damage type preset.",
+                    AMMO_DAMAGE_TYPE_STATE_ID, raw);
+        }
+        return "";
     }
 
     /**

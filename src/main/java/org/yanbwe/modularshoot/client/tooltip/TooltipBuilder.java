@@ -309,11 +309,9 @@ public final class TooltipBuilder {
     private static void appendDegradedTooltip(List<Component> toolTip, ItemStack stack) {
         toolTip.clear();
         toolTip.add(GunDegradationHandler.getDegradedName(stack));
-        ResourceLocation gunId = ModularShootAPI.getGunId(stack);
-        if (gunId != null) {
-            toolTip.add(Component.literal("gunId: " + gunId)
-                    .withStyle(ChatFormatting.DARK_GRAY));
-        }
+        ModularShootAPI.getGunId(stack).ifPresent(gunId ->
+                toolTip.add(Component.literal("gunId: " + gunId)
+                        .withStyle(ChatFormatting.DARK_GRAY)));
     }
 
     /**

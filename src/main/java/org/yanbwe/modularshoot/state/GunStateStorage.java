@@ -84,8 +84,9 @@ public final class GunStateStorage {
         final StateValueType type = def.valueType();
         // Fast strong-typed read branch (审查任务 3.2): decodes directly from
         // the entry compound, avoiding the per-read DataFixerUpper codec stack.
-        // Handles a missing "value" field as the type's zero value.
-        return StateValueCodecs.decodeEntryFast(type, entryTag);
+        // Handles a missing "value" field as the type's zero value; a mistyped
+        // value degrades to zero + rate-limited WARN (审查 R4).
+        return StateValueCodecs.decodeEntryFast(type, entryTag, stateId);
     }
 
     /**

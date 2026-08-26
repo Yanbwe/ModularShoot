@@ -10,6 +10,7 @@ import org.yanbwe.modularshoot.ModularShoot;
 import org.yanbwe.modularshoot.network.ClientBulletSnapshot;
 import org.yanbwe.modularshoot.registry.gun.BulletStyle;
 
+import io.netty.handler.codec.DecoderException;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -96,6 +97,9 @@ public record BulletS2CPacket(
             new CustomPacketPayload.Type<>(
                     ResourceLocation.fromNamespaceAndPath(ModularShoot.MODID, "bullet_s2c"));
 
+    /** Shared empty extension-bytes payload for entries without extra data (审查 E4). */
+    private static final byte[] NO_EXTRA = new byte[0];
+
     /**
      * Stream codec that serializes the three entry buckets and the
      * force-full-sync flag.
@@ -171,6 +175,29 @@ public record BulletS2CPacket(
     }
 
     /**
+     * Reads a varint list count with a defensive upper bound (审查 R2): the
+     * count can never legitimately exceed the remaining readable bytes
+     * because every entry consumes at least one byte. A corrupted or
+     * malicious packet claiming a huge count is rejected instead of
+     * pre-allocating a giant list.
+     *
+     * @param buf  the source buffer
+     * @param what human-readable bucket name for the error message
+     * @return the validated entry count
+     * @throws DecoderException when the count is negative or exceeds the
+     *                          remaining payload size
+     */
+    private static int readBoundedCount(RegistryFriendlyByteBuf buf, String what) {
+        int count = buf.readVarInt();
+        int remaining = buf.readableBytes();
+        if (count < 0 || count > remaining) {
+            throw new DecoderException("BulletS2CPacket " + what + " count " + count
+                    + " exceeds remaining payload (" + remaining + " bytes)");
+        }
+        return count;
+    }
+
+    /**
      * Maps a render-mode serialized name to its enum ordinal for wire
      * encoding. Unknown names (defensive: the server always writes one of the
      * two known modes) map to {@code BILLBOARD} so the wire never carries an
@@ -240,7 +267,7 @@ public record BulletS2CPacket(
      *         shared or mutated after return)
      */
     private static List<FullBulletEntry> decodeFullEntries(RegistryFriendlyByteBuf buf) {
-        int count = buf.readVarInt();
+        int count = readBoundedCount(buf, "full-entry");
         List<FullBulletEntry> entries = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             entries.add(decodeFullEntry(buf));
@@ -265,6 +292,7 @@ public record BulletS2CPacket(
         buf.writeDouble(entry.dirY());
         buf.writeDouble(entry.dirZ());
         buf.writeInt(entry.shooterEntityId());
+        ClientBulletSnapshot.STREAM_CODEC.encode(buf, entry.snapshot());
         buf.writeVarInt(entry.styleId());
         if (entry.style() == null) {
             buf.writeBoolean(false);
@@ -272,6 +300,7 @@ public record BulletS2CPacket(
             buf.writeBoolean(true);
             encodeBulletStyleData(buf, entry.style());
         }
+        encodeExtra(buf, entry.extra());
     }
 
     /**
@@ -290,11 +319,45 @@ public record BulletS2CPacket(
         double dirY = buf.readDouble();
         double dirZ = buf.readDouble();
         int shooterEntityId = buf.readInt();
+        ClientBulletSnapshot snapshot = ClientBulletSnapshot.STREAM_CODEC.decode(buf);
         int styleId = buf.readVarInt();
         BulletStyleData style = buf.readBoolean() ? decodeBulletStyleData(buf) : null;
+        byte[] extra = decodeExtra(buf);
         return new FullBulletEntry(
                 bulletId, posX, posY, posZ, dirX, dirY, dirZ,
-                shooterEntityId, styleId, style);
+                shooterEntityId, snapshot, styleId, style, extra);
+    }
+
+    /**
+     * Writes an extension-bytes payload (审查 E4): a bounded varint length
+     * followed by the raw bytes. An empty payload costs one varint byte.
+     *
+     * @param buf   the target buffer
+     * @param extra the extension payload; never {@code null}
+     */
+    private static void encodeExtra(RegistryFriendlyByteBuf buf, byte[] extra) {
+        buf.writeVarInt(extra.length);
+        if (extra.length > 0) {
+            buf.writeBytes(extra);
+        }
+    }
+
+    /**
+     * Reads an extension-bytes payload written by {@link #encodeExtra}
+     * (审查 E4), with the same defensive bound as the entry counts
+     * ({@link #readBoundedCount}).
+     *
+     * @param buf the source buffer
+     * @return the extension payload; a shared empty array when absent
+     */
+    private static byte[] decodeExtra(RegistryFriendlyByteBuf buf) {
+        int length = readBoundedCount(buf, "extra");
+        if (length == 0) {
+            return NO_EXTRA;
+        }
+        byte[] extra = new byte[length];
+        buf.readBytes(extra);
+        return extra;
     }
 
     // --- BulletStyleData codec ------------------------------------------
@@ -302,7 +365,9 @@ public record BulletS2CPacket(
     /**
      * Encodes the content-addressed style payload: nullable texture, nullable
      * model, render mode ordinal, render scale, composed tint (white sentinel
-     * collapses to {@code null}), the snapshot, and the layer list.
+     * collapses to {@code null}), and the layer list. The per-bullet snapshot
+     * is <em>not</em> part of the style payload (审查 E5) — it travels inline
+     * on the full entry.
      *
      * @param buf   the target buffer
      * @param style the style payload to serialize
@@ -321,7 +386,6 @@ public record BulletS2CPacket(
             buf.writeFloat(style.composedTint().z);
             buf.writeFloat(style.composedTint().w);
         }
-        ClientBulletSnapshot.STREAM_CODEC.encode(buf, style.snapshot());
         buf.writeVarInt(style.layers().size());
         for (BulletS2CPacket.FullBulletEntry.LayerEntryFull l : style.layers()) {
             buf.writeByte(renderModeOrdinal(l.renderMode()));
@@ -356,10 +420,9 @@ public record BulletS2CPacket(
         if (buf.readBoolean()) {
             composedTint = new Vector4f(buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat());
         }
-        ClientBulletSnapshot snapshot = ClientBulletSnapshot.STREAM_CODEC.decode(buf);
-        int layerCount = buf.readVarInt();
+        int layerCount = readBoundedCount(buf, "style-layer");
         List<BulletS2CPacket.FullBulletEntry.LayerEntryFull> layers =
-                new ArrayList<>(Math.max(0, layerCount));
+                new ArrayList<>(layerCount);
         for (int i = 0; i < layerCount; i++) {
             String layerRenderMode = decodeRenderMode(buf.readByte());
             ResourceLocation layerTexture = decodeNullableResourceLocation(buf);
@@ -381,7 +444,7 @@ public record BulletS2CPacket(
                     scale, tintR, tintG, tintB, tintA));
         }
         return new BulletStyleData(texture, modelLocation, renderMode, renderScale,
-                composedTint, layers, snapshot);
+                composedTint, layers);
     }
 
     // --- DeltaBulletEntry codec -----------------------------------------
@@ -409,7 +472,7 @@ public record BulletS2CPacket(
      *         shared or mutated after return)
      */
     private static List<DeltaBulletEntry> decodeDeltaEntries(RegistryFriendlyByteBuf buf) {
-        int count = buf.readVarInt();
+        int count = readBoundedCount(buf, "delta-entry");
         List<DeltaBulletEntry> entries = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             entries.add(decodeDeltaEntry(buf));
@@ -418,21 +481,28 @@ public record BulletS2CPacket(
     }
 
     /**
-     * Encodes a single {@link DeltaBulletEntry} — id + 3 position floats +
+     * Encodes a single {@link DeltaBulletEntry} — id + 3 position doubles +
      * 3 direction floats. Visual style is omitted (already known from the
      * initial full entry / cached by style id).
+     *
+     * <p>Positions use doubles to match the full-entry precision (审查 R3):
+     * float positions drift over one block beyond |16M| coordinates and the
+     * double&rarr;float hand-off produced a visible position step on the
+     * first delta after a full entry. Directions stay float: they are unit
+     * vectors in [-1, 1], where float precision is sub-pixel.</p>
      *
      * @param buf   the target buffer
      * @param entry the delta entry to serialize
      */
     private static void encodeDeltaEntry(RegistryFriendlyByteBuf buf, DeltaBulletEntry entry) {
         buf.writeVarInt(entry.bulletId());
-        buf.writeFloat((float) entry.posX());
-        buf.writeFloat((float) entry.posY());
-        buf.writeFloat((float) entry.posZ());
+        buf.writeDouble(entry.posX());
+        buf.writeDouble(entry.posY());
+        buf.writeDouble(entry.posZ());
         buf.writeFloat((float) entry.dirX());
         buf.writeFloat((float) entry.dirY());
         buf.writeFloat((float) entry.dirZ());
+        encodeExtra(buf, entry.extra());
     }
 
     /**
@@ -444,13 +514,14 @@ public record BulletS2CPacket(
      */
     private static DeltaBulletEntry decodeDeltaEntry(RegistryFriendlyByteBuf buf) {
         int bulletId = buf.readVarInt();
-        double posX = buf.readFloat();
-        double posY = buf.readFloat();
-        double posZ = buf.readFloat();
+        double posX = buf.readDouble();
+        double posY = buf.readDouble();
+        double posZ = buf.readDouble();
         double dirX = buf.readFloat();
         double dirY = buf.readFloat();
         double dirZ = buf.readFloat();
-        return new DeltaBulletEntry(bulletId, posX, posY, posZ, dirX, dirY, dirZ);
+        byte[] extra = decodeExtra(buf);
+        return new DeltaBulletEntry(bulletId, posX, posY, posZ, dirX, dirY, dirZ, extra);
     }
 
     // --- removedBulletIds codec -----------------------------------------
@@ -478,7 +549,7 @@ public record BulletS2CPacket(
      *         never shared or mutated after return)
      */
     private static List<Integer> decodeRemovedIds(RegistryFriendlyByteBuf buf) {
-        int count = buf.readVarInt();
+        int count = readBoundedCount(buf, "removed-id");
         List<Integer> ids = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             ids.add(buf.readVarInt());
@@ -546,12 +617,20 @@ public record BulletS2CPacket(
      *                        client-side owner attribution, or {@code -1}
      *                        when the bullet is ownerless (independent
      *                        firing from traps etc.)
+     * @param snapshot        this bullet's client-side stats/traits/gun-id
+     *                        projection, consumed by visual-tick hooks
+     *                        (审查 E5 — decoupled from the content-addressed
+     *                        style payload because stats legitimately vary
+     *                        per bullet); never {@code null}
      * @param styleId         stable content-addressed wire id referencing the
      *                        client's cached {@link BulletStyleData}
      * @param style           the full style payload when this transmission is
      *                        the first for this style id to this client, or
      *                        {@code null} when the client already has it
      *                        cached
+     * @param extra           third-party extension bytes contributed via
+     *                        {@link BulletSyncExtraRegistry} (审查 E4); an
+     *                        empty array when no provider contributes data
      */
     public record FullBulletEntry(
             int bulletId,
@@ -562,8 +641,23 @@ public record BulletS2CPacket(
             double dirY,
             double dirZ,
             int shooterEntityId,
+            ClientBulletSnapshot snapshot,
             int styleId,
-            @Nullable BulletStyleData style) {
+            @Nullable BulletStyleData style,
+            byte[] extra) {
+
+        /**
+         * Convenience constructor without extension bytes (审查 E4):
+         * equivalent to passing an empty {@code extra} payload.
+         */
+        public FullBulletEntry(
+                int bulletId, double posX, double posY, double posZ,
+                double dirX, double dirY, double dirZ,
+                int shooterEntityId, ClientBulletSnapshot snapshot,
+                int styleId, @Nullable BulletStyleData style) {
+            this(bulletId, posX, posY, posZ, dirX, dirY, dirZ,
+                    shooterEntityId, snapshot, styleId, style, NO_EXTRA);
+        }
 
         /**
          * Wire-side description of one {@code attach_layer} layer. Scalar
@@ -614,10 +708,10 @@ public record BulletS2CPacket(
      * deltas) so a dropped packet does not desynchronise subsequent updates;
      * a periodic {@link #forceFullSync()} corrects any residual drift.</p>
      *
-     * <p><b>Wire compression (审查优化 P3):</b> the id is written as a
-     * varint and the six position/direction components as {@code float}
-     * (≈26 bytes per entry instead of 52). The record fields stay
-     * {@code double} so server-side diffing keeps full precision.</p>
+     * <p><b>Wire precision (审查 R3):</b> the id is written as a varint;
+     * positions are written as {@code double} to match full-entry precision
+     * at far coordinates, while the unit-vector direction components stay
+     * {@code float} (sub-pixel precision in [-1, 1]).</p>
      *
      * @param bulletId unique-per-dimension bullet id matching the initial
      *                 {@link FullBulletEntry}
@@ -627,6 +721,9 @@ public record BulletS2CPacket(
      * @param dirX     current normalized direction x component
      * @param dirY     current normalized direction y component
      * @param dirZ     current normalized direction z component
+     * @param extra    third-party extension bytes contributed via
+     *                 {@link BulletSyncExtraRegistry} (审查 E4); an empty
+     *                 array when no provider contributes data
      */
     public record DeltaBulletEntry(
             int bulletId,
@@ -635,6 +732,17 @@ public record BulletS2CPacket(
             double posZ,
             double dirX,
             double dirY,
-            double dirZ) {
+            double dirZ,
+            byte[] extra) {
+
+        /**
+         * Convenience constructor without extension bytes (审查 E4):
+         * equivalent to passing an empty {@code extra} payload.
+         */
+        public DeltaBulletEntry(
+                int bulletId, double posX, double posY, double posZ,
+                double dirX, double dirY, double dirZ) {
+            this(bulletId, posX, posY, posZ, dirX, dirY, dirZ, NO_EXTRA);
+        }
     }
 }

@@ -37,13 +37,14 @@ class BulletRenderManagerTest {
     void forceFullSyncWithStyleCreatesObjectAndCachesStyle() {
         BulletRenderManager manager = BulletRenderManager.getInstance();
         FullBulletEntry entry = new FullBulletEntry(
-                7, 1.0, 2.0, 3.0, 0.0, 1.0, 0.0, -1, 42, style());
+                7, 1.0, 2.0, 3.0, 0.0, 1.0, 0.0, -1, snapshot(), 42, style());
 
         manager.handlePacket(BulletS2CPacket.fullSync(List.of(entry)));
 
         BulletRenderObject obj = manager.getRenderObject(7);
         assertNotNull(obj, "a full-sync entry carrying the full style must create a render object");
-        assertNotNull(manager.getSnapshot(7), "the shared style's snapshot must be stored per bullet");
+        assertNotNull(manager.getSnapshot(7),
+                "the per-bullet snapshot riding inline on the entry must be stored (审查 E5)");
     }
 
     @Test
@@ -52,7 +53,7 @@ class BulletRenderManagerTest {
         // First full-style transmission for style id 99 was dropped: the entry
         // carries only the (uncached) id, no payload.
         FullBulletEntry entry = new FullBulletEntry(
-                8, 1.0, 2.0, 3.0, 0.0, 1.0, 0.0, -1, 99, null);
+                8, 1.0, 2.0, 3.0, 0.0, 1.0, 0.0, -1, snapshot(), 99, null);
 
         // Must not throw (previously threw IllegalStateException).
         manager.handlePacket(BulletS2CPacket.fullSync(List.of(entry)));
@@ -68,13 +69,13 @@ class BulletRenderManagerTest {
         BulletRenderManager manager = BulletRenderManager.getInstance();
         // Client received a style-less entry for id 99 first (dropped full style).
         manager.handlePacket(BulletS2CPacket.fullSync(List.of(
-                new FullBulletEntry(8, 1.0, 2.0, 3.0, 0.0, 1.0, 0.0, -1, 99, null))));
+                new FullBulletEntry(8, 1.0, 2.0, 3.0, 0.0, 1.0, 0.0, -1, snapshot(), 99, null))));
         assertNull(manager.getRenderObject(8), "bullet starts skipped");
 
         // The next force-full-sync re-sends the full style for id 99 (~100 ticks
         // later), healing the cache and creating the render object.
         manager.handlePacket(BulletS2CPacket.fullSync(List.of(
-                new FullBulletEntry(8, 1.0, 2.0, 3.0, 0.0, 1.0, 0.0, -1, 99, style()))));
+                new FullBulletEntry(8, 1.0, 2.0, 3.0, 0.0, 1.0, 0.0, -1, snapshot(), 99, style()))));
 
         assertNotNull(manager.getRenderObject(8),
                 "the force-full-sync resend must create the previously-skipped bullet");
@@ -84,11 +85,14 @@ class BulletRenderManagerTest {
         return new BulletStyleData(
                 TEX, null, "billboard", 0.75f,
                 new Vector4f(0.1f, 0.2f, 0.3f, 0.9f),
-                List.of(),
-                new ClientBulletSnapshot(
-                        Map.of(TEX, 6.0),
-                        Map.of(),
-                        ResourceLocation.parse("modularshoot:composite_cane"),
-                        UUID.fromString("6e8a2f4a-1b2c-3d4e-5f6a-7b8c9d0e1f2a")));
+                List.of());
+    }
+
+    private static ClientBulletSnapshot snapshot() {
+        return new ClientBulletSnapshot(
+                Map.of(TEX, 6.0),
+                Map.of(),
+                ResourceLocation.parse("modularshoot:composite_cane"),
+                UUID.fromString("6e8a2f4a-1b2c-3d4e-5f6a-7b8c9d0e1f2a"));
     }
 }

@@ -42,9 +42,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       remains the authoritative fallback and must still round-trip every
  *       supported type.</li>
  *   <li><b>类型防护</b> — the fast encoder rejects values whose runtime type
- *       does not match the declared type, and the fast decoder rejects entries
- *       whose stored tag type does not match the declared type, matching the
- *       codec path contract.</li>
+ *       does not match the declared type; the fast decoder degrades a
+ *       mistyped stored entry to the type's zero value with a rate-limited
+ *       WARN instead of throwing (审查 R4 — tooltip/render/shooting reads
+ *       must never crash on foreign or corrupted state data).</li>
  * </ul>
  * </p>
  */
@@ -298,7 +299,7 @@ class StateFastCodecTest {
     }
 
     // ------------------------------------------------------------------
-    // 5. Type-mismatch / corrupt value behaviour (fixed in review 3.2)
+    // 5. Type-mismatch / corrupt value behaviour (审查 R4: 抛异常 → 降级零值)
     // ------------------------------------------------------------------
 
     @Test
@@ -309,45 +310,44 @@ class StateFastCodecTest {
     }
 
     @Test
-    void getStateValueAndDecodeStateMapAgreeOnTypeMismatch() {
-        // Declared INT but the stored value is a StringTag: the fast single-key
-        // path and the whole-map codec path must both throw IllegalStateException
-        // instead of silently coercing to zero.
+    void getStateValueAndDecodeStateMapDegradeOnTypeMismatch() {
+        // Declared INT but the stored value is a StringTag: both read paths
+        // must degrade to the zero value instead of throwing (审查 R4) so a
+        // corrupted or retyped datapack entry cannot crash tooltip reads.
         CompoundTag stateTag = new CompoundTag();
         CompoundTag entry = new CompoundTag();
         entry.putString("type", StateValueType.INT.getSerializedName());
         entry.putString("value", "corrupt");
         stateTag.put(INT_STATE.toString(), entry);
 
-        assertThrows(IllegalStateException.class,
-                () -> GunStateStorage.getStateValue(stateTag, INT_STATE, REGISTRY),
-                "single-key fast read must throw on type mismatch");
-        assertThrows(IllegalStateException.class,
-                () -> StateValueCodecs.decodeStateMap(stateTag, REGISTRY),
-                "whole-map codec path must also throw on type mismatch");
+        assertEquals(StateValueType.INT.zeroValue(),
+                GunStateStorage.getStateValue(stateTag, INT_STATE, REGISTRY),
+                "single-key fast read must degrade to the zero value on type mismatch");
+        assertEquals(StateValueType.INT.zeroValue(),
+                StateValueCodecs.decodeStateMap(stateTag, REGISTRY).get(INT_STATE),
+                "whole-map read must degrade identically on type mismatch");
     }
 
     @Test
-    void decodeEntryFastThrowsOnLongMismatch() {
+    void decodeEntryFastDegradesOnLongMismatch() {
         CompoundTag entry = new CompoundTag();
         entry.putString("value", "corrupt");
-        assertThrows(IllegalStateException.class,
-                () -> StateValueCodecs.decodeEntryFast(StateValueType.LONG, entry));
+        assertEquals(StateValueType.LONG.zeroValue(),
+                StateValueCodecs.decodeEntryFast(StateValueType.LONG, entry));
     }
 
     @Test
-    void decodeEntryFastThrowsOnCorruptUuid() {
+    void decodeEntryFastDegradesOnCorruptUuid() {
         // UUID must be an IntArrayTag of length 4: a wrong tag type or wrong
-        // length must throw rather than silently return null / garbage.
+        // length must degrade to the zero value (null) instead of throwing
+        // (审查 R4).
         CompoundTag wrongType = new CompoundTag();
         wrongType.putString("value", "not-a-uuid");
-        assertThrows(IllegalStateException.class,
-                () -> StateValueCodecs.decodeEntryFast(StateValueType.UUID, wrongType));
+        assertNull(StateValueCodecs.decodeEntryFast(StateValueType.UUID, wrongType));
 
         CompoundTag wrongLength = new CompoundTag();
         wrongLength.putIntArray("value", new int[]{1, 2, 3});
-        assertThrows(IllegalStateException.class,
-                () -> StateValueCodecs.decodeEntryFast(StateValueType.UUID, wrongLength));
+        assertNull(StateValueCodecs.decodeEntryFast(StateValueType.UUID, wrongLength));
     }
 
     @Test

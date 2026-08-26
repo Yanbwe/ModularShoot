@@ -383,6 +383,13 @@ public final class GunState {
         }
         final GunData newData = gunData.clearStateValue(stateId);
         gunStack.set(ModularShootDataComponents.GUN_DATA.get(), newData);
+        // Flag the gun for a throttled state sync, mirroring setTypedValue
+        // (审查 R8): without this the client keeps the stale cleared value
+        // until the next critical-moment sync.
+        final UUID gunInstanceUuid = gunData.gunInstanceUuid();
+        if (gunInstanceUuid != null) {
+            GunSyncThrottleManager.getInstance().markDirty(gunInstanceUuid);
+        }
     }
 
     // ------------------------------------------------------------------

@@ -83,8 +83,17 @@ public final class ModularShootPayloads {
      * {@code reload_c2s} → {@code action_c2s} is a wire-breaking change, but
      * the mod is unreleased, so no compatibility is preserved (see 设计文档
      * §动作键中立化).</p>
+     *
+     * <p>Bumped to {@code "4"} at the post-0.2.0 review batch (审查 R2–R4 /
+     * E4–E5): {@code BulletS2CPacket} wire format changed in four ways —
+     * delta entries carry double positions (far-coordinate precision), entry
+     * counts and extension lengths are bounded on decode, the per-bullet
+     * stats/traits snapshot moved from the content-addressed style payload
+     * onto the full entry, and both entry types gained an opaque
+     * third-party extension payload
+     * ({@link BulletSyncExtraRegistry}).</p>
      */
-    public static final String PROTOCOL_VERSION = "3";
+    public static final String PROTOCOL_VERSION = "4";
 
     private ModularShootPayloads() {}
 

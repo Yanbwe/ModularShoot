@@ -27,6 +27,7 @@ import org.yanbwe.modularshoot.component.PluginInstance;
 import org.yanbwe.modularshoot.datapack.RegistrationCoordinator;
 import org.yanbwe.modularshoot.plugin.EffectiveSlotService;
 import org.yanbwe.modularshoot.plugin.PluginDefinition;
+import org.yanbwe.modularshoot.plugin.PluginDefinitionProvider;
 import org.yanbwe.modularshoot.plugin.PluginExtraValueService;
 import org.yanbwe.modularshoot.plugin.PluginInstallService;
 import org.yanbwe.modularshoot.plugin.PluginLockService;
@@ -64,16 +65,17 @@ import org.yanbwe.modularshoot.variant.VariantContributor;
 import org.yanbwe.modularshoot.variant.VariantContributorRegistry;
 
 /**
- * Unified facade entry point for the ModularShoot plugin system.
+ * Unified facade entry point for the ModularShoot framework.
  *
  * <p>This class is the single public API surface that other mods should use to
- * interact with the framework's plugin functionality. Every method is static
- * and delegates to the dedicated M2 service classes
+ * interact with the framework — guns, plugins, bullets, states, traits,
+ * damage and shooting hooks alike (审查 O2: 类级注释修正，门面实际覆盖全部子系统). Every
+ * method is static and delegates to the dedicated service classes
  * ({@link PluginUninstallService}, {@link PluginLockService},
  * {@link PluginValidationService}, {@link PluginRegistry},
- * {@link PluginTypeRegistry}) or the M1 {@link GunRegistry}. No business logic
- * lives here; the facade only validates inputs at the boundary and forwards the
- * call to the appropriate service.</p>
+ * {@link PluginTypeRegistry}, {@link GunRegistry} and friends). No business
+ * logic lives here; the facade only validates inputs at the boundary and
+ * forwards the call to the appropriate service.</p>
  *
  * <p>The class is not instantiable. Callers reference methods directly, e.g.:</p>
  * <pre>{@code
@@ -83,6 +85,35 @@ import org.yanbwe.modularshoot.variant.VariantContributorRegistry;
  * ModularShootAPI.getInstalledPlugins(gun);
  * ModularShootAPI.uninstallPlugin(gun, uuid, player, false, true);
  * }</pre>
+ *
+ * <h2>Extension-point catalogue (审查 O8)</h2>
+ * <p>Third-party extension points, grouped by subsystem:</p>
+ * <ul>
+ *   <li><b>Registration</b> — {@link #registerGun},
+ *       {@link #registerGunDefinitionProvider}, {@link #registerPlugin},
+ *       {@link #registerPluginDefinitionProvider},
+ *       {@link #registerGunItem(ItemLike, ResourceLocation)},
+ *       {@link #registerPluginItem(ItemLike, ResourceLocation)}.</li>
+ *   <li><b>Shooting pipeline</b> — {@link #registerShootPredicate}
+ *       (cancelable pre-shot gate), {@link #registerShootEffect}
+ *       (per-pellet snapshot mutation); the {@code PreShootEvent} /
+ *       {@code PostShootEvent} game-bus events for observation/cancellation.</li>
+ *   <li><b>Plugin lifecycle</b> — {@link #registerPluginValidator} plus the
+ *       {@code Pre/PostPluginInstallEvent} and {@code Pre/PostPluginUninstallEvent}
+ *       game-bus events (pre-events are cancelable; the install pre-event
+ *       exposes the selected slot type and a custom cancel reason).</li>
+ *   <li><b>Trait runtime hooks</b> — {@link #registerTraitHook} (onTick /
+ *       onHit / onBlockHit / onExpire / onRemove; dispatched only for
+ *       bullets carrying the trait).</li>
+ *   <li><b>Bullets &amp; variants</b> — {@link #fireBullet},
+ *       {@link #registerVariantContributor},
+ *       {@link org.yanbwe.modularshoot.network.BulletSyncExtraRegistry#register}
+ *       (per-bullet sync extension bytes), {@code ClientBulletHitEvent}.</li>
+ *   <li><b>Damage</b> — {@link #registerDamageHandler}.</li>
+ *   <li><b>Visuals</b> —
+ *       {@link org.yanbwe.modularshoot.client.render.DynamicOutlineTintRegistry#register}
+ *       (dynamic gun-outline tinting).</li>
+ * </ul>
  *
  * <h2>Parameter validation</h2>
  * <p>Required (non-{@code null}) parameters are validated with
@@ -631,6 +662,45 @@ public final class ModularShootAPI {
     }
 
     /**
+     * Registers a plugin definition via the Java API (审查 E1 — 与枪械侧
+     * {@link #registerGun} 对称的插件写入通道).
+     *
+     * <p>Delegates to {@link PluginRegistry#registerPlugin}. Must be called
+     * during mod initialisation (before datapack loading begins). The
+     * registered id is marked with the framework's registration coordinator
+     * so that any later datapack JSON attempting to register the same id is
+     * rejected with a {@code WARN}. Java-API-registered entries survive
+     * {@code /reload} and take priority over datapack entries with the same
+     * id.</p>
+     *
+     * @param pluginId   the plugin definition id, e.g.
+     *                   {@code mypack:rapid_affix}; must not be {@code null}
+     * @param definition the plugin definition; must not be {@code null}
+     */
+    public static void registerPlugin(ResourceLocation pluginId, PluginDefinition definition) {
+        Objects.requireNonNull(pluginId, "pluginId");
+        Objects.requireNonNull(definition, "definition");
+        PluginRegistry.registerPlugin(pluginId, definition);
+    }
+
+    /**
+     * Registers a dynamic plugin definition provider (审查 E1 — 与枪械侧
+     * {@link #registerGunDefinitionProvider} 对称).
+     *
+     * <p>Delegates to {@link PluginRegistry#registerPluginDefinitionProvider}.
+     * The provider is consulted by {@link PluginRegistry#getPlugin} after the
+     * Java API map and before the datapack registry, enabling definitions
+     * computed at query time (programmatic loot affixes etc.). Registration
+     * is process-wide and survives {@code /reload}.</p>
+     *
+     * @param provider the provider to register; must not be {@code null}
+     */
+    public static void registerPluginDefinitionProvider(PluginDefinitionProvider provider) {
+        Objects.requireNonNull(provider, "provider");
+        PluginRegistry.registerPluginDefinitionProvider(provider);
+    }
+
+    /**
      * Looks up a plugin definition by id in the
      * {@code modularshoot:plugins} registry.
      *
@@ -783,14 +853,13 @@ public final class ModularShootAPI {
      * so a {@code null} result before attachment is expected.</p>
      *
      * @param gun the stack to inspect; must not be {@code null}
-     * @return the gun definition id, or {@code null} when the stack has no
-     *         component
+     * @return the gun definition id, or empty when the stack has no
+     *         component (审查 O2: 与 getPluginId 等查询统一为 Optional 风格)
      */
-    @Nullable
-    public static ResourceLocation getGunId(ItemStack gun) {
+    public static Optional<ResourceLocation> getGunId(ItemStack gun) {
         Objects.requireNonNull(gun, "gun");
         GunData gunData = gun.get(ModularShootDataComponents.GUN_DATA.get());
-        return gunData == null ? null : gunData.gunId();
+        return gunData == null ? Optional.empty() : Optional.of(gunData.gunId());
     }
 
     /**
@@ -993,17 +1062,16 @@ public final class ModularShootAPI {
      * @param gun    the gun item stack; must not be {@code null}
      * @param player the player context used to resolve the runtime registry;
      *               must not be {@code null}
-     * @return a {@link GunState} instance, or {@code null} when the stack is
-     *         not a gun
+     * @return a {@link GunState} instance, or empty when the stack is
+     *         not a gun (审查 O2: 与其余查询统一为 Optional 风格)
      */
-    @Nullable
-    public static GunState getState(ItemStack gun, Player player) {
+    public static Optional<GunState> getState(ItemStack gun, Player player) {
         Objects.requireNonNull(gun, "gun");
         Objects.requireNonNull(player, "player");
         if (!GunRecognition.isGun(gun, player.registryAccess())) {
-            return null;
+            return Optional.empty();
         }
-        return GunState.of(gun, player);
+        return Optional.of(GunState.of(gun, player));
     }
 
     /**

@@ -95,6 +95,18 @@ public final class BulletRenderObject {
      */
     private long expectedSpanMillis = DEFAULT_SPAN_MILLIS;
 
+    /** Shared empty extension payload sentinel (审查 E4). */
+    private static final byte[] NO_EXTRA = new byte[0];
+
+    /**
+     * Third-party sync extension payload carried by the last full/delta
+     * entry (审查 E4 — see
+     * {@link org.yanbwe.modularshoot.network.BulletSyncExtraRegistry}).
+     * Consumers split it with
+     * {@link org.yanbwe.modularshoot.network.BulletSyncExtraRegistry#split(byte[])}.
+     */
+    private byte[] extra = NO_EXTRA;
+
     /**
      * @param bulletId      unique-per-dimension bullet id, matching the server BulletRecord
      * @param position      initial world position
@@ -129,6 +141,28 @@ public final class BulletRenderObject {
     /** Returns the immutable bullet id correlating with the server BulletRecord. */
     public int getBulletId() {
         return bulletId;
+    }
+
+    /**
+     * Returns the third-party sync extension payload from the last applied
+     * full/delta entry (审查 E4); an empty array when no provider
+     * contributes data. Split it via
+     * {@link org.yanbwe.modularshoot.network.BulletSyncExtraRegistry#split(byte[])}.
+     *
+     * @return the extension payload; never {@code null}
+     */
+    public byte[] getExtra() {
+        return extra;
+    }
+
+    /**
+     * Replaces the third-party sync extension payload (审查 E4); a
+     * {@code null} argument restores the empty payload.
+     *
+     * @param extra the new extension payload
+     */
+    public void setExtra(@Nullable byte[] extra) {
+        this.extra = extra == null ? NO_EXTRA : extra;
     }
 
     /** Returns the current world position. */

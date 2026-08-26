@@ -25,9 +25,12 @@ import org.joml.Vector4f;
  * <p><b>Registration:</b> call {@link #register} during client
  * initialisation (e.g. in the {@code Dist.CLIENT} mod constructor). The map
  * is a {@link ConcurrentHashMap}, so registration is safely published to the
- * render thread that reads it. {@link #resolve} is called on the render
- * thread for every gun draw; it returns the first provider whose plugin id
- * appears in the gun's installed-plugin list (install order).</p>
+ * render thread that reads it. The registration-time texture cache
+ * invalidation is deferred to the render thread when necessary because
+ * GPU-texture release must not run on the mod-init thread (审查 R7).
+ * {@link #resolve} is called on the render thread for every gun draw; it
+ * returns the first provider whose plugin id appears in the gun's
+ * installed-plugin list (install order).</p>
  *
  * <p><b>中文说明：</b>本注册表是客户端专用。集成模组在客户端初始化时以
  * 插件 id 为键注册变色 provider，之后凡安装该插件的枪械，其描边在渲染时
@@ -108,9 +111,10 @@ public final class DynamicOutlineTintRegistry {
         // built for any cached gun carrying that plugin's outline
         // (DynamicGunTextureCache gates the mask on provider presence, 阶段 4 /
         // 任务 4.3). Invalidate the texture cache so already-composited entries
-        // lacking a mask get rebuilt with one (阶段 7 / 任务 7.1). Provider
-        // registration is rare (client init), so a wholesale clear is cheap.
-        DynamicGunTextureCache.getInstance().clear();
+        // lacking a mask get rebuilt with one (阶段 7 / 任务 7.1). The
+        // thread-safe entry point defers the GPU-texture release to the
+        // render thread when register runs on the mod-init thread (审查 R7).
+        DynamicGunTextureCache.getInstance().invalidateFromAnyThread();
         // Test-observable side-effect counter (package-private seam).
         textureCacheClearCount++;
     }

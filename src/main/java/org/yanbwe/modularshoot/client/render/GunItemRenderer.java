@@ -227,11 +227,12 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer imple
             int light,
             int overlay) {
 
-        ResourceLocation gunId = ModularShootAPI.getGunId(stack);
-        if (gunId == null) {
+        Optional<ResourceLocation> gunIdOpt = ModularShootAPI.getGunId(stack);
+        if (gunIdOpt.isEmpty()) {
             DynamicItemModelRenderer.renderMissing(stack, context, poseStack, bufferSource, light, overlay);
             return;
         }
+        ResourceLocation gunId = gunIdOpt.get();
 
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.level == null) {
@@ -263,8 +264,7 @@ public final class GunItemRenderer extends BlockEntityWithoutLevelRenderer imple
         }
 
         DynamicGunTextureCache.TextureHandle handle = DynamicGunTextureCache.getInstance().getOrCreate(
-                new DynamicGunTextureCache.Key(
-                        renderTexture, renderData.overlays(), renderData.gunOutlines(), modifierVersion),
+                renderData.textureKey(renderTexture, modifierVersion),
                 renderData.gunOutlinePluginIds());
         // Dynamic outline pass: when any installed outline-carrying plugin has
         // a registered per-frame tint provider, the white outline mask is

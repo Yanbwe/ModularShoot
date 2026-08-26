@@ -11,9 +11,18 @@ import org.jetbrains.annotations.Nullable;
  * Fired after a plugin has been successfully removed from a gun.
  *
  * <p>This event is posted on the {@code NeoForge.EVENT_BUS} (game bus) after
- * the plugin has been removed from the gun's data component and after the
- * {@code ATTRIBUTE_MODIFIERS} component has been refreshed, so listeners
- * observe the gun in its final, post-uninstall state.</p>
+ * the plugin has been removed from the gun's data component, so listeners
+ * observe the gun's {@code gun_data} (plugins/version/state) in its final,
+ * post-uninstall state.</p>
+ *
+ * <p><strong>Attribute-refresh timing (审查 O6, doc fix):</strong> for a
+ * <em>single</em> uninstall the {@code ATTRIBUTE_MODIFIERS} component is
+ * refreshed before this event fires. In a <em>batch</em> uninstall
+ * ({@code uninstallByUuids}) the refresh is deferred to the end of the batch
+ * so it runs exactly once; mid-batch events therefore observe a stale
+ * {@code ATTRIBUTE_MODIFIERS} component. Listeners that depend on the
+ * modifier component must tolerate this (read {@code gun_data} instead, or
+ * recompute lazily).</p>
  *
  * <p>The {@code player} parameter may be {@code null} when the uninstall was
  * triggered by a non-player source (e.g. a command, a datapack action, or

@@ -187,45 +187,47 @@ public final class StateValueCodecs {
      * {@code "value"} field is absent the type's zero value is returned
      * (used for {@code null} UUID).</p>
      *
-     * <p>When the {@code "value"} field is present but its NBT tag type does
-     * not match the declared type (or is not a valid UUID
-     * {@link IntArrayTag} of length 4), an {@link IllegalStateException} is
-     * thrown — the same contract as the codec path
-     * ({@link #decodeValue} / {@link #decodeStateMap}) — instead of silently
-     * coercing the value to a zero / default. Only a <em>missing</em>
-     * {@code "value"} field returns the type's zero value.</p>
+     * <p><strong>Degradation contract (审查 R4):</strong> when the
+     * {@code "value"} field is present but its NBT tag type does not match
+     * the declared type (a datapack author changed {@code value_type} on an
+     * existing id, or the NBT is corrupted), this method degrades to the
+     * type's zero value with a rate-limited WARN instead of throwing — the
+     * read paths (tooltip / render / shooting) must never crash on foreign
+     * or corrupted state data. Only a <em>missing</em> {@code "value"} field
+     * returns the zero value silently.</p>
      *
      * @param type     the declared value type
      * @param entryTag the per-entry compound to read from
      * @return the decoded value, or the type's zero value when the
-     *         {@code "value"} field is absent
-     * @throws IllegalStateException if the {@code "value"} field is present
-     *         but its tag type does not match the declared type
+     *         {@code "value"} field is absent or mistyped
      */
     @Nullable
     public static Object decodeEntryFast(StateValueType type, CompoundTag entryTag) {
+        return decodeEntryFast(type, entryTag, null);
+    }
+
+    /**
+     * Id-aware variant of {@link #decodeEntryFast(StateValueType, CompoundTag)}:
+     * the state id feeds the rate-limited mismatch WARN so operators can
+     * locate the offending state definition.
+     *
+     * @param type     the declared value type
+     * @param entryTag the per-entry compound to read from
+     * @param stateId  the state id being read, or {@code null} for a generic
+     *                 warning bucket
+     * @return the decoded value, or the type's zero value when the
+     *         {@code "value"} field is absent or mistyped
+     */
+    @Nullable
+    public static Object decodeEntryFast(
+            StateValueType type, CompoundTag entryTag, @Nullable ResourceLocation stateId) {
         if (!entryTag.contains(VALUE_KEY)) {
             return type.zeroValue();
         }
         final Tag value = entryTag.get(VALUE_KEY);
-        switch (type) {
-            case INT -> requireTagType(value, Tag.TAG_INT, type);
-            case LONG -> requireTagType(value, Tag.TAG_LONG, type);
-            case DOUBLE -> requireTagType(value, Tag.TAG_DOUBLE, type);
-            case FLOAT -> requireTagType(value, Tag.TAG_FLOAT, type);
-            case BOOLEAN -> requireTagType(value, Tag.TAG_BYTE, type);
-            case STRING -> requireTagType(value, Tag.TAG_STRING, type);
-            case UUID -> {
-                // UUID zero value is null and is stored by omitting the
-                // "value" field, so any present value must be a real UUID: a
-                // 4-int IntArrayTag (UUIDUtil wire format).
-                if (value.getId() != Tag.TAG_INT_ARRAY
-                        || ((IntArrayTag) value).getAsIntArray().length != 4) {
-                    throw decodeException(type,
-                            "expected a UUID IntArrayTag of length 4 but got "
-                                    + tagTypeName(value));
-                }
-            }
+        if (!isDecodeTagMatch(type, value)) {
+            StateWarnLogger.warnDecodeTagMismatch(stateId, type, tagTypeName(value));
+            return type.zeroValue();
         }
         return switch (type) {
             case INT -> entryTag.getInt(VALUE_KEY);
@@ -239,18 +241,25 @@ public final class StateValueCodecs {
     }
 
     /**
-     * Throws an {@link IllegalStateException} when the tag's type does not
-     * match the expected NBT type for the declared state value type.
+     * Returns whether the stored value tag's NBT type matches the declared
+     * state value type. For {@link StateValueType#UUID} the value must be an
+     * {@link IntArrayTag} of length 4 ({@code UUIDUtil} wire format).
      *
-     * @param value    the stored value tag
-     * @param expected the expected NBT type id (see {@link Tag})
-     * @param type     the declared state value type, used only for messaging
+     * @param type  the declared value type
+     * @param value the stored value tag
+     * @return {@code true} when the tag can be safely read as the declared type
      */
-    private static void requireTagType(Tag value, int expected, StateValueType type) {
-        if (value.getId() != expected) {
-            throw decodeException(type,
-                    "expected " + tagTypeName(expected) + " but got " + tagTypeName(value));
-        }
+    private static boolean isDecodeTagMatch(StateValueType type, Tag value) {
+        return switch (type) {
+            case INT -> value.getId() == Tag.TAG_INT;
+            case LONG -> value.getId() == Tag.TAG_LONG;
+            case DOUBLE -> value.getId() == Tag.TAG_DOUBLE;
+            case FLOAT -> value.getId() == Tag.TAG_FLOAT;
+            case BOOLEAN -> value.getId() == Tag.TAG_BYTE;
+            case STRING -> value.getId() == Tag.TAG_STRING;
+            case UUID -> value.getId() == Tag.TAG_INT_ARRAY
+                    && ((IntArrayTag) value).getAsIntArray().length == 4;
+        };
     }
 
     private static String tagTypeName(Tag value) {
@@ -357,12 +366,12 @@ public final class StateValueCodecs {
                 continue;
             }
             final StateValueType type = resolveTypeForEncode(registryAccess, stateId, value);
-            final Tag encoded = encodeValue(type, value, registryAccess);
+            // Fast branch unification (审查 O4): the whole-table encoder now
+            // shares encodeEntryFast with the single-key write path; the
+            // produced {type, value} entry is byte-identical to the codec
+            // path for well-typed values.
             final CompoundTag entryTag = new CompoundTag();
-            entryTag.putString(TYPE_KEY, type.getSerializedName());
-            if (encoded != null) {
-                entryTag.put(VALUE_KEY, encoded);
-            }
+            encodeEntryFast(entryTag, type, value);
             result.put(stateId.toString(), entryTag);
         }
         return result;
@@ -427,9 +436,11 @@ public final class StateValueCodecs {
                 continue;
             }
             final StateValueType type = definition.get().valueType();
-            final Object value = entryTag.contains(VALUE_KEY)
-                    ? decodeValue(type, entryTag.get(VALUE_KEY), registryAccess)
-                    : type.zeroValue();
+            // Fast branch unification (审查 R4/O4): the whole-table path now
+            // shares the single-key fast decoder, so both read paths have the
+            // identical degradation contract (mistyped value → zero + WARN)
+            // and the per-entry DataFixerUpper context is no longer built.
+            final Object value = decodeEntryFast(type, entryTag, stateId);
             result.put(stateId, value);
         }
         return result;

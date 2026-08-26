@@ -304,8 +304,9 @@ public final class BulletRenderManager {
                                 isLayerTintWhite(l) ? null : new Vector4f(
                                         l.tintR(), l.tintG(), l.tintB(), l.tintA())))
                         .toList());
+        obj.setExtra(entry.extra());
         renderObjects.put(entry.bulletId(), obj);
-        snapshots.put(entry.bulletId(), style.snapshot());
+        snapshots.put(entry.bulletId(), entry.snapshot());
     }
 
     /**
@@ -346,6 +347,10 @@ public final class BulletRenderManager {
         // bullet keeps moving; only the visual style may lag a sync behind.
         obj.updatePosition(new Vec3(entry.posX(), entry.posY(), entry.posZ()));
         obj.setDirection(new Vec3(entry.dirX(), entry.dirY(), entry.dirZ()));
+        obj.setExtra(entry.extra());
+        // The snapshot is per-bullet data riding inline on the entry (审查
+        // E5): update it even when the visual style is temporarily missing.
+        snapshots.put(entry.bulletId(), entry.snapshot());
         BulletStyleData style = resolveStyle(entry);
         if (style == null) {
             // Missing style (dropped first full transmission) — keep existing
@@ -366,7 +371,6 @@ public final class BulletRenderManager {
                         isLayerTintWhite(l) ? null : new Vector4f(
                                 l.tintR(), l.tintG(), l.tintB(), l.tintA())))
                 .toList());
-        snapshots.put(entry.bulletId(), style.snapshot());
     }
 
     /**
@@ -420,6 +424,7 @@ public final class BulletRenderManager {
     private void updateRenderObjectDelta(BulletRenderObject obj, DeltaBulletEntry entry) {
         obj.updatePosition(new Vec3(entry.posX(), entry.posY(), entry.posZ()));
         obj.setDirection(new Vec3(entry.dirX(), entry.dirY(), entry.dirZ()));
+        obj.setExtra(entry.extra());
     }
 
     /**

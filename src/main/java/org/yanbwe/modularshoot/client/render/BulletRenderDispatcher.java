@@ -60,7 +60,7 @@ import org.yanbwe.modularshoot.network.ClientBulletSnapshot;
  *             camera-facing quad, binds a custom RenderType (depth test,
  *             no depth write, alpha blend, no lighting), samples the texture
  *             (设计文档 §渲染流程, line 1240)</li>
- *         <li>{@code 3d} → Model3DRenderer (子任务 10, TODO)</li>
+ *         <li>{@code 3d} → Model3DRenderer </li>
  *       </ul>
  *   </li>
  * </ol>

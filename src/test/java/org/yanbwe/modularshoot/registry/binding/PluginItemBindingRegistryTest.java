@@ -102,6 +102,25 @@ class PluginItemBindingRegistryTest {
     }
 
     @Test
+    void reRegisteringKeyWithDifferentItemRepairsStaleIndex() {
+        // 审查 R5 回归：同一 key 换绑不同物品时，旧物品的反向索引不得残留。
+        ResourceLocation key = ResourceLocation.parse("mypack:r5_moving_binding");
+        ResourceLocation itemA = ResourceLocation.parse("minecraft:gold_nugget");
+        ResourceLocation itemB = ResourceLocation.parse("minecraft:blaze_rod");
+        ResourceLocation pluginA = ResourceLocation.parse("mypack:r5_plugin_a");
+        ResourceLocation pluginB = ResourceLocation.parse("mypack:r5_plugin_b");
+
+        PluginItemBindingRegistry.registerBinding(key, new PluginItemBinding(itemA, pluginA));
+        PluginItemBindingRegistry.registerBinding(key, new PluginItemBinding(itemB, pluginB));
+
+        assertEquals(Optional.of(pluginB),
+                PluginItemBindingRegistry.getBoundPluginId(RegistryAccess.EMPTY, itemB),
+                "新绑定的物品必须解析到新目标");
+        assertTrue(PluginItemBindingRegistry.getBoundPluginId(RegistryAccess.EMPTY, itemA).isEmpty(),
+                "旧物品的反向索引必须被清理（审查 R5）");
+    }
+
+    @Test
     void buildDatapackIndexPicksSmallestKeyPerItem() {
         Map<ResourceLocation, PluginItemBinding> entries = Map.of(
                 ResourceLocation.parse("mypack:z_binding"),

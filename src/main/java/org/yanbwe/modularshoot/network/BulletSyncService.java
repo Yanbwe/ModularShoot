@@ -16,6 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector4f;
 import org.yanbwe.modularshoot.ModularShoot;
+import org.yanbwe.modularshoot.config.ModularShootCommonConfig;
 import org.yanbwe.modularshoot.bullet.BulletManager;
 import org.yanbwe.modularshoot.bullet.BulletRecord;
 import org.yanbwe.modularshoot.bullet.BulletSnapshot;
@@ -71,7 +72,8 @@ import net.neoforged.neoforge.network.PacketDistributor;
  * </ul>
  *
  * <h2>Force-full-sync (drift recovery)</h2>
- * <p>Every {@link #FULL_SYNC_INTERVAL_TICKS} ticks the service sends a
+ * <p>Every {@link #DEFAULT_FULL_SYNC_INTERVAL_TICKS} ticks (configurable via
+ * {@code modularshoot-common.toml}, 审查 O7) the service sends a
  * {@link BulletS2CPacket#fullSync(List) force-full-sync packet} instead of a
  * delta packet. The client clears its render-object map and rebuilds from
  * the full entries, recovering from any dropped delta packets. This also
@@ -121,11 +123,13 @@ public final class BulletSyncService {
     private static final int NO_SHOOTER = -1;
 
     /**
-     * Interval (in ticks) between forced full-sync packets, used to recover
-     * from dropped delta packets and prevent client state drift. 100 ticks =
-     * 5 seconds.
+     * Default interval (in ticks) between forced full-sync packets, used to
+     * recover from dropped delta packets and prevent client state drift. The
+     * live value is read from
+     * {@link ModularShootCommonConfig#getFullSyncIntervalTicks()} (审查 O7).
+     * Default 100 ticks = 5 seconds.
      */
-    private static final long FULL_SYNC_INTERVAL_TICKS = 100L;
+    static final long DEFAULT_FULL_SYNC_INTERVAL_TICKS = 100L;
 
     /**
      * Change detection and per-tick update frequency are delegated to the pure
@@ -145,8 +149,8 @@ public final class BulletSyncService {
 
     /**
      * Per-player tick counter for the last forced full-sync. When
-     * {@code currentTick - lastForceTick >= FULL_SYNC_INTERVAL_TICKS} a
-     * full-sync packet is sent instead of a delta packet.
+     * {@code currentTick - lastForceTick >= fullSyncIntervalTicks} (config,
+     * 审查 O7) a full-sync packet is sent instead of a delta packet.
      */
     private static final Map<ServerPlayer, Long> LAST_FORCE_FULL_SYNC_TICK =
             new ConcurrentHashMap<>();
@@ -332,7 +336,8 @@ public final class BulletSyncService {
      */
     private static boolean shouldForceFullSync(ServerPlayer player, long currentTick) {
         Long lastSync = LAST_FORCE_FULL_SYNC_TICK.get(player);
-        if (lastSync == null || currentTick - lastSync >= FULL_SYNC_INTERVAL_TICKS) {
+        if (lastSync == null
+                || currentTick - lastSync >= ModularShootCommonConfig.getFullSyncIntervalTicks()) {
             LAST_FORCE_FULL_SYNC_TICK.put(player, currentTick);
             return true;
         }
@@ -573,7 +578,11 @@ public final class BulletSyncService {
             } else if (stateChanged(bullet, prevState)
                     && BulletDeltaQuantizer.isUpdateEligible(
                             horizontalDistanceToPlayer(bullet, player),
-                            currentTick, prevState.lastSentTick())) {
+                            currentTick, prevState.lastSentTick(),
+                            ModularShootCommonConfig.getCloseDistance(),
+                            ModularShootCommonConfig.getMidDistance(),
+                            ModularShootCommonConfig.getMidIntervalTicks(),
+                            ModularShootCommonConfig.getFarIntervalTicks())) {
                 updatedBullets.add(toDeltaBulletEntry(bullet));
                 playerStates.put(bulletId, toBulletState(bullet, currentTick));
             }
@@ -733,19 +742,23 @@ public final class BulletSyncService {
                 pos.x, pos.y, pos.z,
                 dir.x, dir.y, dir.z,
                 resolveShooterEntityId(bullet, level),
+                toClientBulletSnapshot(bullet.getSnapshot()),
                 ref.styleId(),
-                ref.style());
+                ref.style(),
+                BulletSyncExtraRegistry.collect(bullet));
     }
 
     /**
-     * Builds the content-addressed flight-invariant style payload
-     * {@link BulletStyleData} for a bullet: the composed visual style (texture /
-     * model / render mode / scale / tint / attach layers) plus the client-side
-     * snapshot projection (stats / traits / gun id). Player-independent and
-     * shared per tick via {@code styleDataCache}. The per-bullet shooter is
-     * deliberately excluded (审查修复): it is carried inline by
-     * {@link BulletS2CPacket.FullBulletEntry#shooterEntityId()}, so the same
-     * visual style can be shared across different shooters via one wire id.
+     * Builds the content-addressed flight-invariant <em>visual</em> style
+     * payload {@link BulletStyleData} for a bullet: the composed visual style
+     * (texture / model / render mode / scale / tint / attach layers).
+     * Player-independent and shared per tick via {@code styleDataCache}. The
+     * per-bullet shooter and the stats/traits snapshot are deliberately
+     * excluded (审查 E5 / 审查修复): the shooter is carried inline by
+     * {@link BulletS2CPacket.FullBulletEntry#shooterEntityId()} and the
+     * snapshot by {@link BulletS2CPacket.FullBulletEntry#snapshot()}, so the
+     * same visual style can be shared across different shooters and
+     * stat-varying bullets via one wire id.
      *
      * <p>As of the modifier-stacking redesign (设计规格 §2.1 / §4.3), the visual
      * style is <em>cached</em> on the {@link BulletRecord} by whichever
@@ -762,9 +775,7 @@ public final class BulletSyncService {
      * @return the flight-invariant style payload
      */
     private static BulletStyleData buildBulletStyleData(BulletRecord bullet, Level level) {
-        BulletSnapshot snapshot = bullet.getSnapshot();
         ComposedBulletStyle composed = bullet.getComposedStyle();
-        ClientBulletSnapshot clientSnapshot = toClientBulletSnapshot(snapshot);
         // base texture/model: only one is non-null per render mode.
         BulletStyle.RenderMode baseMode = composed.base().renderMode();
         @Nullable ResourceLocation baseTexture =
@@ -787,8 +798,7 @@ public final class BulletSyncService {
                                 l.offsetX(), l.offsetY(), l.offsetZ(),
                                 l.scale(),
                                 l.tint().x, l.tint().y, l.tint().z, l.tint().w))
-                        .toList(),
-                clientSnapshot);
+                        .toList());
     }
 
     /**
@@ -853,7 +863,8 @@ public final class BulletSyncService {
         return new BulletS2CPacket.DeltaBulletEntry(
                 bullet.getBulletId(),
                 pos.x, pos.y, pos.z,
-                dir.x, dir.y, dir.z);
+                dir.x, dir.y, dir.z,
+                BulletSyncExtraRegistry.collect(bullet));
     }
 
     /**
