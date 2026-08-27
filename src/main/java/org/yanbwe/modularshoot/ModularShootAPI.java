@@ -42,6 +42,7 @@ import org.yanbwe.modularshoot.registry.binding.GunItemBinding;
 import org.yanbwe.modularshoot.registry.binding.GunItemBindingRegistry;
 import org.yanbwe.modularshoot.registry.binding.PluginItemBinding;
 import org.yanbwe.modularshoot.registry.binding.PluginItemBindingRegistry;
+import org.yanbwe.modularshoot.registry.gun.AttributeMount;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunDefinitionProvider;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
@@ -998,6 +999,33 @@ public final class ModularShootAPI {
         Objects.requireNonNull(stack, "stack");
         Objects.requireNonNull(access, "access");
         return GunRecognition.resolveGunId(stack, access);
+    }
+
+    /**
+     * Returns the declared {@link AttributeMount} of a gun stack.
+     *
+     * <p>Resolves the gun definition id via {@link #resolveGunId} and looks up
+     * the current {@link GunDefinition} in the {@code modularshoot:guns}
+     * registry, then reads the mount from the definition. Returns
+     * {@link Optional#empty()} when the stack is not a gun or its definition
+     * is missing.</p>
+     *
+     * <p>Player-side semantics: when the result is
+     * {@link AttributeMount#PLAYER}, the framework does not manage that gun's
+     * item {@code ATTRIBUTE_MODIFIERS} component; mounting responsibility is
+     * transferred to the declaring side.</p>
+     *
+     * @param gun    the gun item stack to inspect; must not be {@code null}
+     * @param access the runtime registry view; must not be {@code null}
+     * @return the declared mount, or empty when the stack is not a gun or its
+     *         definition is missing
+     */
+    public static Optional<AttributeMount> getAttributeMount(ItemStack gun, RegistryAccess access) {
+        Objects.requireNonNull(gun, "gun");
+        Objects.requireNonNull(access, "access");
+        return resolveGunId(gun, access)
+                .flatMap(gunId -> GunRegistry.getGun(access, gunId))
+                .map(GunDefinition::attributeMount);
     }
 
     /**

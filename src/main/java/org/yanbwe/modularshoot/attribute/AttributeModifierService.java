@@ -29,6 +29,7 @@ import org.yanbwe.modularshoot.plugin.PluginRegistry;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
 import org.yanbwe.modularshoot.registry.RegistryKeyedCache;
 import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
+import org.yanbwe.modularshoot.registry.gun.AttributeMount;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 import org.yanbwe.modularshoot.util.GunRecognition;
@@ -46,6 +47,14 @@ import org.yanbwe.modularshoot.util.GunRecognition;
  * {@code LivingEntity.detectEquipmentUpdates} then mounts these modifiers onto
  * any player holding the gun in the main hand, so the framework never manages
  * player-side modifiers itself (设计文档 §系统五).
+ *
+ * <p>When a gun definition declares {@link AttributeMount#PLAYER}, the
+ * framework does <em>not</em> manage the item-side
+ * {@link DataComponents#ATTRIBUTE_MODIFIERS} component: creation and refresh
+ * both write {@link ItemAttributeModifiers#EMPTY}, clearing stale item-side
+ * modifiers left by older versions or hot reloads. Mounting responsibility is
+ * transferred to the declaring side (for example, OneGunLifetime mounts the
+ * modifier directly on the player entity).</p>
  *
  * <p>Gun base modifiers are <em>meta 驱动</em>: the service iterates every
  * entry of the {@code attribute_meta} registry and mounts one
@@ -271,11 +280,22 @@ public final class AttributeModifierService {
      * removed, use {@link #refreshModifiers} instead, which merges plugin
      * modifiers via {@link #computeAllModifiers} (设计文档 §组件刷新时机).
      *
+     * <p>When the gun definition declares
+     * {@link AttributeMount#PLAYER}, the item's
+     * {@link DataComponents#ATTRIBUTE_MODIFIERS} component is set to
+     * {@link ItemAttributeModifiers#EMPTY} instead of writing computed
+     * modifiers, so no item-side component is left for the declaring side to
+     * fight over.</p>
+     *
      * @param gunStack       the gun item stack to update (mutated)
      * @param gunDef         the gun definition supplying declared stats
      * @param registryAccess the runtime registry view
      */
     public static void applyModifiers(ItemStack gunStack, GunDefinition gunDef, RegistryAccess registryAccess) {
+        if (gunDef.attributeMount() == AttributeMount.PLAYER) {
+            gunStack.set(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.EMPTY);
+            return;
+        }
         gunStack.set(DataComponents.ATTRIBUTE_MODIFIERS, computeGunModifiers(gunDef, registryAccess));
     }
 
@@ -292,6 +312,12 @@ public final class AttributeModifierService {
      * new ones, so stale entries from removed plugins never linger
      * (设计文档 §修饰符 ID 稳定性).
      *
+     * <p>When the gun definition declares {@link AttributeMount#PLAYER}, the
+     * item's {@link DataComponents#ATTRIBUTE_MODIFIERS} component is set to
+     * {@link ItemAttributeModifiers#EMPTY}, clearing any stale item-side
+     * modifiers left by an older definition or a hot reload that switched the
+     * gun to the player side.</p>
+     *
      * <p>When the gun definition can no longer be found (e.g. the datapack was
      * removed), the component is reset to {@link ItemAttributeModifiers#EMPTY}
      * so stale modifiers are cleared rather than left dangling.
@@ -306,8 +332,13 @@ public final class AttributeModifierService {
         }
         Optional<GunDefinition> gunDef = GunRegistry.getGun(registryAccess, gunData.gunId());
         if (gunDef.isPresent()) {
-            gunStack.set(DataComponents.ATTRIBUTE_MODIFIERS,
-                    computeAllModifiers(gunDef.get(), gunData, registryAccess));
+            GunDefinition def = gunDef.get();
+            if (def.attributeMount() == AttributeMount.PLAYER) {
+                gunStack.set(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.EMPTY);
+            } else {
+                gunStack.set(DataComponents.ATTRIBUTE_MODIFIERS,
+                        computeAllModifiers(def, gunData, registryAccess));
+            }
         } else {
             gunStack.set(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.EMPTY);
         }
