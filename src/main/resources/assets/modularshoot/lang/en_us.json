@@ -54,6 +54,7 @@
   "modularshoot.configuration.nearTranslucency.minOpacity": "Minimum Opacity",
   "modularshoot.configuration.nearTranslucency.minOpacity.tooltip": "Opacity at distance 0; set to 1.0 to effectively disable the fade.",
   "modularshoot.tooltip.attribute_header": "Attributes:",
+  "modularshoot.tooltip.attribute_holder_note": "Values based on holder",
   "modularshoot.tooltip.trait_header": "Traits:",
   "modularshoot.tooltip.state_header": "States:",
   "modularshoot.tooltip.plugin_header": "Plugins:",

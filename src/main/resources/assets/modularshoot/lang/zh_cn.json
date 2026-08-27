@@ -54,6 +54,7 @@
   "modularshoot.configuration.nearTranslucency.minOpacity": "最小不透明度",
   "modularshoot.configuration.nearTranslucency.minOpacity.tooltip": "子弹紧贴摄像机（距离 0）时的不透明度，设 1.0 等效关闭淡出。",
   "modularshoot.tooltip.attribute_header": "属性:",
+  "modularshoot.tooltip.attribute_holder_note": "数值以持有者为准",
   "modularshoot.tooltip.trait_header": "特性:",
   "modularshoot.tooltip.state_header": "状态:",
   "modularshoot.tooltip.plugin_header": "插件:",

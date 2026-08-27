@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **Gun definitions can declare an attribute mount**: `attribute_mount` accepts `item` / `player`; player-side guns no longer carry item attribute modifier components, and attribute mounting is delegated to the declaring side.
+- **Player-side tooltip attribute bar**: final values are read from the attribute holder; when no holder is available, base values are shown with a "Values based on holder" note.
+
 ## [0.3.0] - 2026-08-26
 
 ### Breaking Changes
