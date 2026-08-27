@@ -28,6 +28,10 @@ import org.jetbrains.annotations.Nullable;
  *   <li>{@code texture_scale} — optional, defaults to {@code auto}. Controls
  *       whether the rendered geometry scales with the texture resolution
  *       ({@code auto}) or stays fixed in the 16×16 unit grid ({@code fixed}).</li>
+ *   <li>{@code attribute_mount} — optional; {@code item} (default) /
+ *       {@code player}; {@code player} means the framework does not manage the
+ *       gun's item attribute modifier component, transferring the mounting
+ *       responsibility to the declaring side.</li>
  *   <li>{@code stats} — attribute id → value. Bare keys (no colon) resolve
  *       to the {@code modularshoot} namespace (e.g. {@code "hit_damage"} ≡
  *       {@code "modularshoot:hit_damage"}); fully namespaced keys are kept
@@ -75,6 +79,8 @@ import org.jetbrains.annotations.Nullable;
  * @param soundRange       optional audible radius override (blocks); empty
  *                         when the sound event's own range (default 16)
  *                         should be used
+ * @param attributeMount   where this gun's attributes are mounted; defaults to
+ *                         {@link AttributeMount#ITEM}
  */
 public record GunDefinition(
         Optional<String> name,
@@ -89,8 +95,28 @@ public record GunDefinition(
         Optional<BulletStyle> bulletStyle,
         Map<ResourceLocation, Double> variants,
         Map<ResourceLocation, Double> extraValues,
-        Optional<Float> soundRange
+        Optional<Float> soundRange,
+        AttributeMount attributeMount
 ) {
+    public GunDefinition(
+            Optional<String> name,
+            ResourceLocation texture,
+            Optional<ResourceLocation> shootTexture,
+            ShootTextureMode shootTextureMode,
+            TextureScaleMode textureScale,
+            Map<ResourceLocation, Double> stats,
+            Map<ResourceLocation, Boolean> traits,
+            Map<ResourceLocation, Integer> slots,
+            Map<String, ResourceLocation> sounds,
+            Optional<BulletStyle> bulletStyle,
+            Map<ResourceLocation, Double> variants,
+            Map<ResourceLocation, Double> extraValues,
+            Optional<Float> soundRange) {
+        this(name, texture, shootTexture, shootTextureMode, textureScale,
+                stats, traits, slots, sounds, bulletStyle, variants, extraValues,
+                soundRange, AttributeMount.ITEM);
+    }
+
     public static final Codec<GunDefinition> CODEC = RecordCodecBuilder.create(
             instance -> instance.group(
                     Codec.STRING.optionalFieldOf("name").forGetter(GunDefinition::name),
@@ -107,7 +133,8 @@ public record GunDefinition(
                     Codec.unboundedMap(ResourceLocation.CODEC, Codec.DOUBLE)
                             .optionalFieldOf("extra_values", Map.of())
                             .forGetter(GunDefinition::extraValues),
-                    Codec.FLOAT.optionalFieldOf("sound_range").forGetter(GunDefinition::soundRange)
+                    Codec.FLOAT.optionalFieldOf("sound_range").forGetter(GunDefinition::soundRange),
+                    AttributeMount.CODEC.optionalFieldOf("attribute_mount", AttributeMount.ITEM).forGetter(GunDefinition::attributeMount)
             ).apply(instance, GunDefinition::new)
     );
 
