@@ -70,8 +70,15 @@ import org.yanbwe.modularshoot.util.GunRecognition;
  * <strong>not</strong> query the registry, so they are safe to call before a
  * world is loaded (e.g. for creative tabs). The
  * {@link #createGunStack(ResourceLocation, RegistryAccess)} overloads
- * <em>do</em> query the registry to write the {@code ATTRIBUTE_MODIFIERS}
- * component, so they require a loaded world.</p>
+ * <em>do</em> query the registry and call
+ * {@link AttributeModifierService#applyModifiers}, so they require a loaded
+ * world. For {@code attribute_mount = item} they write the
+ * {@code ATTRIBUTE_MODIFIERS} component; for
+ * {@code attribute_mount = player} they set it to
+ * {@code ItemAttributeModifiers.EMPTY}, because mounting responsibility is
+ * transferred to the declaring side. Callers that need item-side modifiers
+ * should first query
+ * {@link org.yanbwe.modularshoot.ModularShootAPI#getAttributeMount}.</p>
  *
  * <p>All methods are static utility methods; the class is not instantiable.</p>
  */
@@ -288,24 +295,32 @@ public final class GunRegistry {
     /**
      * Creates a gun {@link ItemStack} for the given gun id with a freshly
      * generated random instance uuid and the {@code ATTRIBUTE_MODIFIERS}
-     * component pre-populated from the resolved gun definition.
+     * component handled according to the resolved gun definition.
      *
      * <p>This overload queries the registry to look up the
      * {@link GunDefinition} and, when found, calls
-     * {@link AttributeModifierService#applyModifiers} so the resulting stack
-     * has non-zero base stats (fire_rate, hit_damage, etc.). When the
-     * definition cannot be resolved (e.g. the id is not yet registered in the
-     * supplied registry view), the stack is created with {@code gun_data} but
-     * <strong>without</strong> the {@code ATTRIBUTE_MODIFIERS} component; the
-     * caller must then call
+     * {@link AttributeModifierService#applyModifiers}. For an item-mounted gun
+     * the resulting stack has non-zero base stats (fire_rate, hit_damage,
+     * etc.). For a player-mounted gun
+     * ({@code attribute_mount = player}) the framework sets
+     * {@code ATTRIBUTE_MODIFIERS} to {@code ItemAttributeModifiers.EMPTY};
+     * attribute mounting is the declaring side's responsibility. Callers that
+     * need item-side modifiers should first query
+     * {@link org.yanbwe.modularshoot.ModularShootAPI#getAttributeMount}.</p>
+     *
+     * <p>When the definition cannot be resolved (e.g. the id is not yet
+     * registered in the supplied registry view), the stack is created with
+     * {@code gun_data} but <strong>without</strong> the
+     * {@code ATTRIBUTE_MODIFIERS} component; the caller must then call
      * {@link AttributeModifierService#refreshModifiers} once the definition is
      * available.</p>
      *
      * @param gunId          the gun definition id to bind to the stack
      * @param registryAccess the runtime registry view used to resolve the
-     *                       gun definition and apply base attribute modifiers
-     * @return a new {@link ItemStack} with {@code gun_data} set and, when the
-     *         definition was found, {@code ATTRIBUTE_MODIFIERS} populated
+     *                       gun definition and apply attribute modifiers
+     * @return a new {@link ItemStack} with {@code gun_data} set; when the
+     *         definition was found, {@code ATTRIBUTE_MODIFIERS} is written
+     *         (computed for item mount, or {@code EMPTY} for player mount)
      */
     public static ItemStack createGunStack(ResourceLocation gunId, RegistryAccess registryAccess) {
         return createGunStack(gunId, UUID.randomUUID(), registryAccess);
@@ -314,7 +329,7 @@ public final class GunRegistry {
     /**
      * Creates a gun {@link ItemStack} for the given gun id with a caller
      * supplied instance uuid and the {@code ATTRIBUTE_MODIFIERS} component
-     * pre-populated from the resolved gun definition.
+     * handled according to the resolved gun definition.
      *
      * <p>Intended for tests or other scenarios that require deterministic
      * uuids. Prefer
@@ -323,17 +338,21 @@ public final class GunRegistry {
      *
      * <p>When the gun definition can be resolved from the supplied
      * {@link RegistryAccess}, {@link AttributeModifierService#applyModifiers}
-     * is called to write the base attribute modifiers onto the stack. When the
+     * is called to write the item-side modifiers for an item-mounted gun, or
+     * {@code ItemAttributeModifiers.EMPTY} for a player-mounted gun. When the
      * definition is absent the stack is created without the
      * {@code ATTRIBUTE_MODIFIERS} component; the caller must then call
-     * {@link AttributeModifierService#refreshModifiers} later.</p>
+     * {@link AttributeModifierService#refreshModifiers} later. Callers that
+     * need item-side modifiers should first query
+     * {@link org.yanbwe.modularshoot.ModularShootAPI#getAttributeMount}.</p>
      *
      * @param gunId          the gun definition id to bind to the stack
      * @param instanceUuid   the per-stack instance uuid
      * @param registryAccess the runtime registry view used to resolve the
-     *                       gun definition and apply base attribute modifiers
-     * @return a new {@link ItemStack} with {@code gun_data} set and, when the
-     *         definition was found, {@code ATTRIBUTE_MODIFIERS} populated
+     *                       gun definition and apply attribute modifiers
+     * @return a new {@link ItemStack} with {@code gun_data} set; when the
+     *         definition was found, {@code ATTRIBUTE_MODIFIERS} is written
+     *         (computed for item mount, or {@code EMPTY} for player mount)
      */
     public static ItemStack createGunStack(
             ResourceLocation gunId, UUID instanceUuid, RegistryAccess registryAccess) {
@@ -372,8 +391,9 @@ public final class GunRegistry {
      * @return a new {@link ItemStack} with {@code gun_data} set but
      *         <strong>without</strong> {@code ATTRIBUTE_MODIFIERS}
      * @deprecated Use {@link #createGunStack(ResourceLocation, RegistryAccess)}
-     *             to obtain a gun stack with attribute modifiers pre-populated,
-     *             avoiding the fire_rate=0 pitfall for third-party callers.
+     *             to obtain a gun stack with item-side attribute modifiers
+     *             handled according to its {@code AttributeMount}, avoiding the
+     *             fire_rate=0 pitfall for item-mounted third-party callers.
      */
     @Deprecated
     public static ItemStack createGunStack(ResourceLocation gunId) {
@@ -400,7 +420,8 @@ public final class GunRegistry {
      *         <strong>without</strong> {@code ATTRIBUTE_MODIFIERS}
      * @deprecated Use
      *             {@link #createGunStack(ResourceLocation, UUID, RegistryAccess)}
-     *             to obtain a gun stack with attribute modifiers pre-populated.
+     *             to obtain a gun stack with item-side attribute modifiers
+     *             handled according to its {@code AttributeMount}.
      */
     @Deprecated
     public static ItemStack createGunStack(ResourceLocation gunId, UUID instanceUuid) {
@@ -436,11 +457,14 @@ public final class GunRegistry {
      * <p>The attached component is a fresh {@link GunData#create} instance:
      * empty plugin list, {@code modifierVersion} 0 and a new random instance
      * uuid &mdash; structurally identical to a freshly created native gun.
-     * The gun definition's base attribute modifiers are written onto the
-     * stack right after attachment (same as {@link #createGunStack}): without
-     * the {@code ATTRIBUTE_MODIFIERS} component every stat reads as 0 and the
-     * fire-rate gate rejects every shot, so the bound gun would be inert until
-     * a plugin install happened to trigger a modifier refresh.</p>
+     * The gun definition's attribute modifiers are applied onto the stack right
+     * after attachment (same as {@link #createGunStack}): for item-mounted guns
+     * the {@code ATTRIBUTE_MODIFIERS} component is written; for player-mounted
+     * guns it is set to {@code ItemAttributeModifiers.EMPTY} and mounting
+     * responsibility is transferred to the declaring side. Without the item-side
+     * component an item-mounted bound gun's stats read as 0 and the fire-rate
+     * gate rejects every shot, so it would be inert until a plugin install
+     * happened to trigger a modifier refresh.</p>
      *
      * <p>Being part of the item's synced data, the component reaches clients
      * through the regular item sync (≤ 1 tick) with no extra packet.</p>
@@ -473,8 +497,10 @@ public final class GunRegistry {
         }
         stack.set(ModularShootDataComponents.GUN_DATA.get(),
                 GunData.create(gunId.get(), UUID.randomUUID()));
-        // 附加后立即写入枪械定义的基础属性修饰符（与 createGunStack 一致），
-        // 否则 fire_rate=0 无法射击、属性栏全 0（设计规格 §5.2 附加后同构）。
+        // 附加后立即按枪械定义挂载属性修饰符（与 createGunStack 一致）：item mount
+        // 写入 ATTRIBUTE_MODIFIERS，player mount 写 EMPTY 并将挂载责任交给声明方。
+        // item mount 若缺失该组件则 fire_rate=0 无法射击、属性栏全 0
+        // （设计规格 §5.2 附加后同构）。
         getGun(access, gunId.get()).ifPresent(def ->
                 AttributeModifierService.applyModifiers(stack, def, access));
     }

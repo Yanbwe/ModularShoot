@@ -57,10 +57,14 @@ public final class GunSubcommand {
         }
 
         ItemStack stack = GunRegistry.createGunStack(gunId);
-        // Apply attribute modifiers so the gun's stats (fire_rate, hit_damage, etc.)
-        // are non-zero when the player first holds it. Without this the vanilla base
-        // (0) is used for every attribute, which makes the gun unable to fire
-        // (FireRateController rejects fire_rate <= 0).
+        // Apply attribute modifiers according to the gun's AttributeMount:
+        // item-mounted guns get non-zero stats (fire_rate, hit_damage, etc.);
+        // player-mounted guns get ATTRIBUTE_MODIFIERS set to EMPTY because the
+        // declaring side owns mounting. Without the item-side component an
+        // item-mounted gun's vanilla base (0) is used for every attribute,
+        // which makes the gun unable to fire (FireRateController rejects
+        // fire_rate <= 0). Callers needing item-side modifiers should query
+        // ModularShootAPI.getAttributeMount first.
         AttributeModifierService.refreshModifiers(stack, source.getLevel().registryAccess());
         if (!player.getInventory().add(stack)) {
             player.drop(stack, false);

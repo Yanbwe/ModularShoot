@@ -196,13 +196,18 @@ public final class TooltipBuilder {
         // state + the viewing-context booleans (is-local-main-hand, is-holding-
         // gun) + the viewer's UUID, so per-player changes and main-hand switches
         // also invalidate the aggregate.
-        TooltipCacheKey key = TooltipCacheKey.of(stack, registryAccess,
-                ModifierKeys.controlDown(), ModifierKeys.altDown(), ModifierKeys.shiftDown(),
-                TooltipVersion.mutableDataVersion(stack, player));
-        List<Component> bars = shouldBypassCache(stack, registryAccess)
-                ? buildTooltipSections(stack, player, registryAccess)
-                : CACHE.getOrCompute(key,
-                        () -> buildTooltipSections(stack, player, registryAccess));
+        List<Component> bars;
+        if (shouldBypassCache(stack, registryAccess)) {
+            bars = buildTooltipSections(stack, player, registryAccess);
+        } else {
+            // TooltipCacheKey is only needed for the cached path; player-side
+            // guns bypass the aggregate cache, so defer its construction.
+            TooltipCacheKey key = TooltipCacheKey.of(stack, registryAccess,
+                    ModifierKeys.controlDown(), ModifierKeys.altDown(), ModifierKeys.shiftDown(),
+                    TooltipVersion.mutableDataVersion(stack, player));
+            bars = CACHE.getOrCompute(key,
+                    () -> buildTooltipSections(stack, player, registryAccess));
+        }
         event.getToolTip().addAll(bars);
     }
 

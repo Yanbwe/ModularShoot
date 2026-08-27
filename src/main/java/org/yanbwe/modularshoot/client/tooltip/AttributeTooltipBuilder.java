@@ -122,10 +122,10 @@ public final class AttributeTooltipBuilder {
         }
         Registry<AttributeMeta> registry = registryOpt.get();
 
-        Map<ResourceLocation, Double> computed =
-                computeAttributeValues(gunStack, viewingPlayer, registryAccess);
+        AttributeBarValues computed =
+                computeAttributeBarValues(gunStack, viewingPlayer, registryAccess);
         boolean ctrl = Screen.hasControlDown();
-        List<AttributeEntry> entries = collectEntries(registry, computed, ctrl);
+        List<AttributeEntry> entries = collectEntries(registry, computed.values(), ctrl);
         if (entries.isEmpty()) {
             return List.of();
         }
@@ -137,7 +137,7 @@ public final class AttributeTooltipBuilder {
         for (AttributeEntry entry : entries) {
             lines.add(buildLine(entry));
         }
-        if (isPlayerSideWithoutReader(gunStack, viewingPlayer, registryAccess)) {
+        if (computed.playerSideWithoutReader()) {
             lines.add(Component.translatable("modularshoot.tooltip.attribute_holder_note")
                     .withStyle(ChatFormatting.GRAY));
         }
@@ -171,31 +171,62 @@ public final class AttributeTooltipBuilder {
             ItemStack gunStack,
             @Nullable Player viewingPlayer,
             RegistryAccess registryAccess) {
+        return computeAttributeBarValues(gunStack, viewingPlayer, registryAccess).values();
+    }
+
+    /**
+     * Computes the attribute values shown on a gun's tooltip together with
+     * whether the current query is on a player-side gun that has no resolved
+     * attribute holder, i.e. the bar is showing fallback base values and
+     * should display the "以持有者为准" note.
+     *
+     * <p><b>Item side</b> delegates to {@link #computeAllAttributes}, reading
+     * final values from the stack's {@code ATTRIBUTE_MODIFIERS} component.</p>
+     *
+     * <p><b>Player side</b> resolves a {@link PlayerAttributeValueReader}
+     * through {@link PlayerAttributeSourceRegistry}; when a reader is
+     * available, every registered and non-degraded attribute is read from the
+     * holder. When no reader can be resolved, the values fall back to the gun
+     * definition's base values (declared {@code stats} first, then metadata
+     * {@code defaultValue}) and the returned record reports
+     * {@code playerSideWithoutReader = true}.</p>
+     *
+     * @param gunStack       the gun item stack
+     * @param viewingPlayer  the player viewing the tooltip, or {@code null}
+     * @param registryAccess the runtime registry view
+     * @return the computed values plus the player-side-without-reader flag;
+     *         values are empty when the gun or metadata registry cannot be
+     *         resolved
+     */
+    private static AttributeBarValues computeAttributeBarValues(
+            ItemStack gunStack,
+            @Nullable Player viewingPlayer,
+            RegistryAccess registryAccess) {
         Optional<GunDefinition> gunDefOpt = ModularShootAPI.resolveGunId(gunStack, registryAccess)
                 .flatMap(gunId -> ModularShootAPI.getGunDefinition(registryAccess, gunId));
         if (gunDefOpt.isEmpty()) {
-            return Map.of();
+            return new AttributeBarValues(Map.of(), false);
         }
         Registry<AttributeMeta> registry = registryAccess
                 .registry(ModularShootRegistries.ATTRIBUTE_META_KEY)
                 .orElse(null);
         if (registry == null) {
-            return Map.of();
+            return new AttributeBarValues(Map.of(), false);
         }
         GunDefinition gunDef = gunDefOpt.get();
         if (gunDef.attributeMount() == AttributeMount.ITEM) {
-            return computeAllAttributes(gunStack);
+            return new AttributeBarValues(computeAllAttributes(gunStack), false);
         }
 
         Optional<PlayerAttributeValueReader> readerOpt =
                 PlayerAttributeSourceRegistry.resolve(gunStack, viewingPlayer);
         if (readerOpt.isPresent()) {
             PlayerAttributeValueReader reader = readerOpt.get();
-            return computePlayerSideValues(gunDef, registry,
-                    logicalId -> reader.read(logicalId, registryAccess));
+            return new AttributeBarValues(computePlayerSideValues(gunDef, registry,
+                    logicalId -> reader.read(logicalId, registryAccess)), false);
         }
-        return computePlayerSideValues(gunDef, registry,
-                logicalId -> baseValue(gunDef, logicalId, registry.get(logicalId)));
+        return new AttributeBarValues(computePlayerSideValues(gunDef, registry,
+                logicalId -> baseValue(gunDef, logicalId, registry.get(logicalId))), true);
     }
 
     /**
@@ -224,23 +255,6 @@ public final class AttributeTooltipBuilder {
             result.put(meta.binds(), valueProvider.apply(logicalId));
         }
         return result;
-    }
-
-    /**
-     * Returns whether the current tooltip query is on a player-side gun that
-     * has no resolved attribute holder, i.e. the bar is showing fallback base
-     * values and should display the note.
-     */
-    private static boolean isPlayerSideWithoutReader(
-            ItemStack gunStack,
-            @Nullable Player viewingPlayer,
-            RegistryAccess registryAccess) {
-        Optional<GunDefinition> gunDefOpt = ModularShootAPI.resolveGunId(gunStack, registryAccess)
-                .flatMap(gunId -> ModularShootAPI.getGunDefinition(registryAccess, gunId));
-        return gunDefOpt
-                .map(gunDef -> gunDef.attributeMount() == AttributeMount.PLAYER
-                        && PlayerAttributeSourceRegistry.resolve(gunStack, viewingPlayer).isEmpty())
-                .orElse(false);
     }
 
     /**
@@ -433,6 +447,21 @@ public final class AttributeTooltipBuilder {
     // ------------------------------------------------------------------
     // Internal data carrier
     // ------------------------------------------------------------------
+
+    /**
+     * Immutable carrier for the attribute-bar computation result.
+     *
+     * @param values                  computed attribute values keyed by the
+     *                                bound vanilla attribute id
+     * @param playerSideWithoutReader whether this is a player-side gun without
+     *                                a resolved attribute holder, i.e. the bar
+     *                                is showing fallback base values
+     */
+    private record AttributeBarValues(
+            Map<ResourceLocation, Double> values,
+            boolean playerSideWithoutReader
+    ) {
+    }
 
     /**
      * Immutable carrier for a collected attribute entry's id, metadata, and

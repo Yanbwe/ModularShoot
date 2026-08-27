@@ -97,6 +97,10 @@ import org.yanbwe.modularshoot.variant.VariantContributorRegistry;
  *       {@link #registerPluginDefinitionProvider},
  *       {@link #registerGunItem(ItemLike, ResourceLocation)},
  *       {@link #registerPluginItem(ItemLike, ResourceLocation)}.</li>
+ *   <li><b>Player attribute sources</b> —
+ *       {@link #registerPlayerAttributeSourceProvider} (player-side attribute
+ *       mount resolution; see
+ *       {@link org.yanbwe.modularshoot.attribute.PlayerAttributeValueReader}).</li>
  *   <li><b>Shooting pipeline</b> — {@link #registerShootPredicate}
  *       (cancelable pre-shot gate), {@link #registerShootEffect}
  *       (per-pellet snapshot mutation); the {@code PreShootEvent} /

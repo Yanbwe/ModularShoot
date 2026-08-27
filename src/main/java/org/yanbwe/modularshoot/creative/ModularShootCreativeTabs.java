@@ -131,9 +131,13 @@ public final class ModularShootCreativeTabs {
         Set<ResourceLocation> gunIds = GunRegistry.getAllGunIds(registryAccess);
         for (ResourceLocation gunId : gunIds) {
             ItemStack gunStack = GunRegistry.createGunStack(gunId);
-            // Apply attribute modifiers so guns from the creative tab have
-            // non-zero stats (fire_rate, etc.). Without this the vanilla base
-            // (0) is used, making the gun unable to fire.
+            // Apply attribute modifiers according to the gun's AttributeMount:
+            // item-mounted guns get non-zero stats (fire_rate, etc.);
+            // player-mounted guns get ATTRIBUTE_MODIFIERS set to EMPTY because
+            // the declaring side owns mounting. Without the item-side component
+            // an item-mounted gun's vanilla base (0) is used, making it unable
+            // to fire. Callers needing item-side modifiers should query
+            // ModularShootAPI.getAttributeMount first.
             AttributeModifierService.refreshModifiers(gunStack, registryAccess);
             event.accept(gunStack);
         }
