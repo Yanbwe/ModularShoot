@@ -16,6 +16,8 @@ import net.minecraft.world.level.ItemLike;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
+import org.yanbwe.modularshoot.attribute.PlayerAttributeSourceProvider;
+import org.yanbwe.modularshoot.attribute.PlayerAttributeSourceRegistry;
 import org.yanbwe.modularshoot.bullet.BulletRecord;
 import org.yanbwe.modularshoot.bullet.BulletSnapshot;
 import org.yanbwe.modularshoot.bullet.BulletSnapshotBuilder;
@@ -660,6 +662,31 @@ public final class ModularShootAPI {
     public static void registerGunDefinitionProvider(GunDefinitionProvider provider) {
         Objects.requireNonNull(provider, "provider");
         GunRegistry.registerGunDefinitionProvider(provider);
+    }
+
+    /**
+     * Registers a player-side attribute source provider.
+     *
+     * <p>Delegates to
+     * {@link PlayerAttributeSourceRegistry#register(PlayerAttributeSourceProvider)}.
+     * This extension point is used by the player-side attribute mount tooltip:
+     * providers resolve a {@link org.yanbwe.modularshoot.attribute.PlayerAttributeValueReader}
+     * for a player-side gun stack, allowing final values to be computed from
+     * synced data, a real entity, or any other declaring-side source. The
+     * viewer parameter is nullable and callers are not required to construct a
+     * real {@link Player}.</p>
+     *
+     * <p>Registration is process-wide and survives {@code /reload}; it can be
+     * used by multiple mods. Providers are consulted in registration order and
+     * the first non-empty result wins. There is no unregister operation, so
+     * tests should isolate registrations with unique {@link ItemStack}
+     * instances. Safe to call during mod common-setup.</p>
+     *
+     * @param provider the provider to register; must not be {@code null}
+     */
+    public static void registerPlayerAttributeSourceProvider(PlayerAttributeSourceProvider provider) {
+        Objects.requireNonNull(provider, "provider");
+        PlayerAttributeSourceRegistry.register(provider);
     }
 
     /**
