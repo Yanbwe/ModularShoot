@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.Holder;
@@ -22,9 +23,14 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
 import org.jetbrains.annotations.Nullable;
+import org.yanbwe.modularshoot.ModularShootAPI;
+import org.yanbwe.modularshoot.attribute.PlayerAttributeSourceRegistry;
+import org.yanbwe.modularshoot.attribute.PlayerAttributeValueReader;
 import org.yanbwe.modularshoot.degradation.AttributeBindsDegradationHandler;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
 import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
+import org.yanbwe.modularshoot.registry.gun.AttributeMount;
+import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 
 /**
  * Builds the attribute-bar section of a gun's tooltip (设计文档 §系统九,
@@ -32,9 +38,18 @@ import org.yanbwe.modularshoot.registry.attribute.AttributeMeta;
  *
  * <p>Iterates the {@code modularshoot:attribute_meta} registry, reads each
  * attribute's current value from the gun's {@code ATTRIBUTE_MODIFIERS}
- * component, filters by visibility rules, sorts by {@code priority}
- * descending then by id ascending, and renders each as a coloured
- * {@link Component} line.</p>
+ * component for item-side guns, or from the resolved player-attribute
+ * holder for player-side guns, filters by visibility rules, sorts by
+ * {@code priority} descending then by id ascending, and renders each as a
+ * coloured {@link Component} line.</p>
+ *
+ * <p><b>Player-side branch:</b> when the gun declares
+ * {@code AttributeMount.PLAYER}, the tooltip reads final values from the
+ * attribute holder resolved via
+ * {@link PlayerAttributeSourceRegistry}. If no provider can resolve a
+ * holder, it falls back to the gun definition's declared base values
+ * ({@code stats} first, then {@code AttributeMeta.defaultValue()}) and
+ * appends an "以持有者为准" note to the attribute bar.</p>
  *
  * <h2>Display layers</h2>
  * <ul>
@@ -89,9 +104,8 @@ public final class AttributeTooltipBuilder {
      * </p>
      *
      * @param gunStack       the gun item stack to read modifiers from
-     * @param viewingPlayer  the player viewing the tooltip (unused, reserved
-     *                       for future per-player filtering); may be
-     *                       {@code null}
+     * @param viewingPlayer  the player viewing the tooltip (player-side
+     *                       branch); may be {@code null}
      * @param registryAccess the runtime registry view
      * @return an ordered list of attribute-bar components (including the
      *         {@code "属性:"} header); empty when no attribute is
@@ -108,7 +122,8 @@ public final class AttributeTooltipBuilder {
         }
         Registry<AttributeMeta> registry = registryOpt.get();
 
-        Map<ResourceLocation, Double> computed = computeAllAttributes(gunStack);
+        Map<ResourceLocation, Double> computed =
+                computeAttributeValues(gunStack, viewingPlayer, registryAccess);
         boolean ctrl = Screen.hasControlDown();
         List<AttributeEntry> entries = collectEntries(registry, computed, ctrl);
         if (entries.isEmpty()) {
@@ -122,12 +137,126 @@ public final class AttributeTooltipBuilder {
         for (AttributeEntry entry : entries) {
             lines.add(buildLine(entry));
         }
+        if (isPlayerSideWithoutReader(gunStack, viewingPlayer, registryAccess)) {
+            lines.add(Component.translatable("modularshoot.tooltip.attribute_holder_note")
+                    .withStyle(ChatFormatting.GRAY));
+        }
         return lines;
     }
 
     // ------------------------------------------------------------------
     // Value computation
     // ------------------------------------------------------------------
+
+    /**
+     * Computes the attribute values shown on a gun's tooltip.
+     *
+     * <p><b>Item side</b> delegates to {@link #computeAllAttributes}, reading
+     * final values from the stack's {@code ATTRIBUTE_MODIFIERS} component.</p>
+     *
+     * <p><b>Player side</b> resolves a {@link PlayerAttributeValueReader}
+     * through {@link PlayerAttributeSourceRegistry}; when a reader is
+     * available, every registered and non-degraded attribute is read from the
+     * holder. When no reader can be resolved, the values fall back to the gun
+     * definition's base values (declared {@code stats} first, then metadata
+     * {@code defaultValue}).</p>
+     *
+     * @param gunStack       the gun item stack
+     * @param viewingPlayer  the player viewing the tooltip, or {@code null}
+     * @param registryAccess the runtime registry view
+     * @return a map of vanilla attribute id → value; empty when the gun or
+     *         the metadata registry cannot be resolved
+     */
+    static Map<ResourceLocation, Double> computeAttributeValues(
+            ItemStack gunStack,
+            @Nullable Player viewingPlayer,
+            RegistryAccess registryAccess) {
+        Optional<GunDefinition> gunDefOpt = ModularShootAPI.resolveGunId(gunStack, registryAccess)
+                .flatMap(gunId -> ModularShootAPI.getGunDefinition(registryAccess, gunId));
+        if (gunDefOpt.isEmpty()) {
+            return Map.of();
+        }
+        Registry<AttributeMeta> registry = registryAccess
+                .registry(ModularShootRegistries.ATTRIBUTE_META_KEY)
+                .orElse(null);
+        if (registry == null) {
+            return Map.of();
+        }
+        GunDefinition gunDef = gunDefOpt.get();
+        if (gunDef.attributeMount() == AttributeMount.ITEM) {
+            return computeAllAttributes(gunStack);
+        }
+
+        Optional<PlayerAttributeValueReader> readerOpt =
+                PlayerAttributeSourceRegistry.resolve(gunStack, viewingPlayer);
+        if (readerOpt.isPresent()) {
+            PlayerAttributeValueReader reader = readerOpt.get();
+            return computePlayerSideValues(gunDef, registry,
+                    logicalId -> reader.read(logicalId, registryAccess));
+        }
+        return computePlayerSideValues(gunDef, registry,
+                logicalId -> baseValue(gunDef, logicalId, registry.get(logicalId)));
+    }
+
+    /**
+     * Computes player-side attribute values by iterating the metadata
+     * registry, skipping entries whose {@code binds} target is unregistered,
+     * and keying the result by {@code AttributeMeta.binds()}.
+     *
+     * @param gunDef        the resolved gun definition (kept for value-provider
+     *                      context)
+     * @param registry      the attribute metadata registry
+     * @param valueProvider a function from logical attribute id to the
+     *                      player-side value to display
+     * @return a map of vanilla attribute id → value
+     */
+    static Map<ResourceLocation, Double> computePlayerSideValues(
+            GunDefinition gunDef,
+            Registry<AttributeMeta> registry,
+            Function<ResourceLocation, Double> valueProvider) {
+        Map<ResourceLocation, Double> result = new HashMap<>();
+        for (Map.Entry<ResourceKey<AttributeMeta>, AttributeMeta> regEntry : registry.entrySet()) {
+            ResourceLocation logicalId = regEntry.getKey().location();
+            AttributeMeta meta = regEntry.getValue();
+            if (!AttributeBindsDegradationHandler.isAttributeRegistered(meta.binds())) {
+                continue;
+            }
+            result.put(meta.binds(), valueProvider.apply(logicalId));
+        }
+        return result;
+    }
+
+    /**
+     * Returns whether the current tooltip query is on a player-side gun that
+     * has no resolved attribute holder, i.e. the bar is showing fallback base
+     * values and should display the note.
+     */
+    private static boolean isPlayerSideWithoutReader(
+            ItemStack gunStack,
+            @Nullable Player viewingPlayer,
+            RegistryAccess registryAccess) {
+        Optional<GunDefinition> gunDefOpt = ModularShootAPI.resolveGunId(gunStack, registryAccess)
+                .flatMap(gunId -> ModularShootAPI.getGunDefinition(registryAccess, gunId));
+        return gunDefOpt
+                .map(gunDef -> gunDef.attributeMount() == AttributeMount.PLAYER
+                        && PlayerAttributeSourceRegistry.resolve(gunStack, viewingPlayer).isEmpty())
+                .orElse(false);
+    }
+
+    /**
+     * Resolves a player-side base value for a logical attribute: the gun
+     * definition's declared {@code stats} value takes priority, otherwise the
+     * metadata's default value is used.
+     *
+     * @param gunDef      the resolved gun definition
+     * @param logicalId   the logical attribute id
+     * @param meta        the attribute metadata
+     * @return the base value
+     */
+    private static double baseValue(
+            GunDefinition gunDef, ResourceLocation logicalId, AttributeMeta meta) {
+        return gunDef.stats().getOrDefault(logicalId, meta.defaultValue());
+    }
 
     /**
      * Computes the final value for every attribute present in the gun's

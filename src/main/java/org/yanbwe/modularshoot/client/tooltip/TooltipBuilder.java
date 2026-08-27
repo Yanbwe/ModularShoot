@@ -19,6 +19,7 @@ import org.yanbwe.modularshoot.component.ModularShootDataComponents;
 import org.yanbwe.modularshoot.degradation.GunDegradationHandler;
 import org.yanbwe.modularshoot.plugin.PluginTypeDefinition;
 import org.yanbwe.modularshoot.registry.ModularShootRegistries;
+import org.yanbwe.modularshoot.registry.gun.AttributeMount;
 import org.yanbwe.modularshoot.registry.gun.GunDefinition;
 import org.yanbwe.modularshoot.registry.gun.GunRegistry;
 
@@ -66,6 +67,26 @@ public final class TooltipBuilder {
      * rebuilding every frame.
      */
     private static final TooltipCache CACHE = new TooltipCache();
+
+    /**
+     * Checks whether the aggregated tooltip cache must be bypassed for a gun.
+     *
+     * <p>Player-side guns read attribute values from an external attribute
+     * holder resolved through providers, so the same stack can show different
+     * values as the holder changes without any stack/registry/version key
+     * change. Those guns therefore bypass the aggregate cache; item-side guns
+     * continue to use it.</p>
+     *
+     * @param stack          the gun item stack
+     * @param registryAccess the runtime registry view
+     * @return {@code true} when the gun declares
+     *         {@link AttributeMount#PLAYER}
+     */
+    static boolean shouldBypassCache(ItemStack stack, RegistryAccess registryAccess) {
+        return ModularShootAPI.getAttributeMount(stack, registryAccess)
+                .map(mount -> mount == AttributeMount.PLAYER)
+                .orElse(false);
+    }
 
     /**
      * Injects ModularShoot tooltip sections into a gun item's tooltip lines.
@@ -178,8 +199,10 @@ public final class TooltipBuilder {
         TooltipCacheKey key = TooltipCacheKey.of(stack, registryAccess,
                 ModifierKeys.controlDown(), ModifierKeys.altDown(), ModifierKeys.shiftDown(),
                 TooltipVersion.mutableDataVersion(stack, player));
-        List<Component> bars = CACHE.getOrCompute(key,
-                () -> buildTooltipSections(stack, player, registryAccess));
+        List<Component> bars = shouldBypassCache(stack, registryAccess)
+                ? buildTooltipSections(stack, player, registryAccess)
+                : CACHE.getOrCompute(key,
+                        () -> buildTooltipSections(stack, player, registryAccess));
         event.getToolTip().addAll(bars);
     }
 
